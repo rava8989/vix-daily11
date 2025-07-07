@@ -3,17 +3,26 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VIX Strategy Helper — Mermaid Flowchart</title>
+<title>VIX Strategy Helper — Final</title>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-mermaid.initialize({ startOnLoad: true });
+mermaid.initialize({ 
+  startOnLoad: true,
+  theme: 'default',
+  themeVariables: {
+    primaryColor: '#CCE',
+    edgeLabelBackground: '#FFF',
+    secondaryColor: '#EEE',
+    tertiaryColor: '#FFF'
+  }
+});
 </script>
 <style>
 body {
   font-family: Arial, sans-serif;
+  background: #f9f9f9;
   margin: 0;
   padding: 0;
-  background: #f9f9f9;
   text-align: center;
 }
 .calculator {
@@ -71,15 +80,18 @@ button {
 
 <div class="flowchart">
 <div class="mermaid">
-graph TD
+flowchart TD
     A[VIX < 22 at open?] -->|No| B[No Trade]
     A -->|Yes| C[Overnight VIX down < 0.65?]
-    C -->|No| D[Butterfly]
+    C -->|No| D:::butterfly[Butterfly]
     C -->|Yes| E[Gap < 0.9%?]
-    E -->|No| F[Butterfly]
+    E -->|No| F:::butterfly[Butterfly]
     E -->|Yes| G[Yesterday Open - Today Open < 1?]
-    G -->|No| H[Butterfly]
-    G -->|Yes| I[Straddle]
+    G -->|No| H:::butterfly[Butterfly]
+    G -->|Yes| I:::straddle[Straddle]
+
+    classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
+    classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
 </div>
 </div>
 
@@ -124,7 +136,8 @@ function calculateStrategy() {
     recommendation += ` — ${dayName} ${bfTime}`;
   }
 
-  document.getElementById("recommendation").innerHTML = recommendation;
+  document.getElementById("recommendation").innerHTML =
+    `👉 <span style="font-size: 36px; color: #333;">${recommendation}</span>`;
 }
 </script>
 

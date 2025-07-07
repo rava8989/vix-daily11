@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Manual VIX Calculator</title>
+  <title>VIX Manual Trade Helper</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 40px; }
     h1 { font-size: 24px; }
@@ -10,11 +10,13 @@
     input { padding: 5px; width: 120px; margin-top: 5px; }
     button { padding: 10px 20px; font-size: 16px; margin-top: 20px; }
     .result { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
+    .highlight { color: red; font-weight: bold; }
+    .butterfly { font-size: 28px; color: darkgreen; font-weight: bold; }
   </style>
 </head>
 <body>
 
-  <h1>📈 VIX Manual Entry</h1>
+  <h1>📈 VIX Manual Trade Suggestion</h1>
 
   <form id="vixForm" onsubmit="event.preventDefault(); calculate();">
     <label>
@@ -46,11 +48,25 @@
       const diffOpen = (yOpen - todayOpen).toFixed(2);
       const diffClose = (yClose - todayOpen).toFixed(2);
 
+      const highlightOpen = yOpen - todayOpen > 1;
+      const highlightClose = yClose - todayOpen > 0.65;
+
+      let recommendation = "trade Straddle";
+      if (highlightOpen || highlightClose) {
+        recommendation = `<span class="butterfly">trade Butterfly</span>`;
+      }
+
       const box = document.getElementById('resultBox');
       box.style.display = 'block';
       box.innerHTML = `
-        <p><strong>Yesterday Open - Today Open:</strong> ${diffOpen}</p>
-        <p><strong>Yesterday Close - Today Open:</strong> ${diffClose}</p>
+        <p><strong>Yesterday Open - Today Open:</strong> 
+          <span class="${highlightOpen ? 'highlight' : ''}">${diffOpen}</span>
+        </p>
+        <p><strong>Yesterday Close - Today Open:</strong> 
+          <span class="${highlightClose ? 'highlight' : ''}">${diffClose}</span>
+        </p>
+        <hr />
+        <p><strong>Suggested Trade:</strong> ${recommendation}</p>
       `;
     }
   </script>

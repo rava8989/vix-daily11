@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>VIX Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f7f7f7; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    .result { margin-top: 20px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
+    p { margin: 0.5em 0; }
+  </style>
+</head>
+<body>
+  <h1>📈 VIX Dashboard</h1>
+  <button onclick="fetchVIXData()">🔄 Update VIX Data</button>
+  <div class="result" id="vixResults">Fetching data...</div>
+
+  <script>
+    const API_KEY = '2248f0c8a4de4025846b3093bdd1d641';
+
+    async function fetchVIXData() {
+      const res = await fetch(`https://api.twelvedata.com/time_series?symbol=VIX&interval=1min&outputsize=5000&apikey=${API_KEY}`);
+      const data = await res.json();
+
+      if (!data.values) {
+        document.getElementById("vixResults").innerText = "❌ Error loading data.";
+        return;
+      }
+
+      const values = data.values;
+
+      function findTime(dateStr, timeStr) {
+        return values.find(v => v.datetime.startsWith(dateStr) && v.datetime.endsWith(timeStr));
+      }
+
+      const today = new Date();
+      const yest = new Date(today);
+      yest.setDate(today.getDate() - 1);
+
+      const format = (d) => d.toISOString().split("T")[0];
+
+      const todayStr = format(today);
+      const yestStr = format(yest);
+
+      const tOpen = findTime(todayStr, '09:30:00');
+      const yOpen = findTime(yestStr, '09:30:00');
+      const yClose = findTime(yestStr, '16:00:00');
+
+      if (!tOpen || !yOpen || !yClose) {
+        document.getElementById("vixResults").innerText =
+          "⚠️ Not enough data yet. Make sure it's after 9:30 AM and 4:00 PM Eastern Time.";
+        return;
+      }
+
+      const tOpenVal = parseFloat(tOpen.open);
+      const yOpenVal = parseFloat(yOpen.open);
+      const yCloseVal = parseFloat(yClose.close);
+
+      const diffOpen = (yOpenVal - tOpenVal).toFixed(2);
+      const diffClose = (yCloseVal - tOpenVal).toFixed(2);
+
+      document.getElementById("vixResults").innerHTML = `
+        <p><strong>📅 Today's Open (9:30 AM):</strong> ${tOpenVal}</p>
+        <p><strong>📅 Yesterday's Open (9:30 AM):</strong> ${yOpenVal}</p>
+        <p><strong>📅 Yesterday's Close (4:00 PM):</strong> ${yCloseVal}</p>
+        <hr>
+        <p><strong>🧮 Yesterday Open - Today Open:</strong> ${diffOpen}</p>
+        <p><strong>🧮 Yesterday Close - Today Open:</strong> ${diffClose}</p>
+      `;
+    }
+
+    fetchVIXData();
+  </script>
+</body>
+</html>

@@ -89,26 +89,27 @@
         return;
       }
 
-      const openDiff = yOpen - today;
-      const closeDiff = yClose - today;
+      const openDiffRaw = yOpen - today;
+      const closeDiffRaw = yClose - today;
 
-      const highlightOpen = openDiff > 1;
-      const highlightClose = closeDiff > 0.65;
-
-      const showStraddle = openDiff < 1 && closeDiff < 0.65;
+      // Only show Straddle if BOTH conditions are met
+      const showStraddle = openDiffRaw < 1 && closeDiffRaw < 0.65;
 
       const strategy = showStraddle
         ? `<span class="straddle">Straddle</span>`
         : `<span class="butterfly">Butterfly</span>`;
 
+      const openDiff = openDiffRaw.toFixed(2);
+      const closeDiff = closeDiffRaw.toFixed(2);
+
       const box = document.getElementById("resultBox");
       box.style.display = "block";
       box.innerHTML = `
         <p><strong>VIX Yesterday Open − VIX Today Open:</strong>
-          <span class="${highlightOpen ? 'highlight' : ''}">${openDiff.toFixed(2)}</span>
+          <span class="${openDiffRaw >= 1 ? 'highlight' : ''}">${openDiff}</span>
         </p>
         <p><strong>VIX Yesterday Close − VIX Today Open:</strong>
-          <span class="${highlightClose ? 'highlight' : ''}">${closeDiff.toFixed(2)}</span>
+          <span class="${closeDiffRaw >= 0.65 ? 'highlight' : ''}">${closeDiff}</span>
         </p>
         <hr>
         <p><strong>Suggested Strategy:</strong> ${strategy}</p>

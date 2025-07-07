@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>VIX Manual Suggestion</title>
+  <title>VIX Manual Strategy Suggestion</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 40px; }
     h1 { font-size: 24px; }
@@ -12,6 +12,7 @@
     .result { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
     .highlight { color: red; font-weight: bold; }
     .butterfly { font-size: 28px; color: darkgreen; font-weight: bold; }
+    .straddle { font-size: 28px; color: #0047ab; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -51,25 +52,14 @@
       const highlightOpen = yOpen - todayOpen > 1;
       const highlightClose = yClose - todayOpen > 0.65;
 
-      let recommendation = "Straddle";
+      let recommendation;
       if (highlightOpen || highlightClose) {
         recommendation = `<span class="butterfly">Butterfly</span>`;
+      } else {
+        recommendation = `<span class="straddle">Straddle</span>`;
       }
 
       const box = document.getElementById('resultBox');
       box.style.display = 'block';
       box.innerHTML = `
-        <p><strong>VIX Yesterday Open - VIX Today Open:</strong> 
-          <span class="${highlightOpen ? 'highlight' : ''}">${diffOpen}</span>
-        </p>
-        <p><strong>VIX Yesterday Close - VIX Today Open:</strong> 
-          <span class="${highlightClose ? 'highlight' : ''}">${diffClose}</span>
-        </p>
-        <hr />
-        <p><strong>Suggested Strategy:</strong> ${recommendation}</p>
-      `;
-    }
-  </script>
-
-</body>
-</html>
+        <p><strong>VIX Yesterday Open - VI

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VIX Strategy Helper — Final</title>
+<title>VIX Strategy Helper — Final with Left Panel</title>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
 mermaid.initialize({ startOnLoad: true });
@@ -14,7 +14,30 @@ body {
   background: #f9f9f9;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: row;
+}
+.sidebar {
+  width: 180px;
+  background: #fff;
+  padding: 15px;
+  border-right: 1px solid #ccc;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  height: 100vh;
+  box-sizing: border-box;
+}
+.sidebar h2 {
+  font-size: 16px;
+  margin-top: 0;
+}
+.sidebar .today {
+  font-weight: bold;
+  color: #d00;
+}
+.main {
+  flex: 1;
   text-align: center;
+  padding: 20px;
 }
 .calculator {
   background: #fff;
@@ -22,7 +45,7 @@ body {
   border-radius: 8px;
   box-shadow: 0 0 5px #ccc;
   max-width: 300px;
-  margin: 20px auto;
+  margin: 0 auto 20px auto;
 }
 label {
   display: block;
@@ -63,61 +86,65 @@ button {
   font-size: 18px;
   margin-top: 0;
 }
-.notes .today {
-  font-weight: bold;
-  color: #d00;
-}
 </style>
 </head>
 <body>
 
-<div class="calculator">
-  <h1>VIX Calculator</h1>
-  <label>VIX Today’s Open:
-    <input type="number" id="todayOpen" step="0.01" />
-  </label>
-  <label>VIX Yesterday’s Open:
-    <input type="number" id="yesterdayOpen" step="0.01" />
-  </label>
-  <label>VIX Yesterday’s Close:
-    <input type="number" id="yesterdayClose" step="0.01" />
-  </label>
-  <button onclick="calculateStrategy()">Calculate</button>
-</div>
-
-<div id="recommendation"></div>
-
-<div class="flowchart">
-<div class="mermaid">
-flowchart TD
-    A[VIX < 22 at open?] -->|No| B[No Trade]
-    A -->|Yes| C[Overnight VIX down < 0.65?]
-    C -->|No| D[Butterfly]
-    C -->|Yes| E[Gap < 0.9%?]
-    E -->|No| F[Butterfly]
-    E -->|Yes| G[Yesterday Open - Today Open < 1?]
-    G -->|No| H[Butterfly]
-    G -->|Yes| I[Straddle]
-
-    class D,F,H butterfly
-    class I straddle
-
-    classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
-    classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
-</div>
-</div>
-
-<div class="notes">
-  <h2>Notes</h2>
+<div class="sidebar">
+  <h2>BF Trading Times</h2>
   <ul id="bfTimesList"></ul>
-  <ul>
-    <li><strong>No BF on FED day</strong></li>
-    <li><strong>Max Risk:</strong></li>
+</div>
+
+<div class="main">
+
+  <div class="calculator">
+    <h1>VIX Calculator</h1>
+    <label>VIX Today’s Open:
+      <input type="number" id="todayOpen" step="0.01" />
+    </label>
+    <label>VIX Yesterday’s Open:
+      <input type="number" id="yesterdayOpen" step="0.01" />
+    </label>
+    <label>VIX Yesterday’s Close:
+      <input type="number" id="yesterdayClose" step="0.01" />
+    </label>
+    <button onclick="calculateStrategy()">Calculate</button>
+  </div>
+
+  <div id="recommendation"></div>
+
+  <div class="flowchart">
+  <div class="mermaid">
+  flowchart TD
+      A[VIX < 22 at open?] -->|No| B[No Trade]
+      A -->|Yes| C[Overnight VIX down < 0.65?]
+      C -->|No| D[Butterfly]
+      C -->|Yes| E[Gap < 0.9%?]
+      E -->|No| F[Butterfly]
+      E -->|Yes| G[Yesterday Open - Today Open < 1?]
+      G -->|No| H[Butterfly]
+      G -->|Yes| I[Straddle]
+
+      class D,F,H butterfly
+      class I straddle
+
+      classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
+      classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
+  </div>
+  </div>
+
+  <div class="notes">
+    <h2>Notes</h2>
     <ul>
-      <li>Straddle — $3200</li>
-      <li>Butterfly — $1300</li>
+      <li><strong>No BF on FED day</strong></li>
+      <li><strong>Max Risk:</strong></li>
+      <ul>
+        <li>Straddle — $3200</li>
+        <li>Butterfly — $1300</li>
+      </ul>
     </ul>
-  </ul>
+  </div>
+
 </div>
 
 <script>
@@ -129,7 +156,56 @@ const bfTimes = {
   5: "Friday — 1:50 PM"
 };
 
-function renderNotes() {
+function renderBFList() {
   const ul = document.getElementById('bfTimesList');
-  ul.innerHTML = "<li><strong>Butterfly Trading Times:</strong></li>";
-  co
+  const todayIdx = new Date().getDay();
+
+  for (let i = 1; i <= 5; i++) {
+    const li = document.createElement('li');
+    li.textContent = bfTimes[i];
+    if (todayIdx >=1 && todayIdx <=5 && i === todayIdx) li.classList.add('today');
+    ul.appendChild(li);
+  }
+}
+
+renderBFList();
+
+function calculateStrategy() {
+  const today = parseFloat(document.getElementById('todayOpen').value);
+  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
+  const yClose = parseFloat(document.getElementById('yesterdayClose').value);
+
+  if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
+    alert("Please enter valid numbers.");
+    return;
+  }
+
+  const openDiff = yOpen - today;
+  const closeDiff = yClose - today;
+
+  let recommendation = "";
+
+  if (today >= 22) {
+    recommendation = "No Trade";
+  } else if (closeDiff >= 0.65) {
+    recommendation = "Butterfly";
+  } else if (openDiff < 1 && closeDiff > 0.01 && closeDiff < 0.65) {
+    recommendation = "Straddle";
+  } else {
+    recommendation = "Butterfly";
+  }
+
+  const dayOfWeek = new Date().getDay();
+  const bfTime = bfTimes[dayOfWeek] || "N/A";
+
+  if (recommendation === "Butterfly") {
+    recommendation += ` — ${bfTime}`;
+  }
+
+  document.getElementById("recommendation").innerHTML =
+    `👉 <span style="font-size: 36px; color: #333;">${recommendation}</span>`;
+}
+</script>
+
+</body>
+</html>

@@ -54,6 +54,12 @@
       color: #0047ab;
       font-weight: bold;
     }
+    .version {
+      text-align: center;
+      margin-top: 40px;
+      color: #999;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -78,6 +84,8 @@
 
   <div class="result" id="resultBox" style="display: none;"></div>
 
+  <p class="version" id="versionInfo"></p>
+
   <script>
     function calculateStrategy() {
       const today = parseFloat(document.getElementById('todayOpen').value);
@@ -92,8 +100,10 @@
       const openDiffRaw = yOpen - today;
       const closeDiffRaw = yClose - today;
 
-      // Only show Straddle if BOTH conditions are met
-      const showStraddle = openDiffRaw < 1 && closeDiffRaw < 0.65;
+      const showStraddle =
+        openDiffRaw < 1 &&
+        closeDiffRaw > 0.01 &&
+        closeDiffRaw < 0.65;
 
       const strategy = showStraddle
         ? `<span class="straddle">Straddle</span>`
@@ -109,12 +119,22 @@
           <span class="${openDiffRaw >= 1 ? 'highlight' : ''}">${openDiff}</span>
         </p>
         <p><strong>VIX Yesterday Close − VIX Today Open:</strong>
-          <span class="${closeDiffRaw >= 0.65 ? 'highlight' : ''}">${closeDiff}</span>
+          <span class="${(closeDiffRaw >= 0.65 || closeDiffRaw <= 0.01) ? 'highlight' : ''}">${closeDiff}</span>
         </p>
         <hr>
         <p><strong>Suggested Strategy:</strong> ${strategy}</p>
       `;
     }
+
+    // ✅ Auto-set last updated date
+    const versionEl = document.getElementById("versionInfo");
+    const modified = new Date(document.lastModified);
+    const dateStr = modified.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    versionEl.textContent = `Last Updated: ${dateStr}`;
   </script>
 
 </body>

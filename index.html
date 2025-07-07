@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>VIX Strategy Helper with Flowchart</title>
+<title>VIX Strategy Helper — Live Flowchart</title>
 <style>
 body {
   font-family: Arial, sans-serif;
@@ -52,6 +52,10 @@ button {
   width: 100%;
   max-width: 800px;
 }
+.activeStep {
+  stroke: red;
+  stroke-width: 3;
+}
 .notes {
   background: #fff;
   margin: 20px auto;
@@ -88,47 +92,60 @@ button {
 
   <div class="flowchart">
     <h2>Strategy Flowchart</h2>
-    <!-- simplified flowchart as HTML/SVG -->
     <svg viewBox="0 0 800 600">
-      <text x="50" y="40" font-size="14">Start</text>
-      <rect x="30" y="50" width="180" height="30" fill="#cce" />
-      <text x="40" y="70" font-size="12">VIX &lt; 22 at open?</text>
-      <text x="220" y="70" font-size="12">No → NO TRADE</text>
-      <text x="30" y="100" font-size="12">Yes ↓</text>
-      <rect x="30" y="110" width="240" height="30" fill="#cce" />
-      <text x="40" y="130" font-size="12">Overnight VIX down &lt; 0.65?</text>
-      <text x="280" y="130" font-size="12">No → TRADE DEFAULT M8 BF</text>
-      <text x="30" y="170" font-size="12">Yes ↓</text>
-      <rect x="30" y="180" width="240" height="30" fill="#cce" />
-      <text x="40" y="200" font-size="12">Gap up/down &lt; 0.9%?</text>
-      <text x="280" y="200" font-size="12">No → TRADE DEFAULT M8 BF</text>
-      <text x="30" y="240" font-size="12">Yes ↓</text>
-      <rect x="30" y="250" width="280" height="30" fill="#cce" />
-      <text x="40" y="270" font-size="12">Yesterday’s VIX Open − Today’s Open &lt; 1?</text>
-      <text x="330" y="270" font-size="12">No → TRADE DEFAULT M8 BF</text>
-      <text x="30" y="310" font-size="12">Yes ↓</text>
-      <rect x="30" y="320" width="280" height="30" fill="#cfc" />
-      <text x="40" y="340" font-size="12">TRADE 9:32AM ATM STRADDLE</text>
+      <g id="stepStart">
+        <rect x="30" y="50" width="180" height="30" fill="#cce" />
+        <text x="40" y="70" font-size="12">VIX &lt; 22 at open?</text>
+      </g>
+      <g id="stepOvernight">
+        <rect x="30" y="110" width="240" height="30" fill="#cce" />
+        <text x="40" y="130" font-size="12">Overnight VIX down &lt; 0.65?</text>
+      </g>
+      <g id="stepGap">
+        <rect x="30" y="180" width="240" height="30" fill="#cce" />
+        <text x="40" y="200" font-size="12">Gap up/down &lt; 0.9%?</text>
+      </g>
+      <g id="stepOpenDiff">
+        <rect x="30" y="250" width="280" height="30" fill="#cce" />
+        <text x="40" y="270" font-size="12">Yesterday’s Open − Today’s Open &lt; 1?</text>
+      </g>
+      <g id="stepStraddle">
+        <rect x="30" y="320" width="280" height="30" fill="#cfc" />
+        <text x="40" y="340" font-size="12">TRADE 9:32AM ATM STRADDLE</text>
+      </g>
+      <g id="stepButterfly">
+        <rect x="330" y="70" width="200" height="30" fill="#fcc" />
+        <text x="340" y="90" font-size="12">TRADE DEFAULT M8 BUTTERFLY</text>
+      </g>
     </svg>
   </div>
 </header>
 
 <div class="notes">
   <p><strong>BF Trading Times:</strong><br>
-  Monday 10:40 am<br>
-  Tuesday 10:50 am<br>
-  Wednesday 1:35 am<br>
-  Thursday 10:45 am<br>
-  Friday 1:50 pm</p>
-  <p>*Max risk on Straddle: $3200<br>
-  *Max risk on FLY: $1300<br>
-  *No BF on FED day</p>
+  Monday 10:40 AM | Tuesday 10:50 AM | Wednesday 1:35 AM | Thursday 10:45 AM | Friday 1:50 PM</p>
 </div>
 
 <div class="version" id="versionInfo"></div>
 
 <script>
+const bfTimes = {
+  1: "10:40 AM", // Monday
+  2: "10:50 AM", // Tuesday
+  3: "1:35 AM",  // Wednesday
+  4: "10:45 AM", // Thursday
+  5: "1:50 PM"   // Friday
+};
+
+function clearHighlights() {
+  ["stepStart","stepOvernight","stepGap","stepOpenDiff","stepStraddle","stepButterfly"].forEach(id => {
+    document.getElementById(id).querySelector("rect").classList.remove("activeStep");
+  });
+}
+
 function calculateStrategy() {
+  clearHighlights();
+
   const today = parseFloat(document.getElementById('todayOpen').value);
   const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
   const yClose = parseFloat(document.getElementById('yesterdayClose').value);
@@ -141,12 +158,45 @@ function calculateStrategy() {
   const openDiff = yOpen - today;
   const closeDiff = yClose - today;
 
-  const straddle = openDiff < 1 && closeDiff > 0.01 && closeDiff < 0.65;
+  let result = "";
+
+  document.getElementById("stepStart").querySelector("rect").classList.add("activeStep");
+  if (today >= 22) {
+    result = "NO TRADE";
+    document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
+  } else {
+    document.getElementById("stepOvernight").querySelector("rect").classList.add("activeStep");
+    if (closeDiff >= 0.65) {
+      result = "Butterfly";
+      document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
+    } else {
+      document.getElementById("stepGap").querySelector("rect").classList.add("activeStep");
+      if (false) { // Replace with actual gap logic if needed
+        result = "Butterfly";
+        document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
+      } else {
+        document.getElementById("stepOpenDiff").querySelector("rect").classList.add("activeStep");
+        if (openDiff < 1) {
+          result = "Straddle";
+          document.getElementById("stepStraddle").querySelector("rect").classList.add("activeStep");
+        } else {
+          result = "Butterfly";
+          document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
+        }
+      }
+    }
+  }
+
+  const dayOfWeek = new Date().getDay();
+  const bfTime = bfTimes[dayOfWeek] || "N/A";
+
+  if (result === "Butterfly") {
+    result += ` — Today is ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dayOfWeek]}, recommended time: ${bfTime}`;
+  }
 
   document.getElementById("resultBox").innerHTML =
-    `<strong>Strategy:</strong> ${straddle ? "Straddle" : "Butterfly"}<br>
-    Open Diff: ${openDiff.toFixed(2)}<br>
-    Close Diff: ${closeDiff.toFixed(2)}`;
+    `<strong>Recommendation:</strong> ${result}<br>
+    Open Diff: ${openDiff.toFixed(2)} | Close Diff: ${closeDiff.toFixed(2)}`;
 }
 
 const modDate = new Date(document.lastModified);

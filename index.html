@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VIX Strategy Helper — Final with Both Times</title>
+<title>VIX Strategy Helper — Clean Sidebar</title>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
 mermaid.initialize({ startOnLoad: true });
@@ -18,7 +18,7 @@ body {
   flex-direction: row;
 }
 .sidebar {
-  width: 220px;
+  width: 250px;
   background: #fff;
   padding: 15px;
   border-right: 1px solid #ccc;
@@ -29,10 +29,6 @@ body {
 .sidebar h2 {
   font-size: 16px;
   margin-top: 0;
-}
-.sidebar .today {
-  font-weight: bold;
-  color: #d00;
 }
 .main {
   flex: 1;
@@ -91,8 +87,10 @@ button {
 <body>
 
 <div class="sidebar">
-  <h2>Trading Times</h2>
-  <ul id="tradingTimesList"></ul>
+  <h2>Butterfly Trading Times</h2>
+  <ul id="bfTimesList"></ul>
+  <h2>Straddle Trading Time</h2>
+  <p>9:32 AM</p>
 </div>
 
 <div class="main">
@@ -148,27 +146,24 @@ button {
 </div>
 
 <script>
-const timesPerDay = {
-  1: { day: "Monday", bf: "10:40 AM", straddle: "9:32 AM" },
-  2: { day: "Tuesday", bf: "10:50 AM", straddle: "9:32 AM" },
-  3: { day: "Wednesday", bf: "1:35 AM", straddle: "9:32 AM" },
-  4: { day: "Thursday", bf: "10:45 AM", straddle: "9:32 AM" },
-  5: { day: "Friday", bf: "1:50 PM", straddle: "9:32 AM" }
+const bfTimes = {
+  1: { day: "Monday", time: "10:40 AM" },
+  2: { day: "Tuesday", time: "10:50 AM" },
+  3: { day: "Wednesday", time: "1:35 AM" },
+  4: { day: "Thursday", time: "10:45 AM" },
+  5: { day: "Friday", time: "1:50 PM" }
 };
 
-function renderTradingTimes() {
-  const ul = document.getElementById('tradingTimesList');
-  const todayIdx = new Date().getDay();
-
+function renderBFList() {
+  const ul = document.getElementById('bfTimesList');
   for (let i = 1; i <= 5; i++) {
     const li = document.createElement('li');
-    li.textContent = `${timesPerDay[i].day} — Butterfly ${timesPerDay[i].bf} | Straddle ${timesPerDay[i].straddle}`;
-    if (todayIdx >=1 && todayIdx <=5 && i === todayIdx) li.classList.add('today');
+    li.textContent = `${bfTimes[i].day} — ${bfTimes[i].time}`;
     ul.appendChild(li);
   }
 }
 
-renderTradingTimes();
+renderBFList();
 
 function calculateStrategy() {
   const today = parseFloat(document.getElementById('todayOpen').value);
@@ -196,7 +191,7 @@ function calculateStrategy() {
   }
 
   const dayOfWeek = new Date().getDay();
-  const bfTime = timesPerDay[dayOfWeek]?.bf || "N/A";
+  const bfTime = bfTimes[dayOfWeek]?.time || "N/A";
 
   if (recommendation === "Butterfly") {
     recommendation += ` — ${bfTime}`;

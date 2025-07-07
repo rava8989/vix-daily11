@@ -1,97 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>VIX Dashboard</title>
+  <meta charset="UTF-8" />
+  <title>Manual VIX Calculator</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
-    button { padding: 10px 20px; font-size: 16px; }
-    .result { margin-top: 20px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
-    p { margin: 0.5em 0; }
+    body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 40px; }
+    h1 { font-size: 24px; }
+    label { display: block; margin-top: 15px; }
+    input { padding: 5px; width: 120px; margin-top: 5px; }
+    button { padding: 10px 20px; font-size: 16px; margin-top: 20px; }
+    .result { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
   </style>
 </head>
 <body>
-  <h1>📈 VIX Dashboard</h1>
-  <button onclick="getVIXData()">🔄 Update VIX Data</button>
-  <div class="result" id="vixResults">Loading...</div>
+
+  <h1>📈 VIX Manual Entry</h1>
+
+  <form id="vixForm" onsubmit="event.preventDefault(); calculate();">
+    <label>
+      ✅ Today’s VIX Open (9:30 AM):
+      <input type="number" id="todayOpen" step="0.01" required />
+    </label>
+
+    <label>
+      📅 Yesterday’s VIX Open (9:30 AM):
+      <input type="number" id="yesterdayOpen" step="0.01" required />
+    </label>
+
+    <label>
+      📅 Yesterday’s VIX Close (4:00 PM):
+      <input type="number" id="yesterdayClose" step="0.01" required />
+    </label>
+
+    <button type="submit">Calculate</button>
+  </form>
+
+  <div class="result" id="resultBox" style="display:none;"></div>
 
   <script>
-    const API_KEY = 'd1lisepr01qt4thgfjlgd1lisepr01qt4thgfjm0'; // Your real API key
-    const SYMBOL = '^VIX';
-    const resultsEl = document.getElementById('vixResults');
+    function calculate() {
+      const todayOpen = parseFloat(document.getElementById('todayOpen').value);
+      const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
+      const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
-    async function getVIXData() {
-      resultsEl.innerText = 'Fetching data...';
+      const diffOpen = (yOpen - todayOpen).toFixed(2);
+      const diffClose = (yClose - todayOpen).toFixed(2);
 
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
-      const toTimestamp = Math.floor(now.getTime() / 1000);
-      const fromTimestamp = toTimestamp - (30 * 24 * 60 * 60);
-
-      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(SYMBOL)}&resolution=D&from=${fromTimestamp}&to=${toTimestamp}&token=${API_KEY}`;
-
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.s !== 'ok') {
-          resultsEl.innerText = '❌ Error fetching data from Finnhub.';
-          return;
-        }
-
-        const dateMap = {};
-        for (let i = 0; i < data.t.length; i++) {
-          const dateStr = new Date(data.t[i] * 1000).toISOString().split('T')[0];
-          dateMap[dateStr] = i;
-        }
-
-        const availableDates = Object.keys(dateMap).sort().reverse();
-
-        const todayDataIndex = dateMap[todayStr];
-        let todayOpen, yestOpen, yestClose, yestDate;
-
-        if (todayDataIndex !== undefined) {
-          todayOpen = data.o[todayDataIndex];
-        } else {
-          const mostRecent = availableDates[0];
-          todayOpen = data.o[dateMap[mostRecent]];
-        }
-
-        for (let i = 1; i < availableDates.length; i++) {
-          const d = availableDates[i];
-          const idx = dateMap[d];
-          if (data.o[idx] && data.c[idx]) {
-            yestOpen = data.o[idx];
-            yestClose = data.c[idx];
-            yestDate = d;
-            break;
-          }
-        }
-
-        if (!todayOpen || !yestOpen || !yestClose) {
-          resultsEl.innerText = '⚠️ Could not find valid VIX data.';
-          return;
-        }
-
-        const diffOpen = (yestOpen - todayOpen).toFixed(2);
-        const diffClose = (yestClose - todayOpen).toFixed(2);
-
-        resultsEl.innerHTML = `
-          <p><strong>Today's Open (approx):</strong> ${todayOpen.toFixed(2)}</p>
-          <p><strong>Used Previous Market Day:</strong> ${yestDate}</p>
-          <p><strong>Yesterday's Open:</strong> ${yestOpen.toFixed(2)}</p>
-          <p><strong>Yesterday's Close:</strong> ${yestClose.toFixed(2)}</p>
-          <hr>
-          <p><strong>Yesterday Open - Today Open:</strong> ${diffOpen}</p>
-          <p><strong>Yesterday Close - Today Open:</strong> ${diffClose}</p>
-        `;
-      } catch (err) {
-        console.error(err);
-        resultsEl.innerText = '❌ Network error. Check browser console for details.';
-      }
+      const box = document.getElementById('resultBox');
+      box.style.display = 'block';
+      box.innerHTML = `
+        <p><strong>Yesterday Open - Today Open:</strong> ${diffOpen}</p>
+        <p><strong>Yesterday Close - Today Open:</strong> ${diffClose}</p>
+      `;
     }
-
-    getVIXData();
   </script>
+
 </body>
 </html>

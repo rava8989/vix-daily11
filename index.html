@@ -6,16 +6,7 @@
 <title>VIX Strategy Helper — Final</title>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-mermaid.initialize({ 
-  startOnLoad: true,
-  theme: 'default',
-  themeVariables: {
-    primaryColor: '#CCE',
-    edgeLabelBackground: '#FFF',
-    secondaryColor: '#EEE',
-    tertiaryColor: '#FFF'
-  }
-});
+mermaid.initialize({ startOnLoad: true });
 </script>
 <style>
 body {
@@ -52,11 +43,29 @@ button {
   font-size: 32px;
   font-weight: bold;
   color: #333;
+  word-wrap: break-word;
 }
 .flowchart {
   margin: 20px auto;
   max-width: 100%;
   overflow-x: auto;
+}
+.notes {
+  background: #fff;
+  padding: 15px;
+  margin: 20px auto;
+  max-width: 600px;
+  border-radius: 8px;
+  box-shadow: 0 0 5px #ccc;
+  text-align: left;
+}
+.notes h2 {
+  font-size: 18px;
+  margin-top: 0;
+}
+.notes .today {
+  font-weight: bold;
+  color: #d00;
 }
 </style>
 </head>
@@ -83,63 +92,44 @@ button {
 flowchart TD
     A[VIX < 22 at open?] -->|No| B[No Trade]
     A -->|Yes| C[Overnight VIX down < 0.65?]
-    C -->|No| D:::butterfly[Butterfly]
+    C -->|No| D[Butterfly]
     C -->|Yes| E[Gap < 0.9%?]
-    E -->|No| F:::butterfly[Butterfly]
+    E -->|No| F[Butterfly]
     E -->|Yes| G[Yesterday Open - Today Open < 1?]
-    G -->|No| H:::butterfly[Butterfly]
-    G -->|Yes| I:::straddle[Straddle]
+    G -->|No| H[Butterfly]
+    G -->|Yes| I[Straddle]
+
+    class D,F,H butterfly
+    class I straddle
 
     classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
     classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
 </div>
 </div>
 
+<div class="notes">
+  <h2>Notes</h2>
+  <ul id="bfTimesList"></ul>
+  <ul>
+    <li><strong>No BF on FED day</strong></li>
+    <li><strong>Max Risk:</strong></li>
+    <ul>
+      <li>Straddle — $3200</li>
+      <li>Butterfly — $1300</li>
+    </ul>
+  </ul>
+</div>
+
 <script>
 const bfTimes = {
-  1: "10:40 AM",
-  2: "10:50 AM",
-  3: "1:35 AM",
-  4: "10:45 AM",
-  5: "1:50 PM"
+  1: "Monday — 10:40 AM",
+  2: "Tuesday — 10:50 AM",
+  3: "Wednesday — 1:35 AM",
+  4: "Thursday — 10:45 AM",
+  5: "Friday — 1:50 PM"
 };
 
-function calculateStrategy() {
-  const today = parseFloat(document.getElementById('todayOpen').value);
-  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
-  const yClose = parseFloat(document.getElementById('yesterdayClose').value);
-
-  if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
-    alert("Please enter valid numbers.");
-    return;
-  }
-
-  const openDiff = yOpen - today;
-  const closeDiff = yClose - today;
-
-  let recommendation = "";
-
-  if (today >= 22) {
-    recommendation = "No Trade";
-  } else if (closeDiff >= 0.65) {
-    recommendation = "Butterfly";
-  } else if (openDiff < 1 && closeDiff > 0.01 && closeDiff < 0.65) {
-    recommendation = "Straddle";
-  } else {
-    recommendation = "Butterfly";
-  }
-
-  if (recommendation === "Butterfly") {
-    const dayOfWeek = new Date().getDay();
-    const bfTime = bfTimes[dayOfWeek] || "N/A";
-    const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dayOfWeek];
-    recommendation += ` — ${dayName} ${bfTime}`;
-  }
-
-  document.getElementById("recommendation").innerHTML =
-    `👉 <span style="font-size: 36px; color: #333;">${recommendation}</span>`;
-}
-</script>
-
-</body>
-</html>
+function renderNotes() {
+  const ul = document.getElementById('bfTimesList');
+  ul.innerHTML = "<li><strong>Butterfly Trading Times:</strong></li>";
+  co

@@ -2,71 +2,116 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>VIX Manual Suggestion</title>
+  <title>VIX Strategy Helper</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 40px; }
-    h1 { font-size: 24px; }
-    label { display: block; margin-top: 15px; }
-    input { padding: 5px; width: 120px; margin-top: 5px; }
-    button { padding: 10px 20px; font-size: 16px; margin-top: 20px; }
-    .result { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
-    .highlight { color: red; font-weight: bold; }
-    .butterfly { font-size: 28px; color: darkgreen; font-weight: bold; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 40px;
+      max-width: 500px;
+      margin: auto;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    input {
+      padding: 6px;
+      width: 100%;
+      max-width: 150px;
+      margin-top: 5px;
+      font-size: 16px;
+    }
+    button {
+      margin-top: 25px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .result {
+      margin-top: 30px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+    }
+    .highlight {
+      color: red;
+      font-weight: bold;
+    }
+    .butterfly {
+      font-size: 28px;
+      color: green;
+      font-weight: bold;
+    }
+    .straddle {
+      font-size: 28px;
+      color: #0047ab;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
 
-  <h1>📈 VIX Manual Strategy Suggestion</h1>
+  <h1>VIX Strategy Helper</h1>
 
-  <form id="vixForm" onsubmit="event.preventDefault(); calculate();">
-    <label>
-      ✅ VIX Today’s Open (9:30 AM):
+  <form onsubmit="event.preventDefault(); calculateStrategy();">
+    <label>VIX Today’s Open:
       <input type="number" id="todayOpen" step="0.01" required />
     </label>
 
-    <label>
-      📅 VIX Yesterday’s Open (9:30 AM):
+    <label>VIX Yesterday’s Open:
       <input type="number" id="yesterdayOpen" step="0.01" required />
     </label>
 
-    <label>
-      📅 VIX Yesterday’s Close (4:00 PM):
+    <label>VIX Yesterday’s Close:
       <input type="number" id="yesterdayClose" step="0.01" required />
     </label>
 
     <button type="submit">Calculate</button>
   </form>
 
-  <div class="result" id="resultBox" style="display:none;"></div>
+  <div class="result" id="resultBox" style="display: none;"></div>
 
   <script>
-    function calculate() {
-      const todayOpen = parseFloat(document.getElementById('todayOpen').value);
+    function calculateStrategy() {
+      const today = parseFloat(document.getElementById('todayOpen').value);
       const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
       const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
-      const diffOpen = (yOpen - todayOpen).toFixed(2);
-      const diffClose = (yClose - todayOpen).toFixed(2);
-
-      const highlightOpen = yOpen - todayOpen > 1;
-      const highlightClose = yClose - todayOpen > 0.65;
-
-      let recommendation = "Straddle";
-      if (highlightOpen || highlightClose) {
-        recommendation = `<span class="butterfly">Butterfly</span>`;
+      if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
+        alert("Please enter valid numbers in all fields.");
+        return;
       }
 
-      const box = document.getElementById('resultBox');
-      box.style.display = 'block';
+      const openDiff = yOpen - today;
+      const closeDiff = yClose - today;
+
+      const highlightOpen = openDiff > 1;
+      const highlightClose = closeDiff > 0.65;
+
+      const showStraddle = openDiff < 1 && closeDiff < 0.65;
+
+      const strategy = showStraddle
+        ? `<span class="straddle">Straddle</span>`
+        : `<span class="butterfly">Butterfly</span>`;
+
+      const box = document.getElementById("resultBox");
+      box.style.display = "block";
       box.innerHTML = `
-        <p><strong>VIX Yesterday Open - VIX Today Open:</strong> 
-          <span class="${highlightOpen ? 'highlight' : ''}">${diffOpen}</span>
+        <p><strong>VIX Yesterday Open − VIX Today Open:</strong>
+          <span class="${highlightOpen ? 'highlight' : ''}">${openDiff.toFixed(2)}</span>
         </p>
-        <p><strong>VIX Yesterday Close - VIX Today Open:</strong> 
-          <span class="${highlightClose ? 'highlight' : ''}">${diffClose}</span>
+        <p><strong>VIX Yesterday Close − VIX Today Open:</strong>
+          <span class="${highlightClose ? 'highlight' : ''}">${closeDiff.toFixed(2)}</span>
         </p>
-        <hr />
-        <p><strong>Suggested Strategy:</strong> ${recommendation}</p>
+        <hr>
+        <p><strong>Suggested Strategy:</strong> ${strategy}</p>
       `;
     }
   </script>

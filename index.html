@@ -46,11 +46,16 @@
       const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
       const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
-      const diffOpen = (yOpen - todayOpen).toFixed(2);
-      const diffClose = (yClose - todayOpen).toFixed(2);
+      if (isNaN(todayOpen) || isNaN(yOpen) || isNaN(yClose)) {
+        alert("Please fill in all values with valid numbers.");
+        return;
+      }
 
-      const highlightOpen = yOpen - todayOpen > 1;
-      const highlightClose = yClose - todayOpen > 0.65;
+      const diffOpen = yOpen - todayOpen;
+      const diffClose = yClose - todayOpen;
+
+      const highlightOpen = diffOpen > 1;
+      const highlightClose = diffClose > 0.65;
 
       let recommendation;
       if (highlightOpen || highlightClose) {
@@ -62,4 +67,12 @@
       const box = document.getElementById('resultBox');
       box.style.display = 'block';
       box.innerHTML = `
-        <p><strong>VIX Yesterday Open - VI
+        <p><strong>VIX Yesterday Open - VIX Today Open:</strong> 
+          <span class="${highlightOpen ? 'highlight' : ''}">${diffOpen.toFixed(2)}</span>
+        </p>
+        <p><strong>VIX Yesterday Close - VIX Today Open:</strong> 
+          <span class="${highlightClose ? 'highlight' : ''}">${diffClose.toFixed(2)}</span>
+        </p>
+        <hr />
+        <p><strong>Suggested Strategy:</strong> ${recommendation}</p>
+      `

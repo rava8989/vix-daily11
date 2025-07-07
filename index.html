@@ -18,39 +18,12 @@
   <script>
     const API_KEY = '2248f0c8a4de4025846b3093bdd1d641';
 
-    const holidays = [
-      "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18", "2025-05-26",
-      "2025-07-04", "2025-09-01", "2025-11-27", "2025-12-25"
-    ];
-
-    function getLastMarketDate(referenceDate = new Date(), shift = 1) {
-      const date = new Date(referenceDate);
-      let tries = 0;
-
-      while (tries < 10) {
-        date.setDate(date.getDate() - shift);
-        const day = date.getDay(); // 0=Sun, 6=Sat
-        const yyyyMMdd = date.toISOString().split('T')[0];
-
-        if (day !== 0 && day !== 6 && !holidays.includes(yyyyMMdd)) {
-          return yyyyMMdd;
-        }
-        tries++;
-      }
-      return null;
-    }
-
-    function formatDate(d) {
-      return d.toISOString().split("T")[0];
-    }
-
     async function fetchVIXData() {
       const resultsEl = document.getElementById("vixResults");
       resultsEl.innerText = "Fetching VIX data...";
 
       const today = new Date();
-      const todayStr = formatDate(today);
-      const yestStr = getLastMarketDate(today, 1);
+      const todayStr = today.toISOString().split("T")[0];
 
       const apiUrl = `https://api.twelvedata.com/time_series?symbol=VIX&interval=1min&outputsize=5000&apikey=${API_KEY}`;
 
@@ -69,29 +42,56 @@
           return values.find(v => v.datetime.startsWith(dateStr) && v.datetime.endsWith(timeStr));
         }
 
-        const tOpen = findTime(todayStr, '09:30:00');
-        const yOpen = findTime(yestStr, '09:30:00');
-        const yClose = findTime(yestStr, '16:00:00');
-
-        if (!tOpen || !yOpen || !yClose) {
-          resultsEl.innerText = "⚠️ Data not available yet (may be too early or market was closed).";
+        // Find today's 9:30 AM open
+        const todayOpen = findTime(todayStr, '09:30:00');
+        if (!todayOpen) {
+          resultsEl.innerText = `⚠️ Today's VIX open (9:30 AM) is not available yet.`;
           return;
         }
 
-        const tOpenVal = parseFloat(tOpen.open);
-        const yOpenVal = parseFloat(yOpen.open);
-        const yCloseVal = parseFloat(yClose.close);
+        const tOpenVal = parseFloat(todayOpen.open);
+
+        // Find most recent past market day with both 9:30 and 16:00 values
+        let backDays = 1;
+        let yestDateStr = "";
+        let yOpenVal, yCloseVal;
+        let found = false;
+
+        while (backDays <= 10 && !found) {
+          const backDate = new Date(today);
+          backDate.setDate(today.getDate() - backDays);
+          const backStr = backDate.toISOString().split("T")[0];
+
+          const yOpen = findTime(backStr, '09:30:00');
+          const yClose = findTime(backStr, '16:00:00');
+
+          if (yOpen && yClose) {
+            yOpenVal = parseFloat(yOpen.open);
+            yCloseVal = parseFloat(yClose.close);
+            yestDateStr = backStr;
+            found = true;
+            break;
+          }
+
+          backDays++;
+        }
+
+        if (!found) {
+          resultsEl.innerText = "⚠️ Could not find previous VIX open/close in last 10 days.";
+          return;
+        }
 
         const diffOpen = (yOpenVal - tOpenVal).toFixed(2);
         const diffClose = (yCloseVal - tOpenVal).toFixed(2);
 
         resultsEl.innerHTML = `
-          <p><strong>Today's Open (9:30 AM):</strong> ${tOpenVal}</p>
-          <p><strong>Yesterday's Open (${yestStr}):</strong> ${yOpenVal}</p>
-          <p><strong>Yesterday's Close (${yestStr} 4:00 PM):</strong> ${yCloseVal}</p>
+          <p><strong>📅 Today's Open (${todayStr} 9:30 AM):</strong> ${tOpenVal}</p>
+          <p><strong>📅 Previous Market Day Used: ${yestDateStr}</strong></p>
+          <p><strong>🕘 Previous Open (9:30 AM):</strong> ${yOpenVal}</p>
+          <p><strong>🕓 Previous Close (4:00 PM):</strong> ${yCloseVal}</p>
           <hr>
-          <p><strong>Yesterday Open - Today Open:</strong> ${diffOpen}</p>
-          <p><strong>Yesterday Close - Today Open:</strong> ${diffClose}</p>
+          <p><strong>🧮 Previous Open - Today Open:</strong> ${diffOpen}</p>
+          <p><strong>🧮 Previous Close - Today Open:</strong> ${diffClose}</p>
         `;
       } catch (error) {
         resultsEl.innerText = "❌ Network error or CORS blocked the request.";

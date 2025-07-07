@@ -16,7 +16,7 @@
   <div class="result" id="vixResults">Loading...</div>
 
   <script>
-    const API_KEY = 'd1lisepr01qt4thgfjlgd1lisepr01qt4thgfjm0'; // Your actual Finnhub API key
+    const API_KEY = 'd1lisepr01qt4thgfjlgd1lisepr01qt4thgfjm0'; // Your real API key
     const SYMBOL = '^VIX';
     const resultsEl = document.getElementById('vixResults');
 
@@ -25,7 +25,6 @@
 
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
-
       const toTimestamp = Math.floor(now.getTime() / 1000);
       const fromTimestamp = toTimestamp - (30 * 24 * 60 * 60);
 
@@ -36,7 +35,7 @@
         const data = await res.json();
 
         if (data.s !== 'ok') {
-          resultsEl.innerText = '❌ Error fetching data.';
+          resultsEl.innerText = '❌ Error fetching data from Finnhub.';
           return;
         }
 
@@ -61,7 +60,6 @@
         for (let i = 1; i < availableDates.length; i++) {
           const d = availableDates[i];
           const idx = dateMap[d];
-
           if (data.o[idx] && data.c[idx]) {
             yestOpen = data.o[idx];
             yestClose = data.c[idx];
@@ -71,7 +69,7 @@
         }
 
         if (!todayOpen || !yestOpen || !yestClose) {
-          resultsEl.innerText = '⚠️ Could not find valid data.';
+          resultsEl.innerText = '⚠️ Could not find valid VIX data.';
           return;
         }
 
@@ -83,3 +81,17 @@
           <p><strong>Used Previous Market Day:</strong> ${yestDate}</p>
           <p><strong>Yesterday's Open:</strong> ${yestOpen.toFixed(2)}</p>
           <p><strong>Yesterday's Close:</strong> ${yestClose.toFixed(2)}</p>
+          <hr>
+          <p><strong>Yesterday Open - Today Open:</strong> ${diffOpen}</p>
+          <p><strong>Yesterday Close - Today Open:</strong> ${diffClose}</p>
+        `;
+      } catch (err) {
+        console.error(err);
+        resultsEl.innerText = '❌ Network error. Check browser console for details.';
+      }
+    }
+
+    getVIXData();
+  </script>
+</body>
+</html>

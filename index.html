@@ -2,149 +2,104 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>VIX Strategy Helper</title>
+<title>VIX Strategy Helper with Flowchart</title>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f9f9f9;
-  padding: 40px;
-  max-width: 800px;
-  margin: auto;
-}
-h1 {
-  font-size: 24px;
-  margin-bottom: 20px;
-}
-label {
-  display: block;
-  margin-top: 15px;
-  font-weight: bold;
-}
-input {
-  padding: 6px;
-  width: 100%;
-  max-width: 150px;
-  margin-top: 5px;
-  font-size: 16px;
-}
-button {
-  margin-top: 25px;
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-}
-.result {
-  margin-top: 30px;
-  background: #fff;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 0 10px #ccc;
-}
-.highlight {
-  color: red;
-  font-weight: bold;
-}
-.butterfly {
-  font-size: 28px;
-  color: green;
-  font-weight: bold;
-}
-.straddle {
-  font-size: 28px;
-  color: #0047ab;
-  font-weight: bold;
-}
-.version {
-  text-align: center;
-  margin-top: 40px;
-  color: #999;
-  font-size: 14px;
-}
+  body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    background: #f9f9f9;
+  }
+  h1 {
+    text-align: center;
+  }
+  svg {
+    display: block;
+    margin: 0 auto;
+  }
+  .node {
+    font-size: 12px;
+    text-anchor: middle;
+  }
+  .box {
+    fill: #cce5ff;
+    stroke: #333;
+    stroke-width: 1;
+  }
+  .yes, .no {
+    font-size: 10px;
+    fill: #000;
+  }
+  .green-box { fill: #28a745; fill-opacity: 0.7; }
+  .red-box { fill: #dc3545; fill-opacity: 0.7; }
+  .sidebox {
+    fill: #fff3cd;
+    stroke: #856404;
+    stroke-width: 1;
+  }
 </style>
 </head>
 <body>
 
-<h1>VIX Strategy Helper</h1>
+<h1>VIX Strategy Flowchart</h1>
 
-<form onsubmit="event.preventDefault(); calculateStrategy();">
-  <label>VIX Today’s Open:
-    <input type="number" id="todayOpen" step="0.01" required />
-  </label>
+<svg width="800" height="700">
+  <rect x="300" y="20" width="200" height="40" class="box" />
+  <text x="400" y="45" class="node">VIX &lt; 22 at open?</text>
 
-  <label>VIX Yesterday’s Open:
-    <input type="number" id="yesterdayOpen" step="0.01" required />
-  </label>
+  <text x="380" y="80" class="yes">YES</text>
+  <line x1="400" y1="60" x2="400" y2="100" stroke="#000" />
+  
+  <rect x="300" y="100" width="200" height="40" class="box" />
+  <text x="400" y="125" class="node">Overnight VIX down &lt; 0.65?</text>
 
-  <label>VIX Yesterday’s Close:
-    <input type="number" id="yesterdayClose" step="0.01" required />
-  </label>
+  <text x="380" y="165" class="yes">YES</text>
+  <line x1="400" y1="140" x2="400" y2="180" stroke="#000" />
 
-  <button type="submit">Calculate</button>
-</form>
+  <rect x="300" y="180" width="200" height="40" class="box" />
+  <text x="400" y="205" class="node">GAP up/down &lt; 0.9%?</text>
 
-<div class="result" id="resultBox" style="display: none;"></div>
+  <text x="380" y="245" class="yes">YES</text>
+  <line x1="400" y1="220" x2="400" y2="260" stroke="#000" />
 
-<h2>Strategy Flowchart</h2>
-<iframe
-  src="https://lucid.app/lucidchart/9c92078e-abd6-47a0-a57c-e5ad597fab2f/view"
-  width="100%"
-  height="600"
-  style="border: 1px solid #ccc"
-  allowfullscreen>
-</iframe>
+  <rect x="300" y="260" width="200" height="40" class="box" />
+  <text x="400" y="285" class="node">Yesterday's VIX open - Today open &lt; 1?</text>
 
-<p class="version" id="versionInfo"></p>
+  <text x="380" y="325" class="yes">YES</text>
+  <line x1="400" y1="300" x2="400" y2="340" stroke="#000" />
 
-<script>
-function calculateStrategy() {
-  const today = parseFloat(document.getElementById('todayOpen').value);
-  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
-  const yClose = parseFloat(document.getElementById('yesterdayClose').value);
+  <rect x="300" y="340" width="200" height="40" class="green-box" />
+  <text x="400" y="365" class="node">TRADE 9:32AM ATM STRADDLE</text>
 
-  if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
-    alert("Please enter valid numbers in all fields.");
-    return;
-  }
+  <text x="525" y="285" class="no">NO</text>
+  <line x1="500" y1="280" x2="600" y2="280" stroke="#000" />
+  <rect x="600" y="260" width="150" height="40" class="green-box" />
+  <text x="675" y="285" class="node">TRADE DEFAULT M8 BF</text>
 
-  const openDiffRaw = yOpen - today;
-  const closeDiffRaw = yClose - today;
+  <text x="525" y="205" class="no">NO</text>
+  <line x1="500" y1="200" x2="600" y2="200" stroke="#000" />
+  <rect x="600" y="180" width="150" height="40" class="green-box" />
+  <text x="675" y="205" class="node">TRADE DEFAULT M8 BF</text>
 
-  const showStraddle =
-    openDiffRaw < 1 &&
-    closeDiffRaw > 0.01 &&
-    closeDiffRaw < 0.65;
+  <text x="525" y="125" class="no">NO</text>
+  <line x1="500" y1="120" x2="600" y2="120" stroke="#000" />
+  <rect x="600" y="100" width="150" height="40" class="green-box" />
+  <text x="675" y="125" class="node">TRADE DEFAULT M8 BF</text>
 
-  const strategy = showStraddle
-    ? `<span class="straddle">Straddle</span>`
-    : `<span class="butterfly">Butterfly</span>`;
+  <text x="525" y="45" class="no">NO</text>
+  <line x1="500" y1="40" x2="600" y2="40" stroke="#000" />
+  <rect x="600" y="20" width="100" height="40" class="red-box" />
+  <text x="650" y="45" class="node">NO TRADE</text>
 
-  const openDiff = openDiffRaw.toFixed(2);
-  const closeDiff = closeDiffRaw.toFixed(2);
-
-  const box = document.getElementById("resultBox");
-  box.style.display = "block";
-  box.innerHTML = `
-    <p><strong>VIX Yesterday Open − VIX Today Open:</strong>
-      <span class="${openDiffRaw >= 1 ? 'highlight' : ''}">${openDiff}</span>
-    </p>
-    <p><strong>VIX Yesterday Close − VIX Today Open:</strong>
-      <span class="${(closeDiffRaw >= 0.65 || closeDiffRaw <= 0.01) ? 'highlight' : ''}">${closeDiff}</span>
-    </p>
-    <hr>
-    <p><strong>Suggested Strategy:</strong> ${strategy}</p>
-  `;
-}
-
-// ✅ Auto-set last updated date
-const versionEl = document.getElementById("versionInfo");
-const modified = new Date(document.lastModified);
-const dateStr = modified.toLocaleDateString(undefined, {
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric'
-});
-versionEl.textContent = `Last Updated: ${dateStr}`;
-</script>
+  <rect x="50" y="420" width="300" height="150" class="sidebox" />
+  <text x="200" y="440" class="node">BF Trading Times:</text>
+  <text x="200" y="460" class="node">Monday: 10:40 AM</text>
+  <text x="200" y="480" class="node">Tuesday: 10:50 AM</text>
+  <text x="200" y="500" class="node">Wednesday: 1:35 AM</text>
+  <text x="200" y="520" class="node">Thursday: 10:45 AM</text>
+  <text x="200" y="540" class="node">Friday: 1:50 PM</text>
+  <text x="200" y="560" class="node">*Max risk on Straddle: $3200</text>
+  <text x="200" y="580" class="node">*Max risk on FLY: $1300</text>
+</svg>
 
 </body>
 </html>

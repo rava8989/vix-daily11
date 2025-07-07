@@ -1,141 +1,150 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>VIX Strategy Helper</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f9f9f9;
-      padding: 40px;
-      max-width: 500px;
-      margin: auto;
-    }
-    h1 {
-      font-size: 24px;
-      margin-bottom: 20px;
-    }
-    label {
-      display: block;
-      margin-top: 15px;
-      font-weight: bold;
-    }
-    input {
-      padding: 6px;
-      width: 100%;
-      max-width: 150px;
-      margin-top: 5px;
-      font-size: 16px;
-    }
-    button {
-      margin-top: 25px;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    .result {
-      margin-top: 30px;
-      background: #fff;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px #ccc;
-    }
-    .highlight {
-      color: red;
-      font-weight: bold;
-    }
-    .butterfly {
-      font-size: 28px;
-      color: green;
-      font-weight: bold;
-    }
-    .straddle {
-      font-size: 28px;
-      color: #0047ab;
-      font-weight: bold;
-    }
-    .version {
-      text-align: center;
-      margin-top: 40px;
-      color: #999;
-      font-size: 14px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>VIX Strategy Helper</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f9f9f9;
+  padding: 40px;
+  max-width: 800px;
+  margin: auto;
+}
+h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+label {
+  display: block;
+  margin-top: 15px;
+  font-weight: bold;
+}
+input {
+  padding: 6px;
+  width: 100%;
+  max-width: 150px;
+  margin-top: 5px;
+  font-size: 16px;
+}
+button {
+  margin-top: 25px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.result {
+  margin-top: 30px;
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px #ccc;
+}
+.highlight {
+  color: red;
+  font-weight: bold;
+}
+.butterfly {
+  font-size: 28px;
+  color: green;
+  font-weight: bold;
+}
+.straddle {
+  font-size: 28px;
+  color: #0047ab;
+  font-weight: bold;
+}
+.version {
+  text-align: center;
+  margin-top: 40px;
+  color: #999;
+  font-size: 14px;
+}
+</style>
 </head>
 <body>
 
-  <h1>VIX Strategy Helper</h1>
+<h1>VIX Strategy Helper</h1>
 
-  <form onsubmit="event.preventDefault(); calculateStrategy();">
-    <label>VIX Today’s Open:
-      <input type="number" id="todayOpen" step="0.01" required />
-    </label>
+<form onsubmit="event.preventDefault(); calculateStrategy();">
+  <label>VIX Today’s Open:
+    <input type="number" id="todayOpen" step="0.01" required />
+  </label>
 
-    <label>VIX Yesterday’s Open:
-      <input type="number" id="yesterdayOpen" step="0.01" required />
-    </label>
+  <label>VIX Yesterday’s Open:
+    <input type="number" id="yesterdayOpen" step="0.01" required />
+  </label>
 
-    <label>VIX Yesterday’s Close:
-      <input type="number" id="yesterdayClose" step="0.01" required />
-    </label>
+  <label>VIX Yesterday’s Close:
+    <input type="number" id="yesterdayClose" step="0.01" required />
+  </label>
 
-    <button type="submit">Calculate</button>
-  </form>
+  <button type="submit">Calculate</button>
+</form>
 
-  <div class="result" id="resultBox" style="display: none;"></div>
+<div class="result" id="resultBox" style="display: none;"></div>
 
-  <p class="version" id="versionInfo"></p>
+<h2>Strategy Flowchart</h2>
+<iframe
+  src="https://lucid.app/lucidchart/9c92078e-abd6-47a0-a57c-e5ad597fab2f/view"
+  width="100%"
+  height="600"
+  style="border: 1px solid #ccc"
+  allowfullscreen>
+</iframe>
 
-  <script>
-    function calculateStrategy() {
-      const today = parseFloat(document.getElementById('todayOpen').value);
-      const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
-      const yClose = parseFloat(document.getElementById('yesterdayClose').value);
+<p class="version" id="versionInfo"></p>
 
-      if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
-        alert("Please enter valid numbers in all fields.");
-        return;
-      }
+<script>
+function calculateStrategy() {
+  const today = parseFloat(document.getElementById('todayOpen').value);
+  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
+  const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
-      const openDiffRaw = yOpen - today;
-      const closeDiffRaw = yClose - today;
+  if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
+    alert("Please enter valid numbers in all fields.");
+    return;
+  }
 
-      const showStraddle =
-        openDiffRaw < 1 &&
-        closeDiffRaw > 0.01 &&
-        closeDiffRaw < 0.65;
+  const openDiffRaw = yOpen - today;
+  const closeDiffRaw = yClose - today;
 
-      const strategy = showStraddle
-        ? `<span class="straddle">Straddle</span>`
-        : `<span class="butterfly">Butterfly</span>`;
+  const showStraddle =
+    openDiffRaw < 1 &&
+    closeDiffRaw > 0.01 &&
+    closeDiffRaw < 0.65;
 
-      const openDiff = openDiffRaw.toFixed(2);
-      const closeDiff = closeDiffRaw.toFixed(2);
+  const strategy = showStraddle
+    ? `<span class="straddle">Straddle</span>`
+    : `<span class="butterfly">Butterfly</span>`;
 
-      const box = document.getElementById("resultBox");
-      box.style.display = "block";
-      box.innerHTML = `
-        <p><strong>VIX Yesterday Open − VIX Today Open:</strong>
-          <span class="${openDiffRaw >= 1 ? 'highlight' : ''}">${openDiff}</span>
-        </p>
-        <p><strong>VIX Yesterday Close − VIX Today Open:</strong>
-          <span class="${(closeDiffRaw >= 0.65 || closeDiffRaw <= 0.01) ? 'highlight' : ''}">${closeDiff}</span>
-        </p>
-        <hr>
-        <p><strong>Suggested Strategy:</strong> ${strategy}</p>
-      `;
-    }
+  const openDiff = openDiffRaw.toFixed(2);
+  const closeDiff = closeDiffRaw.toFixed(2);
 
-    // ✅ Auto-set last updated date
-    const versionEl = document.getElementById("versionInfo");
-    const modified = new Date(document.lastModified);
-    const dateStr = modified.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    versionEl.textContent = `Last Updated: ${dateStr}`;
-  </script>
+  const box = document.getElementById("resultBox");
+  box.style.display = "block";
+  box.innerHTML = `
+    <p><strong>VIX Yesterday Open − VIX Today Open:</strong>
+      <span class="${openDiffRaw >= 1 ? 'highlight' : ''}">${openDiff}</span>
+    </p>
+    <p><strong>VIX Yesterday Close − VIX Today Open:</strong>
+      <span class="${(closeDiffRaw >= 0.65 || closeDiffRaw <= 0.01) ? 'highlight' : ''}">${closeDiff}</span>
+    </p>
+    <hr>
+    <p><strong>Suggested Strategy:</strong> ${strategy}</p>
+  `;
+}
+
+// ✅ Auto-set last updated date
+const versionEl = document.getElementById("versionInfo");
+const modified = new Date(document.lastModified);
+const dateStr = modified.toLocaleDateString(undefined, {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric'
+});
+versionEl.textContent = `Last Updated: ${dateStr}`;
+</script>
 
 </body>
 </html>

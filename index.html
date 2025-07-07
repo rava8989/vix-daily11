@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>VIX Strategy Helper — Live Flowchart</title>
+<title>VIX Strategy Helper — Live & Correct</title>
 <style>
 body {
   font-family: Arial, sans-serif;
@@ -12,6 +12,7 @@ body {
 }
 header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   padding: 20px;
 }
@@ -47,6 +48,7 @@ button {
 .flowchart {
   flex-grow: 1;
   padding: 20px;
+  overflow-x: auto;
 }
 .flowchart svg {
   width: 100%;
@@ -99,23 +101,23 @@ button {
       </g>
       <g id="stepOvernight">
         <rect x="30" y="110" width="240" height="30" fill="#cce" />
-        <text x="40" y="130" font-size="12">Overnight VIX down &lt; 0.65?</text>
+        <text x="40" y="130" font-size="12">Overnight VIX down</text>
       </g>
       <g id="stepGap">
-        <rect x="30" y="180" width="240" height="30" fill="#cce" />
-        <text x="40" y="200" font-size="12">Gap up/down &lt; 0.9%?</text>
+        <rect x="30" y="180" width="240" height="30" fill="#eee" />
+        <text x="40" y="200" font-size="12">Gap up/down (VISUAL ONLY)</text>
       </g>
       <g id="stepOpenDiff">
         <rect x="30" y="250" width="280" height="30" fill="#cce" />
-        <text x="40" y="270" font-size="12">Yesterday’s Open − Today’s Open &lt; 1?</text>
+        <text x="40" y="270" font-size="12">Yesterday Open − Today Open</text>
       </g>
       <g id="stepStraddle">
         <rect x="30" y="320" width="280" height="30" fill="#cfc" />
-        <text x="40" y="340" font-size="12">TRADE 9:32AM ATM STRADDLE</text>
+        <text x="40" y="340" font-size="12">STRADDLE</text>
       </g>
       <g id="stepButterfly">
         <rect x="330" y="70" width="200" height="30" fill="#fcc" />
-        <text x="340" y="90" font-size="12">TRADE DEFAULT M8 BUTTERFLY</text>
+        <text x="340" y="90" font-size="12">BUTTERFLY</text>
       </g>
     </svg>
   </div>
@@ -130,15 +132,15 @@ button {
 
 <script>
 const bfTimes = {
-  1: "10:40 AM", // Monday
-  2: "10:50 AM", // Tuesday
-  3: "1:35 AM",  // Wednesday
-  4: "10:45 AM", // Thursday
-  5: "1:50 PM"   // Friday
+  1: "10:40 AM",
+  2: "10:50 AM",
+  3: "1:35 AM",
+  4: "10:45 AM",
+  5: "1:50 PM"
 };
 
 function clearHighlights() {
-  ["stepStart","stepOvernight","stepGap","stepOpenDiff","stepStraddle","stepButterfly"].forEach(id => {
+  ["stepStart", "stepOvernight", "stepGap", "stepOpenDiff", "stepStraddle", "stepButterfly"].forEach(id => {
     document.getElementById(id).querySelector("rect").classList.remove("activeStep");
   });
 }
@@ -158,40 +160,24 @@ function calculateStrategy() {
   const openDiff = yOpen - today;
   const closeDiff = yClose - today;
 
-  let result = "";
+  const straddle = openDiff < 1 && closeDiff > 0.01 && closeDiff < 0.65;
 
   document.getElementById("stepStart").querySelector("rect").classList.add("activeStep");
-  if (today >= 22) {
-    result = "NO TRADE";
-    document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
-  } else {
-    document.getElementById("stepOvernight").querySelector("rect").classList.add("activeStep");
-    if (closeDiff >= 0.65) {
-      result = "Butterfly";
-      document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
-    } else {
-      document.getElementById("stepGap").querySelector("rect").classList.add("activeStep");
-      if (false) { // Replace with actual gap logic if needed
-        result = "Butterfly";
-        document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
-      } else {
-        document.getElementById("stepOpenDiff").querySelector("rect").classList.add("activeStep");
-        if (openDiff < 1) {
-          result = "Straddle";
-          document.getElementById("stepStraddle").querySelector("rect").classList.add("activeStep");
-        } else {
-          result = "Butterfly";
-          document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
-        }
-      }
-    }
-  }
+  document.getElementById("stepOvernight").querySelector("rect").classList.add("activeStep");
+  document.getElementById("stepGap").querySelector("rect").classList.add("activeStep");
+  document.getElementById("stepOpenDiff").querySelector("rect").classList.add("activeStep");
 
+  let result = "";
   const dayOfWeek = new Date().getDay();
   const bfTime = bfTimes[dayOfWeek] || "N/A";
+  const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dayOfWeek];
 
-  if (result === "Butterfly") {
-    result += ` — Today is ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dayOfWeek]}, recommended time: ${bfTime}`;
+  if (straddle) {
+    result = `Straddle`;
+    document.getElementById("stepStraddle").querySelector("rect").classList.add("activeStep");
+  } else {
+    result = `Butterfly — Today is ${dayName}, recommended time: ${bfTime}`;
+    document.getElementById("stepButterfly").querySelector("rect").classList.add("activeStep");
   }
 
   document.getElementById("resultBox").innerHTML =

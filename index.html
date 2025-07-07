@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VIX Strategy Helper — Final with Left Panel</title>
+<title>VIX Strategy Helper — Final with Both Times</title>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
 mermaid.initialize({ startOnLoad: true });
@@ -18,7 +18,7 @@ body {
   flex-direction: row;
 }
 .sidebar {
-  width: 180px;
+  width: 220px;
   background: #fff;
   padding: 15px;
   border-right: 1px solid #ccc;
@@ -91,8 +91,8 @@ button {
 <body>
 
 <div class="sidebar">
-  <h2>BF Trading Times</h2>
-  <ul id="bfTimesList"></ul>
+  <h2>Trading Times</h2>
+  <ul id="tradingTimesList"></ul>
 </div>
 
 <div class="main">
@@ -148,27 +148,27 @@ button {
 </div>
 
 <script>
-const bfTimes = {
-  1: "Monday — 10:40 AM",
-  2: "Tuesday — 10:50 AM",
-  3: "Wednesday — 1:35 AM",
-  4: "Thursday — 10:45 AM",
-  5: "Friday — 1:50 PM"
+const timesPerDay = {
+  1: { day: "Monday", bf: "10:40 AM", straddle: "9:32 AM" },
+  2: { day: "Tuesday", bf: "10:50 AM", straddle: "9:32 AM" },
+  3: { day: "Wednesday", bf: "1:35 AM", straddle: "9:32 AM" },
+  4: { day: "Thursday", bf: "10:45 AM", straddle: "9:32 AM" },
+  5: { day: "Friday", bf: "1:50 PM", straddle: "9:32 AM" }
 };
 
-function renderBFList() {
-  const ul = document.getElementById('bfTimesList');
+function renderTradingTimes() {
+  const ul = document.getElementById('tradingTimesList');
   const todayIdx = new Date().getDay();
 
   for (let i = 1; i <= 5; i++) {
     const li = document.createElement('li');
-    li.textContent = bfTimes[i];
+    li.textContent = `${timesPerDay[i].day} — Butterfly ${timesPerDay[i].bf} | Straddle ${timesPerDay[i].straddle}`;
     if (todayIdx >=1 && todayIdx <=5 && i === todayIdx) li.classList.add('today');
     ul.appendChild(li);
   }
 }
 
-renderBFList();
+renderTradingTimes();
 
 function calculateStrategy() {
   const today = parseFloat(document.getElementById('todayOpen').value);
@@ -196,7 +196,7 @@ function calculateStrategy() {
   }
 
   const dayOfWeek = new Date().getDay();
-  const bfTime = bfTimes[dayOfWeek] || "N/A";
+  const bfTime = timesPerDay[dayOfWeek]?.bf || "N/A";
 
   if (recommendation === "Butterfly") {
     recommendation += ` — ${bfTime}`;

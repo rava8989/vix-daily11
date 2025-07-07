@@ -4,102 +4,82 @@
   <meta charset="UTF-8">
   <title>VIX Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
-    button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
+    body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
+    button { padding: 10px 20px; font-size: 16px; }
     .result { margin-top: 20px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
     p { margin: 0.5em 0; }
   </style>
 </head>
 <body>
   <h1>📈 VIX Dashboard</h1>
-  <button onclick="fetchVIXData()">🔄 Update VIX Data</button>
+  <button onclick="getVIXData()">🔄 Update VIX Data</button>
   <div class="result" id="vixResults">Loading...</div>
 
   <script>
-    const API_KEY = '2248f0c8a4de4025846b3093bdd1d641';
+    const API_KEY = 'd1lisepr01qt4thgfjlgd1lisepr01qt4thgfjm0'; // Your actual Finnhub API key
+    const SYMBOL = '^VIX';
+    const resultsEl = document.getElementById('vixResults');
 
-    async function fetchVIXData() {
-      const resultsEl = document.getElementById("vixResults");
-      resultsEl.innerText = "Fetching VIX data...";
+    async function getVIXData() {
+      resultsEl.innerText = 'Fetching data...';
 
-      const today = new Date();
-      const todayStr = today.toISOString().split("T")[0];
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
 
-      const apiUrl = `https://api.twelvedata.com/time_series?symbol=VIX&interval=1min&outputsize=5000&apikey=${API_KEY}`;
+      const toTimestamp = Math.floor(now.getTime() / 1000);
+      const fromTimestamp = toTimestamp - (30 * 24 * 60 * 60);
+
+      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(SYMBOL)}&resolution=D&from=${fromTimestamp}&to=${toTimestamp}&token=${API_KEY}`;
 
       try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
+        const res = await fetch(url);
+        const data = await res.json();
 
-        if (!data.values) {
-          resultsEl.innerText = `❌ Error loading data: ${data.message || "Unknown error."}`;
+        if (data.s !== 'ok') {
+          resultsEl.innerText = '❌ Error fetching data.';
           return;
         }
 
-        const values = data.values;
-
-        function findTime(dateStr, timeStr) {
-          return values.find(v => v.datetime.startsWith(dateStr) && v.datetime.endsWith(timeStr));
+        const dateMap = {};
+        for (let i = 0; i < data.t.length; i++) {
+          const dateStr = new Date(data.t[i] * 1000).toISOString().split('T')[0];
+          dateMap[dateStr] = i;
         }
 
-        // Find today's 9:30 AM open
-        const todayOpen = findTime(todayStr, '09:30:00');
-        if (!todayOpen) {
-          resultsEl.innerText = `⚠️ Today's VIX open (9:30 AM) is not available yet.`;
-          return;
+        const availableDates = Object.keys(dateMap).sort().reverse();
+
+        const todayDataIndex = dateMap[todayStr];
+        let todayOpen, yestOpen, yestClose, yestDate;
+
+        if (todayDataIndex !== undefined) {
+          todayOpen = data.o[todayDataIndex];
+        } else {
+          const mostRecent = availableDates[0];
+          todayOpen = data.o[dateMap[mostRecent]];
         }
 
-        const tOpenVal = parseFloat(todayOpen.open);
+        for (let i = 1; i < availableDates.length; i++) {
+          const d = availableDates[i];
+          const idx = dateMap[d];
 
-        // Find most recent past market day with both 9:30 and 16:00 values
-        let backDays = 1;
-        let yestDateStr = "";
-        let yOpenVal, yCloseVal;
-        let found = false;
-
-        while (backDays <= 10 && !found) {
-          const backDate = new Date(today);
-          backDate.setDate(today.getDate() - backDays);
-          const backStr = backDate.toISOString().split("T")[0];
-
-          const yOpen = findTime(backStr, '09:30:00');
-          const yClose = findTime(backStr, '16:00:00');
-
-          if (yOpen && yClose) {
-            yOpenVal = parseFloat(yOpen.open);
-            yCloseVal = parseFloat(yClose.close);
-            yestDateStr = backStr;
-            found = true;
+          if (data.o[idx] && data.c[idx]) {
+            yestOpen = data.o[idx];
+            yestClose = data.c[idx];
+            yestDate = d;
             break;
           }
-
-          backDays++;
         }
 
-        if (!found) {
-          resultsEl.innerText = "⚠️ Could not find previous VIX open/close in last 10 days.";
+        if (!todayOpen || !yestOpen || !yestClose) {
+          resultsEl.innerText = '⚠️ Could not find valid data.';
           return;
         }
 
-        const diffOpen = (yOpenVal - tOpenVal).toFixed(2);
-        const diffClose = (yCloseVal - tOpenVal).toFixed(2);
+        const diffOpen = (yestOpen - todayOpen).toFixed(2);
+        const diffClose = (yestClose - todayOpen).toFixed(2);
 
         resultsEl.innerHTML = `
-          <p><strong>📅 Today's Open (${todayStr} 9:30 AM):</strong> ${tOpenVal}</p>
-          <p><strong>📅 Previous Market Day Used: ${yestDateStr}</strong></p>
-          <p><strong>🕘 Previous Open (9:30 AM):</strong> ${yOpenVal}</p>
-          <p><strong>🕓 Previous Close (4:00 PM):</strong> ${yCloseVal}</p>
-          <hr>
-          <p><strong>🧮 Previous Open - Today Open:</strong> ${diffOpen}</p>
-          <p><strong>🧮 Previous Close - Today Open:</strong> ${diffClose}</p>
-        `;
-      } catch (error) {
-        resultsEl.innerText = "❌ Network error or CORS blocked the request.";
-        console.error(error);
-      }
-    }
-
-    fetchVIXData();
-  </script>
-</body>
-</html>
+          <p><strong>Today's Open (approx):</strong> ${todayOpen.toFixed(2)}</p>
+          <p><strong>Used Previous Market Day:</strong> ${yestDate}</p>
+          <p><strong>Yesterday's Open:</strong> ${yestOpen.toFixed(2)}</p>
+          <p><strong>Yesterday's Close:</strong> ${yestClose.toFixed(2)}</p>

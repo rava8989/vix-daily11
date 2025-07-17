@@ -113,21 +113,20 @@ button {
 
   <div class="flowchart">
   <div class="mermaid">
-  flowchart TD
-      A[VIX < 22 at open?] -->|No| B[No Trade]
-      A -->|Yes| C[Overnight VIX down < 0.65?]
-      C -->|No| D[Butterfly]
-      C -->|Yes| E[Gap < 0.9%?]
-      E -->|No| F[Butterfly]
-      E -->|Yes| G[Yesterday Open - Today Open < 1?]
-      G -->|No| H[Butterfly]
-      G -->|Yes| I[Straddle]
+flowchart TD
+    C[Overnight VIX down < 0.65?]
+    C -->|No| D[Butterfly]
+    C -->|Yes| E[Gap < 0.9%?]
+    E -->|No| F[Butterfly]
+    E -->|Yes| G[Yesterday Open - Today Open < 1?]
+    G -->|No| H[Butterfly]
+    G -->|Yes| I[Straddle]
 
-      class D,F,H butterfly
-      class I straddle
+    class D,F,H butterfly
+    class I straddle
 
-      classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
-      classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
+    classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
+    classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
   </div>
   </div>
 

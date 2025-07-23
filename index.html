@@ -118,7 +118,7 @@ flowchart TD
     C -->|No| D[Butterfly]
     C -->|Yes| E[Gap < 0.9%?]
     E -->|No| F[Butterfly]
-    E -->|Yes| G[Yesterday Open - Today Open < 1?]
+    E -->|Yes| G[Yesterday Open - Today Open < 1.4?]
     G -->|No| H[Butterfly]
     G -->|Yes| I[Straddle]
 
@@ -183,7 +183,7 @@ function calculateStrategy() {
     recommendation = "No Trade";
   } else if (closeDiff >= 0.65) {
     recommendation = "Butterfly";
-  } else if (openDiff < 1 && closeDiff > 0.01 && closeDiff < 0.65) {
+  } else if (openDiff < 1.4 && closeDiff > 0.01 && closeDiff < 0.65) {
     recommendation = "Straddle";
   } else {
     recommendation = "Butterfly";

@@ -146,6 +146,8 @@ flowchart TD
         <li>Straddle — $3200</li>
         <li>Butterfly — $1300 - $1400</li>
       </ul>
+      <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
+      <li><strong>VIX close time:</strong> 4:15 PM</li>
     </ul>
   </div>
 
@@ -194,7 +196,7 @@ function calculateStrategy() {
     bgColor = "#fff399"; // Yellow
   } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
     recommendation = "Straddle @ 9:32";
-    bgColor = "#61f7d6"; // Bright Teal
+    bgColor = "#61f7d6"; // Teal
   } else {
     recommendation = `M8 Butterfly — ${bfTime}`;
     bgColor = "#b49aff"; // Purple

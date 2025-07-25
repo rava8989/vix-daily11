@@ -1,88 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VIX Strategy Helper — ATM Butterfly Update</title>
-<script type="module">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-mermaid.initialize({ startOnLoad: true });
-</script>
-<style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f9f9f9;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: row;
-}
-.sidebar {
-  width: 250px;
-  background: #fff;
-  padding: 15px;
-  border-right: 1px solid #ccc;
-  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-  height: 100vh;
-  box-sizing: border-box;
-}
-.sidebar h2 {
-  font-size: 16px;
-  margin-top: 0;
-}
-.main {
-  flex: 1;
-  text-align: center;
-  padding: 20px;
-}
-.calculator {
-  background: #fff;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 0 5px #ccc;
-  max-width: 300px;
-  margin: 0 auto 20px auto;
-}
-label {
-  display: block;
-  margin-top: 10px;
-}
-input {
-  width: 100%;
-  margin-top: 5px;
-  margin-bottom: 10px;
-}
-button {
-  width: 100%;
-  padding: 8px;
-  margin-top: 10px;
-}
-#recommendation {
-  margin: 20px;
-  font-size: 32px;
-  font-weight: bold;
-  color: #333;
-  word-wrap: break-word;
-}
-.flowchart {
-  margin: 20px auto;
-  max-width: 100%;
-  overflow-x: auto;
-}
-.notes {
-  background: #fff;
-  padding: 15px;
-  margin: 20px auto;
-  max-width: 600px;
-  border-radius: 8px;
-  box-shadow: 0 0 5px #ccc;
-  text-align: left;
-}
-.notes h2 {
-  font-size: 18px;
-  margin-top: 0;
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIX Strategy Helper</title>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true });
+  </script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: row;
+    }
+    .sidebar {
+      width: 250px;
+      background: #fff;
+      padding: 15px;
+      border-right: 1px solid #ccc;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    .sidebar h2 {
+      font-size: 16px;
+      margin-top: 0;
+    }
+    .main {
+      flex: 1;
+      text-align: center;
+      padding: 20px;
+    }
+    .calculator {
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ccc;
+      max-width: 300px;
+      margin: 0 auto 20px auto;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      margin-top: 10px;
+    }
+    #recommendation {
+      margin: 20px;
+      font-size: 32px;
+      font-weight: bold;
+      color: #333;
+      word-wrap: break-word;
+    }
+    .flowchart {
+      margin: 20px auto;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    .notes {
+      background: #fff;
+      padding: 15px;
+      margin: 20px auto;
+      max-width: 600px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ccc;
+      text-align: left;
+    }
+    .notes h2 {
+      font-size: 18px;
+      margin-top: 0;
+    }
+  </style>
 </head>
 <body>
 
@@ -112,20 +112,26 @@ button {
   <div id="recommendation"></div>
 
   <div class="flowchart">
-  <div class="mermaid">
+    <div class="mermaid">
 flowchart TD
-    C[Overnight VIX down > 0.65?]
-    C -->|No| D[Butterfly]
-    C -->|Yes| E[Yesterday Open - Today Open < 1.4?]
-    E -->|No| F[Butterfly]
-    E -->|Yes| G[ATM Butterfly @ 9:32 AM]
+    A[Overnight VIX down > 0.65?]
+    A -->|Yes| B[Yesterday Open - Today Open < 1.4?]
+    B -->|Yes| C[ATM Butterfly @ 9:32 AM]
+    B -->|No| D[Butterfly]
+    A -->|No| E[Overnight drop 0.01-0.65?]
+    E -->|Yes| F[Yesterday Open - Today Open < 1.4?]
+    F -->|Yes| G[Straddle]
+    F -->|No| H[Butterfly]
+    E -->|No| I[Butterfly]
 
-    class D,F butterfly
-    class G atm
+    class C atm
+    class D,H,I butterfly
+    class G straddle
 
     classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
+    classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
     classDef atm fill:#ccf,stroke:#333,stroke-width:1px
-  </div>
+    </div>
   </div>
 
   <div class="notes">
@@ -173,15 +179,12 @@ function calculateStrategy() {
   }
 
   const openDiff = yOpen - today;
-  const closeDiff = yClose - today;
-
+  const overnightDrop = yClose - today;
   let recommendation = "";
 
-  if (closeDiff > 0.65 && openDiff < 1.4) {
+  if (overnightDrop > 0.65 && openDiff < 1.4) {
     recommendation = "ATM Butterfly @ 9:32 AM";
-  } else if (closeDiff >= 0.65) {
-    recommendation = "Butterfly";
-  } else if (openDiff < 1.4 && closeDiff > 0.01 && closeDiff < 0.65) {
+  } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
     recommendation = "Straddle";
   } else {
     recommendation = "Butterfly";

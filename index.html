@@ -190,7 +190,7 @@ function calculateStrategy() {
   } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
     recommendation = "Straddle";
   } else {
-    recommendation = `Butterfly — ${bfTime}`;
+    recommendation = `M8 Butterfly — ${bfTime}`;
   }
 
   document.getElementById("recommendation").innerHTML =

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VIX Strategy Helper — Clean Sidebar</title>
+<title>VIX Strategy Helper — ATM Butterfly Update</title>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
 mermaid.initialize({ startOnLoad: true });
@@ -114,19 +114,17 @@ button {
   <div class="flowchart">
   <div class="mermaid">
 flowchart TD
-    C[Overnight VIX down < 0.65?]
+    C[Overnight VIX down > 0.65?]
     C -->|No| D[Butterfly]
-    C -->|Yes| E[Gap < 0.9%?]
+    C -->|Yes| E[Yesterday Open - Today Open < 1.4?]
     E -->|No| F[Butterfly]
-    E -->|Yes| G[Yesterday Open - Today Open < 1.4?]
-    G -->|No| H[Butterfly]
-    G -->|Yes| I[Straddle]
+    E -->|Yes| G[ATM Butterfly @ 9:32 AM]
 
-    class D,F,H butterfly
-    class I straddle
+    class D,F butterfly
+    class G atm
 
     classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
-    classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
+    classDef atm fill:#ccf,stroke:#333,stroke-width:1px
   </div>
   </div>
 
@@ -179,21 +177,14 @@ function calculateStrategy() {
 
   let recommendation = "";
 
-  if (today >= 22) {
-    recommendation = "No Trade";
+  if (closeDiff > 0.65 && openDiff < 1.4) {
+    recommendation = "ATM Butterfly @ 9:32 AM";
   } else if (closeDiff >= 0.65) {
     recommendation = "Butterfly";
   } else if (openDiff < 1.4 && closeDiff > 0.01 && closeDiff < 0.65) {
     recommendation = "Straddle";
   } else {
     recommendation = "Butterfly";
-  }
-
-  const dayOfWeek = new Date().getDay();
-  const bfTime = bfTimes[dayOfWeek]?.time || "N/A";
-
-  if (recommendation === "Butterfly") {
-    recommendation += ` — ${bfTime}`;
   }
 
   document.getElementById("recommendation").innerHTML =

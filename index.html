@@ -58,11 +58,14 @@
       margin-top: 10px;
     }
     #recommendation {
-      margin: 20px;
+      margin: 20px auto;
       font-size: 32px;
       font-weight: bold;
       color: #333;
-      word-wrap: break-word;
+      padding: 15px;
+      max-width: 500px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ccc;
     }
     .flowchart {
       margin: 20px auto;
@@ -87,7 +90,7 @@
 <body>
 
 <div class="sidebar">
-  <h2>Butterfly Trading Times</h2>
+  <h2>M8 Butterfly Trading Times</h2>
   <ul id="bfTimesList"></ul>
   <h2>Straddle Trading Time</h2>
   <p>9:32 AM</p>
@@ -128,9 +131,9 @@ flowchart TD
     class D,H,I butterfly
     class G straddle
 
-    classDef butterfly fill:#fcc,stroke:#333,stroke-width:1px
-    classDef straddle fill:#cfc,stroke:#333,stroke-width:1px
-    classDef atm fill:#ccf,stroke:#333,stroke-width:1px
+    classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px
+    classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px
+    classDef atm fill:#fff399,stroke:#333,stroke-width:1px
     </div>
   </div>
 
@@ -184,17 +187,22 @@ function calculateStrategy() {
   const bfTime = bfTimes[dayOfWeek]?.time || "";
 
   let recommendation = "";
+  let bgColor = "#eee";
 
   if (overnightDrop > 0.65 && openDiff < 1.4) {
     recommendation = "ATM Butterfly @ 9:32 AM";
+    bgColor = "#fff399"; // Yellow
   } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
-    recommendation = "Straddle";
+    recommendation = "Straddle @ 9:32";
+    bgColor = "#61f7d6"; // Bright Teal
   } else {
     recommendation = `M8 Butterfly — ${bfTime}`;
+    bgColor = "#b49aff"; // Purple
   }
 
-  document.getElementById("recommendation").innerHTML =
-    `👉 <span style="font-size: 36px; color: #333;">${recommendation}</span>`;
+  const recBox = document.getElementById("recommendation");
+  recBox.innerHTML = `👉 <span style="font-size: 36px;">${recommendation}</span>`;
+  recBox.style.backgroundColor = bgColor;
 }
 </script>
 

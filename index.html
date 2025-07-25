@@ -180,6 +180,9 @@ function calculateStrategy() {
 
   const openDiff = yOpen - today;
   const overnightDrop = yClose - today;
+  const dayOfWeek = new Date().getDay();
+  const bfTime = bfTimes[dayOfWeek]?.time || "";
+
   let recommendation = "";
 
   if (overnightDrop > 0.65 && openDiff < 1.4) {
@@ -187,7 +190,7 @@ function calculateStrategy() {
   } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
     recommendation = "Straddle";
   } else {
-    recommendation = "Butterfly";
+    recommendation = `Butterfly — ${bfTime}`;
   }
 
   document.getElementById("recommendation").innerHTML =

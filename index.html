@@ -118,16 +118,16 @@
     <div class="mermaid">
 flowchart TD
     A[SPX overnight gap UP/DOWN < 0.9%?]
-    A -->|No| B[M8 Butterfly]
+    A -->|No| B1[M8 Butterfly]
     A -->|Yes| C[Yesterday's VIX open - Today's VIX open < 1.4?]
-    C -->|No| B
+    C -->|No| B2[M8 Butterfly]
     C -->|Yes| D[Overnight VIX drop > 0.65?]
     D -->|Yes| E[ATM Butterfly @ 9:32 AM]
     D -->|No| F[Overnight VIX drop 0.01–0.65?]
     F -->|Yes| G[Straddle @ 9:32]
-    F -->|No| B
+    F -->|No| B3[M8 Butterfly]
 
-    class B butterfly
+    class B1,B2,B3 butterfly
     class E atm
     class G straddle
 

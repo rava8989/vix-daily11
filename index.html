@@ -117,19 +117,17 @@
   <div class="flowchart">
     <div class="mermaid">
 flowchart TD
-    A[Overnight VIX drop > 0.65?]
-    A -->|Yes| B[Yesterday's VIX open - Today's VIX open < 1.4?]
-    B -->|Yes| C[ATM Butterfly @ 9:32 AM]
-    B -->|No| D[M8 Butterfly]
-    A -->|No| E[Overnight VIX drop 0.01–0.65?]
-    E -->|Yes| F[Yesterday's VIX open - Today's VIX open < 1.4?]
-    F -->|Yes| G[Straddle @ 9:32]
-    F -->|No| H[M8 Butterfly]
-    E -->|No| I[M8 Butterfly]
+    A[Yesterday's VIX open - Today's VIX open < 1.4?]
+    A -->|No| B[M8 Butterfly]
+    A -->|Yes| C[Overnight VIX drop > 0.65?]
+    C -->|Yes| D[ATM Butterfly @ 9:32 AM]
+    C -->|No| E[Overnight VIX drop 0.01–0.65?]
+    E -->|Yes| F[Straddle @ 9:32]
+    E -->|No| G[M8 Butterfly]
 
-    class C atm
-    class D,H,I butterfly
-    class G straddle
+    class B,G butterfly
+    class D atm
+    class F straddle
 
     classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px
     classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px

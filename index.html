@@ -112,6 +112,11 @@
     <button onclick="calculateStrategy()">Calculate</button>
   </div>
 
+  <div style="margin-top: 10px; font-size: 14px; text-align: center;">
+    <p><strong>Overnight VIX Drop:</strong> <span id="overnightDropDisplay">—</span></p>
+    <p><strong>Yesterday’s VIX Open − Today’s VIX Open:</strong> <span id="openDiffDisplay">—</span></p>
+  </div>
+
   <div style="text-align: right;">
     <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
   </div>
@@ -191,6 +196,9 @@ function calculateStrategy() {
   const overnightDrop = yClose - today;
   const dayOfWeek = new Date().getDay();
   const bfTime = bfTimes[dayOfWeek]?.time || "";
+
+  document.getElementById('overnightDropDisplay').textContent = overnightDrop.toFixed(2);
+  document.getElementById('openDiffDisplay').textContent = openDiff.toFixed(2);
 
   let recommendation = "";
   let bgColor = "#eee";

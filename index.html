@@ -35,34 +35,13 @@
       text-align: center;
       padding: 20px;
     }
-    .calculator-section {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      flex-wrap: wrap;
-      margin-bottom: 20px;
-    }
     .calculator {
       background: #fff;
       padding: 15px;
       border-radius: 8px;
       box-shadow: 0 0 5px #ccc;
       max-width: 300px;
-      box-sizing: border-box;
-    }
-    .metrics {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-around;
-      min-width: 180px;
-    }
-    .metric-box {
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 0 5px #ccc;
-      padding: 10px;
-      font-size: 18px;
-      margin-bottom: 10px;
+      margin: 0 auto 20px auto;
     }
     label {
       display: block;
@@ -119,27 +98,23 @@
 
 <div class="main">
 
-  <div class="calculator-section">
-    <div class="calculator">
-      <h1>VIX Calculator</h1>
-      <label>VIX Today’s Open:
-        <input type="number" id="todayOpen" step="0.01" />
-      </label>
-      <label>VIX Yesterday’s Open:
-        <input type="number" id="yesterdayOpen" step="0.01" />
-      </label>
-      <label>VIX Yesterday’s Close:
-        <input type="number" id="yesterdayClose" step="0.01" />
-      </label>
-      <button onclick="calculateStrategy()">Calculate</button>
-    </div>
-
-    <div class="metrics">
-      <div class="metric-box" id="ovDropBox">📉 Overnight VIX Drop: —</div>
-      <div class="metric-box" id="openDiffBox">🔁 Open to Open: —</div>
-    </div>
+  <div class="calculator">
+    <h1>VIX Calculator</h1>
+    <label>VIX Today’s Open:
+      <input type="number" id="todayOpen" step="0.01" />
+    </label>
+    <label>VIX Yesterday’s Open:
+      <input type="number" id="yesterdayOpen" step="0.01" />
+    </label>
+    <label>VIX Yesterday’s Close:
+      <input type="number" id="yesterdayClose" step="0.01" />
+    </label>
+    <button onclick="calculateStrategy()">Calculate</button>
   </div>
 
+  <div style="text-align: right;">
+    <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
+  </div>
   <div id="recommendation"></div>
 
   <div class="flowchart">
@@ -198,8 +173,9 @@ function renderBFList() {
     ul.appendChild(li);
   }
 }
-
 renderBFList();
+document.getElementById('todayDate').textContent =
+  "Today’s Date: " + new Date().toLocaleDateString();
 
 function calculateStrategy() {
   const today = parseFloat(document.getElementById('todayOpen').value);
@@ -213,10 +189,6 @@ function calculateStrategy() {
 
   const openDiff = yOpen - today;
   const overnightDrop = yClose - today;
-
-  document.getElementById("ovDropBox").textContent = `📉 Overnight VIX Drop: ${overnightDrop.toFixed(2)}`;
-  document.getElementById("openDiffBox").textContent = `🔁 Open to Open: ${openDiff.toFixed(2)}`;
-
   const dayOfWeek = new Date().getDay();
   const bfTime = bfTimes[dayOfWeek]?.time || "";
 

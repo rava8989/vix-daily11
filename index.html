@@ -25,10 +25,21 @@
       box-shadow: 2px 0 5px rgba(0,0,0,0.1);
       height: 100vh;
       box-sizing: border-box;
+      overflow-y: auto;
     }
     .sidebar h2 {
       font-size: 16px;
       margin-top: 0;
+    }
+    .sidebar .muted {
+      font-size: 12px;
+      color: #666;
+      margin: 6px 0 10px 0;
+    }
+    .sidebar ul {
+      padding-left: 18px;
+      margin-top: 6px;
+      margin-bottom: 18px;
     }
     .main {
       flex: 1;
@@ -92,9 +103,15 @@
 <div class="sidebar">
   <h2>M8 Butterfly Trading Times</h2>
   <ul id="bfTimesList"></ul>
+
   <h2>Straddle Trading Time</h2>
   <p>9:32 AM</p>
-  <p style="font-size: 12px; color: #666;">Last update: 8/12/2025</p>
+  <p class="muted">Last update: 8/12/2025</p>
+
+  <!-- NEW: CPI Schedule -->
+  <h2>CPI Schedule</h2>
+  <p class="muted">All at 8:30 AM ET</p>
+  <ul id="cpiSchedule"></ul>
 </div>
 
 <div class="main">
@@ -181,6 +198,25 @@ function renderBFList() {
   }
 }
 renderBFList();
+
+// NEW: CPI dates starting September 2025
+const cpiSchedule = [
+  { date: "September 11, 2025", note: "August 2025 CPI" },
+  { date: "October 15, 2025",   note: "September 2025 CPI" },
+  { date: "November 13, 2025",  note: "October 2025 CPI" },
+  { date: "December 10, 2025",  note: "November 2025 CPI" }
+];
+
+function renderCPISchedule() {
+  const ul = document.getElementById('cpiSchedule');
+  cpiSchedule.forEach(item => {
+    const li = document.createElement('li');
+    li.textContent = `${item.date} — 8:30 AM ET`;
+    ul.appendChild(li);
+  });
+}
+renderCPISchedule();
+
 document.getElementById('todayDate').textContent =
   "Today’s Date: " + new Date().toLocaleDateString();
 
@@ -224,8 +260,3 @@ function calculateStrategy() {
 
 </body>
 </html>
-
-
-
-
-

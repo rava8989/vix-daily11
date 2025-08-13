@@ -146,18 +146,19 @@ flowchart TD
   </div>
 
   <div class="notes">
-    <h2>Notes</h2>
+  <h2>Notes</h2>
+  <ul>
+    <li><strong>No BF on FED day</strong></li>
+    <li><strong>Max Risk:</strong></li>
     <ul>
-      <li><strong>No BF on FED day</strong></li>
-      <li><strong>Max Risk:</strong></li>
-      <ul>
-        <li>Straddle — $3200</li>
-        <li>Butterfly — $1300 - $1400</li>
-      </ul>
-      <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
-      <li><strong>VIX close time:</strong> 4:15 PM</li>
+      <li>Straddle — $3200</li>
+      <li>Butterfly — $1300 - $1400</li>
     </ul>
-  </div>
+    <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
+    <li><strong>VIX close time:</strong> 4:15 PM</li>
+    <li>On CPI days, we use only one filter: overnight VIX movement. If the VIX is up, we don’t trade; if it’s down, we trade straddles.</li>
+  </ul>
+</div>
 
 </div>
 
@@ -222,6 +223,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

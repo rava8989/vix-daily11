@@ -108,8 +108,9 @@
   <p>9:32 AM</p>
   <p class="muted">Last update: 8/12/2025</p>
 
-  <!-- CPI Schedule -->
+  <!-- NEW: CPI Schedule -->
   <h2>CPI Schedule</h2>
+  <p class="muted">All at 8:30 AM ET</p>
   <ul id="cpiSchedule"></ul>
 </div>
 
@@ -198,7 +199,7 @@ function renderBFList() {
 }
 renderBFList();
 
-// CPI dates starting September 2025 (no time text)
+// NEW: CPI dates starting September 2025
 const cpiSchedule = [
   { date: "September 11, 2025", note: "August 2025 CPI" },
   { date: "October 15, 2025",   note: "September 2025 CPI" },
@@ -210,7 +211,7 @@ function renderCPISchedule() {
   const ul = document.getElementById('cpiSchedule');
   cpiSchedule.forEach(item => {
     const li = document.createElement('li');
-    li.textContent = `${item.date}`;
+    li.textContent = `${item.date} — 8:30 AM ET`;
     ul.appendChild(li);
   });
 }

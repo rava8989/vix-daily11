@@ -96,6 +96,16 @@
       font-size: 18px;
       margin-top: 0;
     }
+    .tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      border: 1px solid #ccc;
+      color: #555;
+      margin-left: 6px;
+      background: #fafafa;
+    }
   </style>
 </head>
 <body>
@@ -108,9 +118,8 @@
   <p>9:32 AM</p>
   <p class="muted">Last update: 8/12/2025</p>
 
-  <!-- NEW: CPI Schedule -->
+  <!-- CPI Schedule -->
   <h2>CPI Schedule</h2>
-  <p class="muted">All at 8:30 AM ET</p>
   <ul id="cpiSchedule"></ul>
 </div>
 
@@ -131,8 +140,16 @@
   </div>
 
   <div style="margin-top: 10px; font-size: 14px; text-align: center;">
-    <p><strong>Overnight VIX Drop:</strong> <span id="overnightDropDisplay">—</span></p>
-    <p><strong>Yesterday’s VIX Open − Today’s VIX Open:</strong> <span id="openDiffDisplay">—</span></p>
+    <p>
+      <strong>Overnight VIX Drop:</strong>
+      <span id="overnightDropDisplay">—</span>
+      <span id="cpiTag" class="tag" style="display:none;">CPI day</span>
+    </p>
+    <p>
+      <strong>Yesterday’s VIX Open − Today’s VIX Open:</strong>
+      <span id="openDiffDisplay">—</span>
+      <span id="openDiffNote" class="tag" style="display:none;">ignored on CPI day</span>
+    </p>
   </div>
 
   <div style="text-align: right;">
@@ -199,23 +216,31 @@ function renderBFList() {
 }
 renderBFList();
 
-// NEW: CPI dates starting September 2025
+// CPI dates starting September 2025 (dates only, no times)
 const cpiSchedule = [
-  { date: "September 11, 2025", note: "August 2025 CPI" },
-  { date: "October 15, 2025",   note: "September 2025 CPI" },
-  { date: "November 13, 2025",  note: "October 2025 CPI" },
-  { date: "December 10, 2025",  note: "November 2025 CPI" }
+  "September 11, 2025",
+  "October 15, 2025",
+  "November 13, 2025",
+  "December 10, 2025"
 ];
 
 function renderCPISchedule() {
   const ul = document.getElementById('cpiSchedule');
-  cpiSchedule.forEach(item => {
+  cpiSchedule.forEach(date => {
     const li = document.createElement('li');
-    li.textContent = `${item.date} — 8:30 AM ET`;
+    li.textContent = date;
     ul.appendChild(li);
   });
 }
 renderCPISchedule();
+
+function todayLongUS() {
+  return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function isCpiDay() {
+  return cpiSchedule.includes(todayLongUS());
+}
 
 document.getElementById('todayDate').textContent =
   "Today’s Date: " + new Date().toLocaleDateString();
@@ -230,26 +255,50 @@ function calculateStrategy() {
     return;
   }
 
+  const cpiToday = isCpiDay();
   const openDiff = yOpen - today;
   const overnightDrop = yClose - today;
-  const dayOfWeek = new Date().getDay();
-  const bfTime = bfTimes[dayOfWeek]?.time || "";
 
   document.getElementById('overnightDropDisplay').textContent = overnightDrop.toFixed(2);
-  document.getElementById('openDiffDisplay').textContent = openDiff.toFixed(2);
+
+  const openDiffDisplay = document.getElementById('openDiffDisplay');
+  const cpiTag = document.getElementById('cpiTag');
+  const openDiffNote = document.getElementById('openDiffNote');
+
+  if (cpiToday) {
+    cpiTag.style.display = 'inline-block';
+    openDiffNote.style.display = 'inline-block';
+    openDiffDisplay.textContent = '—';
+  } else {
+    cpiTag.style.display = 'none';
+    openDiffNote.style.display = 'none';
+    openDiffDisplay.textContent = openDiff.toFixed(2);
+  }
 
   let recommendation = "";
   let bgColor = "#eee";
 
-  if (overnightDrop > 0.65 && openDiff < 1.4) {
-    recommendation = "ATM Butterfly @ 9:32 AM";
-    bgColor = "#fff399";
-  } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
-    recommendation = "Straddle @ 9:32";
-    bgColor = "#61f7d6";
+  if (cpiToday) {
+    if (openDiff < 0) {
+      recommendation = "Straddle @ 9:32 (CPI day)";
+      bgColor = "#61f7d6";
+    } else {
+      recommendation = "No Trade (CPI day)";
+    }
   } else {
-    recommendation = `M8 Butterfly — ${bfTime}`;
-    bgColor = "#b49aff";
+    const dayOfWeek = new Date().getDay();
+    const bfTime = bfTimes[dayOfWeek]?.time || "";
+
+    if (overnightDrop > 0.65 && openDiff < 1.4) {
+      recommendation = "ATM Butterfly @ 9:32 AM";
+      bgColor = "#fff399";
+    } else if (overnightDrop > 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
+      recommendation = "Straddle @ 9:32";
+      bgColor = "#61f7d6";
+    } else {
+      recommendation = `M8 Butterfly — ${bfTime}`;
+      bgColor = "#b49aff";
+    }
   }
 
   const recBox = document.getElementById("recommendation");

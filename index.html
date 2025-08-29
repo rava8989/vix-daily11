@@ -290,7 +290,7 @@ function calculateStrategy() {
     const bfTime = bfTimes[dayOfWeek]?.time || "";
 
     if (overnightDrop > 0.65 && openDiff < 1.4) {
-      recommendation = "ATM Butterfly @ 9:32 AM";
+      recommendation = "BvS Butterfly @ 9:36 AM";
       bgColor = "#fff399";
     } else if (overnightDrop > 0.001 && overnightDrop < 0.65 && openDiff < 1.4) {
       recommendation = "Straddle @ 9:32";
@@ -309,6 +309,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

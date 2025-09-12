@@ -27,84 +27,32 @@
       box-sizing: border-box;
       overflow-y: auto;
     }
-    .sidebar h2 {
-      font-size: 16px;
-      margin-top: 0;
-    }
-    .sidebar .muted {
-      font-size: 12px;
-      color: #666;
-      margin: 6px 0 10px 0;
-    }
-    .sidebar ul {
-      padding-left: 18px;
-      margin-top: 6px;
-      margin-bottom: 18px;
-    }
-    .main {
-      flex: 1;
-      text-align: center;
-      padding: 20px;
-    }
+    .sidebar h2 { font-size: 16px; margin-top: 0; }
+    .sidebar .muted { font-size: 12px; color: #666; margin: 6px 0 10px 0; }
+    .sidebar ul { padding-left: 18px; margin-top: 6px; margin-bottom: 18px; }
+
+    .main { flex: 1; text-align: center; padding: 20px; }
     .calculator {
-      background: #fff;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px #ccc;
-      max-width: 300px;
-      margin: 0 auto 20px auto;
+      background: #fff; padding: 15px; border-radius: 8px;
+      box-shadow: 0 0 5px #ccc; max-width: 300px; margin: 0 auto 20px auto;
     }
-    label {
-      display: block;
-      margin-top: 10px;
-    }
-    input {
-      width: 100%;
-      margin-top: 5px;
-      margin-bottom: 10px;
-    }
-    button {
-      width: 100%;
-      padding: 8px;
-      margin-top: 10px;
-    }
+    label { display: block; margin-top: 10px; }
+    input { width: 100%; margin-top: 5px; margin-bottom: 10px; }
+    input:disabled { opacity: 0.6; cursor: not-allowed; }
+    button { width: 100%; padding: 8px; margin-top: 10px; }
     #recommendation {
-      margin: 20px auto;
-      font-size: 32px;
-      font-weight: bold;
-      color: #333;
-      padding: 15px;
-      max-width: 500px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px #ccc;
+      margin: 20px auto; font-size: 32px; font-weight: bold; color: #333;
+      padding: 15px; max-width: 500px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
     }
-    .flowchart {
-      margin: 20px auto;
-      max-width: 100%;
-      overflow-x: auto;
-    }
+    .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
     .notes {
-      background: #fff;
-      padding: 15px;
-      margin: 20px auto;
-      max-width: 600px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px #ccc;
-      text-align: left;
+      background: #fff; padding: 15px; margin: 20px auto; max-width: 600px;
+      border-radius: 8px; box-shadow: 0 0 5px #ccc; text-align: left;
     }
-    .notes h2 {
-      font-size: 18px;
-      margin-top: 0;
-    }
+    .notes h2 { font-size: 18px; margin-top: 0; }
     .tag {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 6px;
-      font-size: 11px;
-      border: 1px solid #ccc;
-      color: #555;
-      margin-left: 6px;
-      background: #fafafa;
+      display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px;
+      border: 1px solid #ccc; color: #555; margin-left: 6px; background: #fafafa;
     }
   </style>
 </head>
@@ -160,11 +108,11 @@
   <div class="flowchart">
     <div class="mermaid">
 flowchart TD
-    A[SPX overnight gap UP/DOWN < 0.9%?]
+    A[SPX overnight gap UP/DOWN &lt; 0.9%?]
     A -->|No| B1[M8 Butterfly]
-    A -->|Yes| C[Yesterday's VIX open - Today's VIX open < 1.4?]
+    A -->|Yes| C[Yesterday's VIX open - Today's VIX open &lt; 1.4?]
     C -->|No| B2[M8 Butterfly]
-    C -->|Yes| D[Overnight VIX drop > 0.65?]
+    C -->|Yes| D[Overnight VIX drop &gt; 0.65?]
     D -->|Yes| E[BvS Butterfly @ 9:36 AM]
     D -->|No| F[Overnight VIX drop 0.01–0.65?]
     F -->|Yes| G[Straddle @ 9:32 AM]
@@ -181,19 +129,19 @@ flowchart TD
   </div>
 
   <div class="notes">
-  <h2>Notes</h2>
-  <ul>
-    <li><strong>No BF on FED day</strong></li>
-    <li><strong>Max Risk:</strong></li>
+    <h2>Notes</h2>
     <ul>
-      <li>Straddle — $3200</li>
-      <li>Butterfly — $1300 - $1400</li>
+      <li><strong>No BF on FED day</strong></li>
+      <li><strong>Max Risk:</strong></li>
+      <ul>
+        <li>Straddle — $3200</li>
+        <li>Butterfly — $1300 - $1400</li>
+      </ul>
+      <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
+      <li><strong>VIX close time:</strong> 4:15 PM</li>
+      <li>On CPI days, we use only one filter: overnight VIX movement (Yesterday’s Close − Today’s Open).</li>
     </ul>
-    <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
-    <li><strong>VIX close time:</strong> 4:15 PM</li>
-    <li>On CPI days, we use only one filter: overnight VIX movement. If the VIX is up, we don’t trade; if it’s down, we trade straddles.</li>
-  </ul>
-</div>
+  </div>
 
 </div>
 
@@ -237,10 +185,17 @@ renderCPISchedule();
 function todayLongUS() {
   return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
-
 function isCpiDay() {
   return cpiSchedule.includes(todayLongUS());
 }
+
+// reflect CPI-day UI immediately on load
+function updateCpiUI() {
+  const cpi = isCpiDay();
+  const yOpenInput = document.getElementById('yesterdayOpen');
+  yOpenInput.disabled = cpi;           // disable Yesterday's Open on CPI day
+}
+document.addEventListener('DOMContentLoaded', updateCpiUI);
 
 document.getElementById('todayDate').textContent =
   "Today’s Date: " + new Date().toLocaleDateString();
@@ -250,20 +205,23 @@ function calculateStrategy() {
   const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
   const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
-  if (isNaN(today) || isNaN(yOpen) || isNaN(yClose)) {
+  if (isNaN(today) || isNaN(yClose) || ( !isCpiDay() && isNaN(yOpen) )) {
     alert("Please enter valid numbers.");
     return;
   }
 
   const cpiToday = isCpiDay();
-  const openDiff = yOpen - today;
-  const overnightDrop = yClose - today;
+  const openDiff = yOpen - today;           // ignored on CPI day
+  const overnightDrop = yClose - today;     // used on CPI day
 
   document.getElementById('overnightDropDisplay').textContent = overnightDrop.toFixed(2);
 
   const openDiffDisplay = document.getElementById('openDiffDisplay');
   const cpiTag = document.getElementById('cpiTag');
   const openDiffNote = document.getElementById('openDiffNote');
+
+  // keep UI state aligned
+  document.getElementById('yesterdayOpen').disabled = cpiToday;
 
   if (cpiToday) {
     cpiTag.style.display = 'inline-block';
@@ -279,11 +237,13 @@ function calculateStrategy() {
   let bgColor = "#eee";
 
   if (cpiToday) {
-    if (openDiff < 0) {
+    // NEW: CPI logic uses overnightDrop only
+    if (overnightDrop < 0) {
+      recommendation = "No Trade (CPI day)";
+      bgColor = "#eee";
+    } else {
       recommendation = "Straddle @ 9:32 AM (CPI day)";
       bgColor = "#61f7d6";
-    } else {
-      recommendation = "No Trade (CPI day)";
     }
   } else {
     const dayOfWeek = new Date().getDay();
@@ -309,11 +269,3 @@ function calculateStrategy() {
 
 </body>
 </html>
-
-
-
-
-
-
-
-

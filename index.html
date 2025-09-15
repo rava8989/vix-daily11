@@ -42,7 +42,7 @@
     button { width: 100%; padding: 8px; margin-top: 10px; }
     #recommendation {
       margin: 20px auto; font-size: 32px; font-weight: bold; color: #333;
-      padding: 15px; max-width: 500px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
+      padding: 15px; max-width: 700px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
     }
     .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
     .notes {
@@ -69,6 +69,10 @@
   <!-- CPI Schedule -->
   <h2>CPI Schedule</h2>
   <ul id="cpiSchedule"></ul>
+
+  <!-- Fed Day Schedule -->
+  <h2>Fed Day Schedule</h2>
+  <ul id="fedSchedule"></ul>
 </div>
 
 <div class="main">
@@ -92,6 +96,7 @@
       <strong>Overnight VIX Drop:</strong>
       <span id="overnightDropDisplay">—</span>
       <span id="cpiTag" class="tag" style="display:none;">CPI day</span>
+      <span id="fedTag" class="tag" style="display:none;">Fed day</span>
     </p>
     <p>
       <strong>Yesterday’s VIX Open − Today’s VIX Open:</strong>
@@ -139,7 +144,8 @@ flowchart TD
       </ul>
       <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
       <li><strong>VIX close time:</strong> 4:15 PM</li>
-      <li>On CPI days, we use only one filter: overnight VIX movement (Yesterday’s Close − Today’s Open).</li>
+      <li>On CPI days, we use only one filter: Yesterday’s Close − Today’s Open.</li>
+      <li>On Wednesdays without Fed/CPI, replace Straddle signals with M8 Butterfly.</li>
     </ul>
   </div>
 
@@ -164,14 +170,13 @@ function renderBFList() {
 }
 renderBFList();
 
-// CPI dates starting September 2025 (dates only, no times)
+// CPI dates starting September 2025
 const cpiSchedule = [
   "September 11, 2025",
   "October 15, 2025",
   "November 13, 2025",
   "December 10, 2025"
 ];
-
 function renderCPISchedule() {
   const ul = document.getElementById('cpiSchedule');
   cpiSchedule.forEach(date => {
@@ -182,18 +187,36 @@ function renderCPISchedule() {
 }
 renderCPISchedule();
 
+// Fed Day dates
+const fedSchedule = [
+  "September 17, 2025",
+  "October 29, 2025",
+  "December 10, 2025"
+];
+function renderFedSchedule() {
+  const ul = document.getElementById('fedSchedule');
+  fedSchedule.forEach(date => {
+    const li = document.createElement('li');
+    li.textContent = date;
+    ul.appendChild(li);
+  });
+}
+renderFedSchedule();
+
 function todayLongUS() {
   return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 function isCpiDay() {
   return cpiSchedule.includes(todayLongUS());
 }
+function isFedDay() {
+  return fedSchedule.includes(todayLongUS());
+}
 
 // reflect CPI-day UI immediately on load
 function updateCpiUI() {
   const cpi = isCpiDay();
-  const yOpenInput = document.getElementById('yesterdayOpen');
-  yOpenInput.disabled = cpi;           // disable Yesterday's Open on CPI day
+  document.getElementById('yesterdayOpen').disabled = cpi; // disable Yesterday's Open on CPI only
 }
 document.addEventListener('DOMContentLoaded', updateCpiUI);
 
@@ -205,39 +228,44 @@ function calculateStrategy() {
   const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
   const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
-  if (isNaN(today) || isNaN(yClose) || ( !isCpiDay() && isNaN(yOpen) )) {
+  if (isNaN(today) || isNaN(yClose) || (!isCpiDay() && isNaN(yOpen))) {
     alert("Please enter valid numbers.");
     return;
   }
 
   const cpiToday = isCpiDay();
-  const openDiff = yOpen - today;           // ignored on CPI day
-  const overnightDrop = yClose - today;     // used on CPI day
+  const fedToday = isFedDay();
+  const dayOfWeek = new Date().getDay(); // 0=Sun ... 3=Wed ...
+  const bfTime = bfTimes[dayOfWeek]?.time || "";
 
-  document.getElementById('overnightDropDisplay').textContent = overnightDrop.toFixed(2);
+  const openDiff = (isNaN(yOpen) ? NaN : yOpen - today);   // ignored on CPI
+  const overnightDrop = yClose - today;                    // used on CPI + normal
 
+  // UI tags + fields
   const openDiffDisplay = document.getElementById('openDiffDisplay');
   const cpiTag = document.getElementById('cpiTag');
+  const fedTag = document.getElementById('fedTag');
   const openDiffNote = document.getElementById('openDiffNote');
 
-  // keep UI state aligned
+  document.getElementById('overnightDropDisplay').textContent = overnightDrop.toFixed(2);
   document.getElementById('yesterdayOpen').disabled = cpiToday;
 
+  cpiTag.style.display = cpiToday ? 'inline-block' : 'none';
+  fedTag.style.display = fedToday ? 'inline-block' : 'none';
+
   if (cpiToday) {
-    cpiTag.style.display = 'inline-block';
-    openDiffNote.style.display = 'inline-block';
     openDiffDisplay.textContent = '—';
+    openDiffNote.style.display = 'inline-block';
   } else {
-    cpiTag.style.display = 'none';
     openDiffNote.style.display = 'none';
-    openDiffDisplay.textContent = openDiff.toFixed(2);
+    openDiffDisplay.textContent = isNaN(openDiff) ? '—' : openDiff.toFixed(2);
   }
 
   let recommendation = "";
   let bgColor = "#eee";
 
   if (cpiToday) {
-    // NEW: CPI logic uses overnightDrop only
+    // CPI: use Yesterday’s Close − Today’s Open only
     if (overnightDrop < 0) {
       recommendation = "No Trade (CPI day)";
       bgColor = "#eee";
@@ -246,9 +274,7 @@ function calculateStrategy() {
       bgColor = "#61f7d6";
     }
   } else {
-    const dayOfWeek = new Date().getDay();
-    const bfTime = bfTimes[dayOfWeek]?.time || "";
-
+    // BASE (non-CPI) logic
     if (overnightDrop > 0.65 && openDiff < 1.4) {
       recommendation = "BvS Butterfly @ 9:36 AM";
       bgColor = "#fff399";
@@ -257,6 +283,20 @@ function calculateStrategy() {
       bgColor = "#61f7d6";
     } else {
       recommendation = `M8 Butterfly — ${bfTime}`;
+      bgColor = "#b49aff";
+    }
+
+    // Fed-day override: no butterflies on Fed day -> No Trade instead of BF
+    if (fedToday && /Butterfly/.test(recommendation)) {
+      recommendation = "No Trade (Fed day — no butterflies)";
+      bgColor = "#eee";
+    }
+
+    // Wednesday rule: if Wed + NOT Fed + NOT CPI + Straddle -> show crossed-out Straddle and use M8
+    const isWednesday = dayOfWeek === 3;
+    if (isWednesday && !fedToday && !cpiToday && /Straddle/.test(recommendation)) {
+      const crossed = `<span style="text-decoration: line-through;">Straddle @ 9:32 AM</span>`;
+      recommendation = `${crossed} → M8 Butterfly — ${bfTime}`;
       bgColor = "#b49aff";
     }
   }

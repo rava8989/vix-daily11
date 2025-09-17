@@ -136,7 +136,7 @@ flowchart TD
   <div class="notes">
     <h2>Notes</h2>
     <ul>
-      <li><strong>No BF on FED day</strong></li>
+      <li><strong>No M8 Butterfly on FED day</strong> (BvS allowed)</li>
       <li><strong>Max Risk:</strong></li>
       <ul>
         <li>Straddle — $3200</li>
@@ -144,7 +144,7 @@ flowchart TD
       </ul>
       <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
       <li><strong>VIX close time:</strong> 4:15 PM</li>
-      <li>On CPI days, we use only one filter: Yesterday’s Close − Today’s Open.</li>
+      <li>On CPI days, use only: Yesterday’s Close − Today’s Open.</li>
       <li>On Wednesdays without Fed/CPI, replace Straddle signals with M8 Butterfly.</li>
     </ul>
   </div>
@@ -286,13 +286,16 @@ function calculateStrategy() {
       bgColor = "#b49aff";
     }
 
-    // Fed-day override: no butterflies on Fed day -> No Trade instead of BF
-    if (fedToday && /Butterfly/.test(recommendation)) {
-      recommendation = "No Trade (Fed day — no butterflies)";
-      bgColor = "#eee";
+    // Fed-day override: block ONLY M8 Butterfly; allow BvS Butterfly
+    if (fedToday) {
+      if (/M8 Butterfly/.test(recommendation)) {
+        recommendation = "No Trade (Fed day — no M8 butterflies)";
+        bgColor = "#eee";
+      }
+      // If it's BvS Butterfly, leave it as-is (allowed)
     }
 
-    // Wednesday rule: if Wed + NOT Fed + NOT CPI + Straddle -> show crossed-out Straddle and use M8
+    // Wednesday rule: if Wed + NOT Fed + NOT CPI + Straddle -> crossed-out Straddle → M8
     const isWednesday = dayOfWeek === 3;
     if (isWednesday && !fedToday && !cpiToday && /Straddle/.test(recommendation)) {
       const crossed = `<span style="text-decoration: line-through;">Straddle @ 9:32 AM</span>`;

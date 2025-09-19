@@ -54,6 +54,50 @@
       display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px;
       border: 1px solid #ccc; color: #555; margin-left: 6px; background: #fafafa;
     }
+
+    /* --- New bottom section styles --- */
+    .strategy-doc {
+      background: #fff;
+      padding: 20px;
+      margin: 20px auto 60px auto;
+      max-width: 900px;
+      border-radius: 10px;
+      box-shadow: 0 0 5px #ccc;
+      text-align: left;
+      line-height: 1.5;
+    }
+    .strategy-doc h2 {
+      font-size: 20px;
+      margin: 0 0 10px 0;
+    }
+    .strategy-doc h3 {
+      font-size: 16px;
+      margin: 18px 0 8px 0;
+      color: #333;
+    }
+    .strategy-doc .divider {
+      margin: 16px 0;
+      text-align: center;
+      color: #999;
+      letter-spacing: 2px;
+    }
+    .strategy-doc ul {
+      margin: 6px 0 12px 22px;
+    }
+    .strategy-doc li {
+      margin: 2px 0;
+    }
+    .muted-note {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+    }
+    .highlight {
+      background: #f6f6ff;
+      border-left: 3px solid #b49aff;
+      padding: 10px 12px;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
@@ -148,6 +192,86 @@ flowchart TD
       <li>On Wednesdays without Fed/CPI, replace Straddle signals with M8 Butterfly.</li>
     </ul>
   </div>
+
+  <!-- ----------- New bottom strategy documentation ----------- -->
+  <section class="strategy-doc" id="strategy-doc">
+    <h2>Hybrid SPX 0DTE Strategy — Overview</h2>
+    <p>This is the hybrid SPX 0DTE strategy. It classifies days into three distinct types:</p>
+
+    <div class="highlight">
+      <h3>Teal Days — Straddle</h3>
+      <ul>
+        <li>Traded between <strong>9:32 AM</strong> and <strong>1:30 PM</strong>.</li>
+      </ul>
+
+      <h3>Purple Days — M8 Butterfly</h3>
+      <ul>
+        <li>Based on M8’s recommendation, with entry times varying by day of the week.</li>
+        <li>This setup is less effective without TTV software, which helps identify optimal entry windows for butterflies.</li>
+        <li>I’ll try my best to update the best entry times weekly on my webpage.</li>
+      </ul>
+
+      <h3>Yellow Days — BvS Butterfly</h3>
+      <ul>
+        <li>Traded at <strong>9:36 AM</strong>, centered around a major positive gamma value taken from <strong>9:35 AM gex-bot-stream</strong> feed.</li>
+      </ul>
+    </div>
+
+    <div class="divider">⸻</div>
+
+    <h3>Rules for Day Classification</h3>
+    <p>Here’s the logic:</p>
+    <ul>
+      <li><strong>Check SPX overnight gap at the open:</strong><br/>
+        • If the gap (up or down) is <strong>greater than 0.9%</strong>, it’s a <strong>Purple Day</strong>.<br/>
+        • If the gap is <strong>less than 0.9%</strong>, check the next items:
+      </li>
+      <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open minus today’s VIX open.<br/>
+        • If this value is <strong>more than 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
+        • If not, continue to the next condition.
+      </li>
+      <li><strong>Check overnight VIX drop:</strong> (Yesterday’s VIX close at 4:15 PM minus today’s VIX open at 9:30 AM)<br/>
+        • If the drop is <strong>more than 0.65</strong>, it’s a <strong>Yellow Day</strong>.<br/>
+        • If the drop is <strong>between 0.01 and 0.65</strong>, it’s a <strong>Teal Day</strong>.<br/>
+        • If none of the above conditions are met, it’s a <strong>Purple Day</strong>.
+      </li>
+    </ul>
+
+    <ul>
+      <li>If a <strong>Purple Day</strong> falls on a <strong>FED day</strong>, <strong>skip the trade</strong>.</li>
+      <li><em>On Teal Days</em>, if the straddle doesn’t trigger by <strong>1:30 PM</strong> due to high VIX, cancel the order — that’s expected.</li>
+      <li><em>On CPI days</em>, we use only one filter: <strong>overnight VIX movement</strong>. If the VIX is up, we don’t trade; if it’s down, we trade straddles.</li>
+      <li>If the <strong>M8 SPX Butterfly prediction</strong> has a <strong>0% win rate for the entire day</strong>, then the next day we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
+      <li><strong>On non-Fed, non-CPI Wednesdays</strong>, if a straddle signal appears, <strong>replace it with M8 butterflies</strong>.</li>
+    </ul>
+
+    <h3>Money Management</h3>
+    <ul>
+      <li><strong>Butterflies (Purple & Yellow Days):</strong><br/>
+        Max risk is <strong>$1,400</strong>. Widen the wings until the debit is close to this number. If the next strike pushes the cost over $1,400, it’s acceptable to settle near <strong>$1,000</strong>.
+      </li>
+      <li><strong>Straddle (Teal Days):</strong><br/>
+        Max risk is <strong>$3,200</strong>, the same as used in Mad’s strategy.
+      </li>
+      <li>All trades are held to <strong>expiration</strong>.</li>
+    </ul>
+
+    <h3>Backtest Results (September 1, 2024 → August 31, 2025)</h3>
+    <ul>
+      <li><strong>Teal Days (Straddle):</strong> +$60K</li>
+      <li><strong>Purple Days (M8 Butterfly):</strong> +$54K</li>
+      <li><strong>Yellow Days (BvS Butterfly):</strong> +$17K</li>
+      <li><strong>Total P/L:</strong> ~<strong>$132K</strong> in a year, with May being the only negative month.</li>
+      <li><em>Only one trade is allowed per day. Some days may have no trade if conditions aren’t met.</em></li>
+    </ul>
+
+    <div class="divider">⸻</div>
+
+    <p>I know the rules can seem complicated at first, which is why I created a calculator page. Simply input the VIX data, and it will indicate the type of day it is.</p>
+
+    <p class="muted-note"><strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial, investment, or trading advice. Past performance is not indicative of future results. Trading options involves significant risk and may not be suitable for all investors. You are solely responsible for your own investment decisions.</p>
+  </section>
+  <!-- --------------------------------------------------------- -->
 
 </div>
 

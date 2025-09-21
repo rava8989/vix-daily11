@@ -42,19 +42,15 @@
     button { width: 100%; padding: 8px; margin-top: 10px; }
     #recommendation {
       margin: 20px auto; font-size: 32px; font-weight: bold; color: #333;
-      padding: 15px; max-width: 700px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
+      padding: 15px; max-width: 820px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
     }
     .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
-    .notes {
-      background: #fff; padding: 15px; margin: 20px auto; max-width: 600px;
-      border-radius: 8px; box-shadow: 0 0 5px #ccc; text-align: left;
-    }
-    .notes h2 { font-size: 18px; margin-top: 0; }
     .tag {
       display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px;
       border: 1px solid #ccc; color: #555; margin-left: 6px; background: #fafafa;
     }
 
+    /* Bottom strategy section */
     .strategy-doc {
       background: #fff;
       padding: 20px;
@@ -96,6 +92,10 @@
   <!-- Fed Day Schedule -->
   <h2>Fed Day Schedule</h2>
   <ul id="fedSchedule"></ul>
+
+  <!-- Quarterly OPEX -->
+  <h2>Quarterly OPEX</h2>
+  <ul id="opexSchedule"></ul>
 </div>
 
 <div class="main">
@@ -120,6 +120,7 @@
       <span id="overnightDropDisplay">—</span>
       <span id="cpiTag" class="tag" style="display:none;">CPI day</span>
       <span id="fedTag" class="tag" style="display:none;">Fed day</span>
+      <span id="opexTag" class="tag" style="display:none;">Quarterly OPEX</span>
     </p>
     <p>
       <strong>Yesterday’s VIX Open − Today’s VIX Open:</strong>
@@ -156,24 +157,7 @@ flowchart TD
     </div>
   </div>
 
-  <div class="notes">
-    <h2>Notes</h2>
-    <ul>
-      <li><strong>No M8 Butterfly on FED day</strong> (BvS allowed)</li>
-      <li><strong>Max Risk:</strong></li>
-      <ul>
-        <li>Straddle — $3200</li>
-        <li>Butterfly — $1300 - $1400</li>
-      </ul>
-      <li><strong>VIX open time:</strong> first VIX print after 9:30 AM</li>
-      <li><strong>VIX close time:</strong> 4:15 PM</li>
-      <li>On CPI days, use only: Yesterday’s Close − Today’s Open.</li>
-      <li>On Wednesdays without Fed/CPI, replace Straddle signals with M8 Butterfly.</li>
-      <li><strong>Avoid trades on quarterly OPEX</strong></li>
-      <li><strong>Use $2700 TP on Thursday Straddles</strong></li>
-    </ul>
-  </div>
-
+  <!-- Bottom strategy documentation -->
   <section class="strategy-doc" id="strategy-doc">
     <h2>Hybrid SPX 0DTE Strategy — Overview</h2>
     <p>This is the hybrid SPX 0DTE strategy. It classifies days into three distinct types:</p>
@@ -203,36 +187,41 @@ flowchart TD
     <p>Here’s the logic:</p>
     <ul>
       <li><strong>Check SPX overnight gap at the open:</strong><br/>
-        • If the gap (up or down) is <strong>greater than 0.9%</strong>, it’s a <strong>Purple Day</strong>.<br/>
-        • If the gap is <strong>less than 0.9%</strong>, check the next items:
+        • If the gap (up or down) is <strong>&gt; 0.9%</strong>, it’s a <strong>Purple Day (M8 Butterfly)</strong>.<br/>
+        • If the gap is <strong>&lt; 0.9%</strong>, continue:
       </li>
-      <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open minus today’s VIX open.<br/>
-        • If this value is <strong>more than 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
-        • If not, continue to the next condition.
+
+      <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open − today’s VIX open.<br/>
+        • If this value is <strong>&gt; 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
+        • Otherwise, continue:
       </li>
-      <li><strong>Check overnight VIX drop:</strong> (Yesterday’s VIX close at 4:15 PM minus today’s VIX open at 9:30 AM)<br/>
-        • If the drop is <strong>more than 0.65</strong>, it’s a <strong>Yellow Day</strong>.<br/>
-        • If the drop is <strong>between 0.01 and 0.65</strong>, it’s a <strong>Teal Day</strong>.<br/>
-        • If none of the above conditions are met, it’s a <strong>Purple Day</strong>.
+
+      <li><strong>Overnight VIX drop:</strong> (Yesterday’s VIX close @ 4:15 PM − today’s VIX open @ 9:30 AM)<br/>
+        • If <strong>&gt; 0.65</strong> → <strong>Yellow Day (BvS Butterfly @ 9:36 AM)</strong>.<br/>
+        • If <strong>0.01–0.65</strong> → <strong>Teal Day (Straddle @ 9:32 AM)</strong>.<br/>
+        • If none of the above → <strong>Purple Day</strong>.
       </li>
     </ul>
 
     <ul>
-      <li>If a <strong>Purple Day</strong> falls on a <strong>FED day</strong>, <strong>skip the trade</strong>.</li>
-      <li><em>On Teal Days</em>, if the straddle doesn’t trigger by <strong>1:30 PM</strong> due to high VIX, cancel the order — that’s expected.</li>
-      <li><em>On CPI days</em>, we use only one filter: <strong>overnight VIX movement</strong>. If the VIX is up, we don’t trade; if it’s down, we trade straddles.</li>
-      <li>If the <strong>M8 SPX Butterfly prediction</strong> has a <strong>0% win rate for the entire day</strong>, then the next day we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
-      <li><strong>On non-Fed, non-CPI Wednesdays</strong>, if a straddle signal appears, <strong>replace it with M8 butterflies</strong>.</li>
+      <li><strong>CPI days:</strong> Use <em>only</em> one filter → <strong>Yesterday’s Close − Today’s Open</strong>.<br/>
+        • If negative → <strong>No Trade</strong>.<br/>
+        • If zero/positive → <strong>Straddle @ 9:32 AM</strong>.
+      </li>
+
+      <li><strong>Fed days:</strong> <strong>No M8 Butterfly</strong> — M8 rec is shown crossed out → <strong>No Trade</strong>. <em>BvS Butterfly is allowed.</em></li>
+
+      <li><strong>Wednesdays (non-Fed, non-CPI):</strong> If a <strong>Straddle</strong> signal appears, show it crossed out and take <strong>M8 Butterfly</strong> instead (use Wednesday M8 time).</li>
+
+      <li><strong>Quarterly OPEX:</strong> If the calculator produces a <strong>Straddle</strong> signal, show it crossed out → <strong>No Trade</strong>.</li>
+
+      <li><em>Teal Days:</em> If the Straddle hasn’t triggered by <strong>1:30 PM</strong> due to high VIX, cancel the order (expected behavior).</li>
     </ul>
 
     <h3>Money Management</h3>
     <ul>
-      <li><strong>Butterflies (Purple & Yellow Days):</strong><br/>
-        Max risk is <strong>$1,400</strong>. Widen the wings until the debit is close to this number. If the next strike pushes the cost over $1,400, it’s acceptable to settle near <strong>$1,000</strong>.
-      </li>
-      <li><strong>Straddle (Teal Days):</strong><br/>
-        Max risk is <strong>$3,200</strong>, the same as used in Mad’s strategy.
-      </li>
+      <li><strong>Butterflies (Purple & Yellow):</strong> Max risk <strong>$1,400</strong>. Widen wings to target this; acceptable to settle near <strong>$1,000</strong> if the next strike exceeds $1,400.</li>
+      <li><strong>Straddles (Teal):</strong> Max risk <strong>$3,200</strong> (same as Mad’s). On <strong>Thursdays</strong>, use <strong>$2,700 take-profit</strong>.</li>
       <li>All trades are held to <strong>expiration</strong>.</li>
     </ul>
 
@@ -241,7 +230,7 @@ flowchart TD
       <li><strong>Teal Days (Straddle):</strong> +$66K</li>
       <li><strong>Purple Days (M8 Butterfly):</strong> +$58K</li>
       <li><strong>Yellow Days (BvS Butterfly):</strong> +$19K</li>
-      <li><strong>Total P/L:</strong> ~<strong>$143K</strong> in a year, with May being the only negative month.</li>
+      <li><strong>Total P/L:</strong> ~<strong>$143K</strong> in a year.</li>
       <li><em>Only one trade is allowed per day. Some days may have no trade if conditions aren’t met.</em></li>
     </ul>
 
@@ -306,6 +295,20 @@ function renderFedSchedule() {
 }
 renderFedSchedule();
 
+// Quarterly OPEX dates
+const opexSchedule = [
+  "December 19, 2025"
+];
+function renderOpexSchedule() {
+  const ul = document.getElementById('opexSchedule');
+  opexSchedule.forEach(date => {
+    const li = document.createElement('li');
+    li.textContent = date;
+    ul.appendChild(li);
+  });
+}
+renderOpexSchedule();
+
 function todayLongUS() {
   return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
@@ -314,6 +317,9 @@ function isCpiDay() {
 }
 function isFedDay() {
   return fedSchedule.includes(todayLongUS());
+}
+function isOpexDay() {
+  return opexSchedule.includes(todayLongUS());
 }
 
 // On load, reflect CPI-day UI
@@ -338,6 +344,7 @@ function calculateStrategy() {
 
   const cpiToday = isCpiDay();
   const fedToday = isFedDay();
+  const opexToday = isOpexDay();
   const dayOfWeek = new Date().getDay(); // 0=Sun,1=Mon,...,3=Wed
   const bfTime = bfTimes[dayOfWeek]?.time || "";
 
@@ -349,6 +356,7 @@ function calculateStrategy() {
   const openDiffDisplay = document.getElementById('openDiffDisplay');
   const cpiTag = document.getElementById('cpiTag');
   const fedTag = document.getElementById('fedTag');
+  const opexTag = document.getElementById('opexTag');
   const openDiffNote = document.getElementById('openDiffNote');
 
   overnightDropDisplay.textContent = isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
@@ -356,6 +364,7 @@ function calculateStrategy() {
 
   cpiTag.style.display = cpiToday ? 'inline-block' : 'none';
   fedTag.style.display = fedToday ? 'inline-block' : 'none';
+  opexTag.style.display = opexToday ? 'inline-block' : 'none';
 
   if (cpiToday) {
     openDiffDisplay.textContent = '—';
@@ -390,13 +399,14 @@ function calculateStrategy() {
       bgColor = "#b49aff";
     }
 
-    // Fed-day override: block ONLY M8 Butterfly; allow BvS Butterfly
-    if (fedToday) {
-      if (/M8 Butterfly/.test(recommendation)) {
-        recommendation = "No Trade (Fed day — no M8 butterflies)";
-        bgColor = "#eee";
-      }
-      // BvS Butterfly remains allowed
+    // Fed-day override: block ONLY M8 Butterfly; allow BvS Butterfly (cross out M8)
+    if (fedToday && /M8 Butterfly/.test(recommendation)) {
+      const crossed = recommendation.replace(
+        /M8 Butterfly([^<]*)/,
+        '<span style="text-decoration: line-through;">M8 Butterfly$1</span>'
+      );
+      recommendation = `${crossed} → No Trade (Fed day — no M8 butterflies)`;
+      bgColor = "#eee";
     }
 
     // Wednesday rule: Wed + NOT Fed + NOT CPI + Straddle -> crossed-out Straddle → M8
@@ -408,6 +418,13 @@ function calculateStrategy() {
     }
   }
 
+  // Quarterly OPEX override: if Straddle is recommended, cross it and say No Trade
+  if (opexToday && /Straddle/.test(recommendation)) {
+    const crossed = `<span style="text-decoration: line-through;">${recommendation}</span>`;
+    recommendation = `${crossed} → No Trade (Quarterly OPEX)`;
+    bgColor = "#eee";
+  }
+
   const recBox = document.getElementById("recommendation");
   recBox.innerHTML = `👉 <span style="font-size: 36px;">${recommendation}</span>`;
   recBox.style.backgroundColor = bgColor;
@@ -416,4 +433,3 @@ function calculateStrategy() {
 
 </body>
 </html>
-

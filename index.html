@@ -214,6 +214,7 @@ flowchart TD
       <li><strong>Wednesdays (non-Fed, non-CPI):</strong> NO <strong>Straddle</strong>  .</li>
 
       <li><strong>Quarterly OPEX:</strong> No <strong>Straddle</strong> .</li>
+      <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
 
       <li><em>Teal Days:</em> If the Straddle hasn’t triggered by <strong>1:30 PM</strong> due to high VIX, cancel the order (expected behavior).</li>
     </ul>
@@ -433,5 +434,6 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 

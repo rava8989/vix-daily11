@@ -42,7 +42,7 @@
     button { width: 100%; padding: 8px; margin-top: 10px; }
     #recommendation {
       margin: 20px auto; font-size: 32px; font-weight: bold; color: #333;
-      padding: 15px; max-width: 820px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
+      padding: 15px; max-width: 880px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
     }
     .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
     .tag {
@@ -73,6 +73,9 @@
       padding: 10px 12px;
       border-radius: 6px;
     }
+
+    /* Crossed-out past dates in schedules */
+    .crossed { text-decoration: line-through; color: #999; }
   </style>
 </head>
 <body>
@@ -209,11 +212,12 @@ flowchart TD
         • If zero/positive → <strong>Straddle @ 9:32 AM</strong>.
       </li>
 
-      <li><strong>Fed days:</strong> <strong>No M8 Butterfly</strong>  → <strong></strong>. <em>BvS Butterfly is allowed.</em></li>
+      <li><strong>Fed days:</strong> <strong>No M8 Butterfly</strong> → M8 rec is shown crossed out → <strong>No Trade</strong>. <em>BvS Butterfly is allowed.</em></li>
 
-      <li><strong>Wednesdays (non-Fed, non-CPI):</strong> NO <strong>Straddle</strong>  .</li>
+      <li><strong>Wednesdays (non-Fed, non-CPI):</strong> <strong>NO Straddle</strong> (crossed out); take <strong>M8 Butterfly</strong> instead.</li>
 
-      <li><strong>Quarterly OPEX:</strong> No <strong>Straddle</strong> .</li>
+      <li><strong>Quarterly OPEX:</strong> <strong>No Straddle</strong> (crossed out → No Trade).</li>
+
       <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
 
       <li><em>Teal Days:</em> If the Straddle hasn’t triggered by <strong>1:30 PM</strong> due to high VIX, cancel the order (expected behavior).</li>
@@ -275,6 +279,7 @@ function renderCPISchedule() {
   cpiSchedule.forEach(date => {
     const li = document.createElement('li');
     li.textContent = date;
+    li.setAttribute('data-date', date);
     ul.appendChild(li);
   });
 }
@@ -291,6 +296,7 @@ function renderFedSchedule() {
   fedSchedule.forEach(date => {
     const li = document.createElement('li');
     li.textContent = date;
+    li.setAttribute('data-date', date);
     ul.appendChild(li);
   });
 }
@@ -305,10 +311,41 @@ function renderOpexSchedule() {
   opexSchedule.forEach(date => {
     const li = document.createElement('li');
     li.textContent = date;
+    li.setAttribute('data-date', date);
     ul.appendChild(li);
   });
 }
 renderOpexSchedule();
+
+// Cross-out helpers
+function hasPassed(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return false;
+  const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+  return new Date() > endOfDay;
+}
+function crossOffPastDates(ulId) {
+  const ul = document.getElementById(ulId);
+  if (!ul) return;
+  Array.from(ul.children).forEach(li => {
+    const dateText = li.getAttribute('data-date') || li.textContent.trim();
+    if (hasPassed(dateText)) li.classList.add('crossed');
+  });
+}
+function refreshCrossedDates() {
+  crossOffPastDates('cpiSchedule');
+  crossOffPastDates('fedSchedule');
+  crossOffPastDates('opexSchedule');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  refreshCrossedDates();
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2);
+  setTimeout(() => {
+    refreshCrossedDates();
+    setInterval(refreshCrossedDates, 24 * 60 * 60 * 1000);
+  }, midnight - now);
+});
 
 function todayLongUS() {
   return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -434,6 +471,3 @@ function calculateStrategy() {
 
 </body>
 </html>
-
-
-

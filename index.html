@@ -99,6 +99,14 @@
   <!-- Quarterly OPEX -->
   <h2>Quarterly OPEX</h2>
   <ul id="opexSchedule"></ul>
+
+  <!-- Monthly OPEX -->
+  <h2>Monthly OPEX</h2>
+  <ul id="monthlyOpexSchedule"></ul>
+
+  <!-- Market Holidays -->
+  <h2>Market Holidays</h2>
+  <ul id="holidaySchedule"></ul>
 </div>
 
 <div class="main">
@@ -124,6 +132,9 @@
       <span id="cpiTag" class="tag" style="display:none;">CPI day</span>
       <span id="fedTag" class="tag" style="display:none;">Fed day</span>
       <span id="opexTag" class="tag" style="display:none;">Quarterly OPEX</span>
+      <span id="postOpexTag" class="tag" style="display:none;">Post-OPEX</span>
+      <span id="postHolidayTag" class="tag" style="display:none;">Post-Holiday</span>
+      <span id="eomTag" class="tag" style="display:none;">EOM</span>
     </p>
     <p>
       <strong>Yesterday’s VIX Open − Today’s VIX Open:</strong>
@@ -216,7 +227,11 @@ flowchart TD
 
       <li><strong>Wednesdays (non-Fed, non-CPI):</strong> <strong>NO Straddle</strong> take <strong>M8 Butterfly</strong> instead.</li>
 
-      <li><strong>Quarterly OPEX:</strong> <strong>No Straddle</strong> (No Trade).</li>
+      <li><strong>Quarterly OPEX:</strong> <strong>No Straddle</strong> (No Trade). <em>Post-OPEX Monday:</em> if Purple Day signal, use <strong>afternoon M8</strong>. <em>After other OPEX:</em> if Purple Day signal, use <strong>morning M8</strong>.</li>
+
+      <li><strong>Day After Market Holiday:</strong> <strong>No M8 Butterflies</strong>.</li>
+
+      <li><strong>End-of-Month (EOM):</strong> <strong>Automatic Straddle @ 9:32 AM</strong> (“EOM Straddle”).</li>
 
       <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
 
@@ -256,6 +271,7 @@ const bfTimes = {
   4: { day: "Thursday", time: "10:30 AM" },
   5: { day: "Friday", time: "10:45 AM" }
 };
+const M8_AFTERNOON_TIME = "1:35 PM"; // generic afternoon time hint
 
 function renderBFList() {
   const ul = document.getElementById('bfTimesList');
@@ -267,7 +283,7 @@ function renderBFList() {
 }
 renderBFList();
 
-// CPI dates starting September 2025
+// CPI dates (remaining 2025)
 const cpiSchedule = [
   "September 11, 2025",
   "October 15, 2025",
@@ -285,7 +301,7 @@ function renderCPISchedule() {
 }
 renderCPISchedule();
 
-// Fed Day dates
+// Fed Day dates (remaining 2025)
 const fedSchedule = [
   "September 17, 2025",
   "October 29, 2025",
@@ -302,8 +318,11 @@ function renderFedSchedule() {
 }
 renderFedSchedule();
 
-// Quarterly OPEX dates
+// Quarterly OPEX (SPX) — 2025 quarterlies
 const opexSchedule = [
+  "March 21, 2025",
+  "June 20, 2025",
+  "September 19, 2025",
   "December 19, 2025"
 ];
 function renderOpexSchedule() {
@@ -317,7 +336,53 @@ function renderOpexSchedule() {
 }
 renderOpexSchedule();
 
-// Cross-out helpers
+// Monthly OPEX (non-quarterly) — 2025 typical expirations excluding Mar/Jun/Sep/Dec
+const monthlyOpexSchedule = [
+  "January 17, 2025",
+  "February 21, 2025",
+  "April 17, 2025",   // Thursday (Good Friday on 18th)
+  "May 16, 2025",
+  "July 18, 2025",
+  "August 15, 2025",
+  "October 17, 2025",
+  "November 21, 2025"
+];
+function renderMonthlyOpex() {
+  const ul = document.getElementById('monthlyOpexSchedule');
+  monthlyOpexSchedule.forEach(date => {
+    const li = document.createElement('li');
+    li.textContent = date;
+    li.setAttribute('data-date', date);
+    ul.appendChild(li);
+  });
+}
+renderMonthlyOpex();
+
+// US Market Holidays — 2025 (observed full-day closures)
+const marketHolidays = [
+  "January 1, 2025",   // New Year's Day
+  "January 20, 2025",  // MLK Day
+  "February 17, 2025", // Presidents' Day
+  "April 18, 2025",    // Good Friday
+  "May 26, 2025",      // Memorial Day
+  "June 19, 2025",     // Juneteenth
+  "July 4, 2025",      // Independence Day
+  "September 1, 2025", // Labor Day
+  "November 27, 2025", // Thanksgiving Day
+  "December 25, 2025"  // Christmas Day
+];
+function renderHolidaySchedule() {
+  const ul = document.getElementById('holidaySchedule');
+  marketHolidays.forEach(date => {
+    const li = document.createElement('li');
+    li.textContent = date;
+    li.setAttribute('data-date', date);
+    ul.appendChild(li);
+  });
+}
+renderHolidaySchedule();
+
+// Cross-out helpers (keeps past dates visible but struck-through)
 function hasPassed(dateStr) {
   const d = new Date(dateStr);
   if (isNaN(d)) return false;
@@ -336,6 +401,8 @@ function refreshCrossedDates() {
   crossOffPastDates('cpiSchedule');
   crossOffPastDates('fedSchedule');
   crossOffPastDates('opexSchedule');
+  crossOffPastDates('monthlyOpexSchedule');
+  crossOffPastDates('holidaySchedule');
 }
 document.addEventListener('DOMContentLoaded', () => {
   refreshCrossedDates();
@@ -358,6 +425,62 @@ function isFedDay() {
 }
 function isOpexDay() {
   return opexSchedule.includes(todayLongUS());
+}
+function isMonthlyOpexDay() {
+  return monthlyOpexSchedule.includes(todayLongUS());
+}
+
+// Trading-day helpers
+function isWeekend(d) {
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
+function isHoliday(d) {
+  const asLong = d.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+  return marketHolidays.includes(asLong);
+}
+function nextTradingDay(d) {
+  const nd = new Date(d);
+  do {
+    nd.setDate(nd.getDate() + 1);
+  } while (isWeekend(nd) || isHoliday(nd));
+  return nd;
+}
+function prevTradingDay(d) {
+  const pd = new Date(d);
+  do {
+    pd.setDate(pd.getDate() - 1);
+  } while (isWeekend(pd) || isHoliday(pd));
+  return pd;
+}
+function isTodayFirstTradingDayAfter(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return false;
+  const after = nextTradingDay(d);
+  const today = new Date();
+  return (
+    after.getFullYear() === today.getFullYear() &&
+    after.getMonth() === today.getMonth() &&
+    after.getDate() === today.getDate()
+  );
+}
+function isPostQuarterlyOpexMonday() {
+  const postAny = opexSchedule.some(isTodayFirstTradingDayAfter);
+  return postAny && new Date().getDay() === 1;
+}
+function isPostMonthlyOpex() {
+  return monthlyOpexSchedule.some(isTodayFirstTradingDayAfter);
+}
+function isPostHoliday() {
+  return marketHolidays.some(isTodayFirstTradingDayAfter);
+}
+
+// EOM detection (last TRADING day of month)
+function isLastTradingDayOfMonth(date = new Date()) {
+  // Walk forward from 'date' until you hit the next trading day.
+  // If that next trading day is in a different month, 'date' is the last trading day.
+  const next = nextTradingDay(date);
+  return next.getMonth() !== date.getMonth();
 }
 
 // On load, reflect CPI-day UI
@@ -383,27 +506,31 @@ function calculateStrategy() {
   const cpiToday = isCpiDay();
   const fedToday = isFedDay();
   const opexToday = isOpexDay();
+  const monthlyOpexToday = isMonthlyOpexDay();
+  const postQuarterlyOpexMonday = isPostQuarterlyOpexMonday();
+  const postMonthlyOpex = isPostMonthlyOpex();
+  const postHoliday = isPostHoliday();
+  const eomTradingDay = isLastTradingDayOfMonth(new Date());
+
+  // show context tags
+  document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
+  document.getElementById('fedTag').style.display = fedToday ? 'inline-block' : 'none';
+  document.getElementById('opexTag').style.display = opexToday ? 'inline-block' : 'none';
+  document.getElementById('postOpexTag').style.display =
+    (postQuarterlyOpexMonday || postMonthlyOpex) ? 'inline-block' : 'none';
+  document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block' : 'none';
+  document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block' : 'none';
+
   const dayOfWeek = new Date().getDay(); // 0=Sun,1=Mon,...,3=Wed
-  const bfTime = bfTimes[dayOfWeek]?.time || "";
+  let m8Time = bfTimes[dayOfWeek]?.time || "";
 
   const openDiff = (isNaN(yOpen) ? NaN : yOpen - today); // ignored on CPI day
   const overnightDrop = yClose - today; // used on CPI + non-CPI
 
-  // UI tags/fields
-  const overnightDropDisplay = document.getElementById('overnightDropDisplay');
+  // UI numbers
+  document.getElementById('overnightDropDisplay').textContent = isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
   const openDiffDisplay = document.getElementById('openDiffDisplay');
-  const cpiTag = document.getElementById('cpiTag');
-  const fedTag = document.getElementById('fedTag');
-  const opexTag = document.getElementById('opexTag');
   const openDiffNote = document.getElementById('openDiffNote');
-
-  overnightDropDisplay.textContent = isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
-  document.getElementById('yesterdayOpen').disabled = cpiToday;
-
-  cpiTag.style.display = cpiToday ? 'inline-block' : 'none';
-  fedTag.style.display = fedToday ? 'inline-block' : 'none';
-  opexTag.style.display = opexToday ? 'inline-block' : 'none';
-
   if (cpiToday) {
     openDiffDisplay.textContent = '—';
     openDiffNote.style.display = 'inline-block';
@@ -433,45 +560,56 @@ function calculateStrategy() {
       recommendation = "Straddle @ 9:32 AM";
       bgColor = "#61f7d6";
     } else {
-      recommendation = `M8 Butterfly — ${bfTime}`;
+      recommendation = `M8 Butterfly — ${m8Time}`;
       bgColor = "#b49aff";
     }
 
-    // Fed-day override: block ONLY M8 Butterfly; allow BvS Butterfly (cross out M8)
+    // Fed-day override: block ONLY M8 Butterfly; allow BvS Butterfly
     if (fedToday && /M8 Butterfly/.test(recommendation)) {
-      const crossed = recommendation.replace(
-        /M8 Butterfly([^<]*)/,
-        '<span style="text-decoration: line-through;">M8 Butterfly$1</span>'
-      );
-      recommendation = `${crossed} → No Trade (Fed day — no M8 butterflies)`;
+      recommendation = "No Trade (Fed day — no M8 butterflies)";
       bgColor = "#eee";
     }
 
-    // Wednesday rule: Wed + NOT Fed + NOT CPI + Straddle -> crossed-out Straddle → M8
+    // Day after market holiday: no M8 butterflies
+    if (postHoliday && /M8 Butterfly/.test(recommendation)) {
+      recommendation = "No Trade (day after market holiday — no M8 butterflies)";
+      bgColor = "#eee";
+    }
+
+    // EOM override: last trading day of month forces Straddle @ 9:32 (EOM Straddle)
+    if (eomTradingDay) {
+      recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
+      bgColor = "#61f7d6";
+    }
+
+    // Wednesday rule: Wed + NOT Fed + NOT CPI + Straddle -> M8 (but do NOT convert on EOM)
     const isWednesday = dayOfWeek === 3;
-    if (isWednesday && !fedToday && !cpiToday && /Straddle/.test(recommendation)) {
-      const crossed = `<span style="text-decoration: line-through;">Straddle @ 9:32 AM</span>`;
-      recommendation = `${crossed} → M8 Butterfly — ${bfTime}`;
+    if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && /Straddle/.test(recommendation)) {
+      recommendation = `M8 Butterfly — ${m8Time}`;
       bgColor = "#b49aff";
+    }
+
+    // Post-OPEX timing hints for M8
+    if (/M8 Butterfly/.test(recommendation)) {
+      if (postQuarterlyOpexMonday) {
+        recommendation = `M8 Butterfly — ${M8_AFTERNOON_TIME} (post-Quarterly OPEX Monday: use afternoon M8)`;
+      } else if (postMonthlyOpex) {
+        recommendation = `M8 Butterfly — ${m8Time} (post-OPEX: use morning M8)`;
+      }
     }
   }
 
-  // Quarterly OPEX override: if Straddle is recommended, cross it and say No Trade
+  // Quarterly OPEX override: if Straddle is recommended, say No Trade
   if (opexToday && /Straddle/.test(recommendation)) {
-    const crossed = `<span style="text-decoration: line-through;">${recommendation}</span>`;
-    recommendation = `${crossed} → No Trade (Quarterly OPEX)`;
+    recommendation = "No Trade (Quarterly OPEX — no Straddles)";
     bgColor = "#eee";
   }
 
   const recBox = document.getElementById("recommendation");
-  recBox.innerHTML = `👉 <span style="font-size: 36px;">${recommendation}</span>`;
+  recBox.innerHTML = `👉 <span style="font-size: 28px;">${recommendation}</span>`;
   recBox.style.backgroundColor = bgColor;
 }
 </script>
 
 </body>
 </html>
-
-
-
-

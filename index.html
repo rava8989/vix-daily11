@@ -260,8 +260,8 @@ flowchart TD
 
     <h3>Additional Trade Signals</h3>
     <ul>
-      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Fridays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>. Otherwise, “BOBF in play”.</li>
-      <li><strong>1PM ATM BF signal:</strong> “1 PM ATM BF in play” only if <em>Overnight VIX is up</em>. Block it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
+      <li><strong>BOBF signal:</strong> No BOBF on <em>Fridays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>. Otherwise, BOBF in play.</li>
+      <li><strong>1PM ATM BF signal:</strong> 1 PM ATM BF in play only if <em>Overnight VIX is up</em>. Skip it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
     </ul>
 
     <h3>Money Management</h3>
@@ -271,13 +271,13 @@ flowchart TD
       <li>All trades are held to <strong>expiration</strong>.</li>
     </ul>
 
-    <h3>Backtest Results (September 1, 2024 → September 1, 2025)</h3>
+    <h3>Backtest Results (September 1, 2024 → October 1, 2025)</h3>
     <ul>
-      <li><strong>Teal Days (Straddle):</strong> +$63K</li>
-      <li><strong>Purple Days (M8 Butterfly):</strong> +$84K</li>
-      <li><strong>Yellow Days (BvS Butterfly):</strong> +$19K</li>
-      <li><strong>Total P/L:</strong> ~<strong>$166K</strong> in a year.</li>
-      <li><em>Only one trade is allowed per day. Some days may have no trade if conditions aren’t met.</em></li>
+      <li><strong>Hybrid:</strong> +$169K</li>
+      <li><strong>BOBF:</strong> +$33K</li>
+      <li><strong>1pm ATM BF:</strong> +$38K</li>
+      <li><strong>Total P/L:</strong> ~<strong>$240K</strong> </li>
+      
     </ul>
 
     <div class="divider">⸻</div>
@@ -667,3 +667,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

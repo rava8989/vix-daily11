@@ -76,6 +76,16 @@
 
     /* Crossed-out past dates in schedules */
     .crossed { text-decoration: line-through; color: #999; }
+
+    /* Secondary signals UI */
+    .sub-signal {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      box-shadow: 0 0 3px rgba(0,0,0,0.05);
+    }
   </style>
 </head>
 <body>
@@ -107,6 +117,10 @@
   <!-- Market Holidays -->
   <h2>Market Holidays</h2>
   <ul id="holidaySchedule"></ul>
+
+  <!-- VIX Expiration -->
+  <h2>VIX Expiration</h2>
+  <ul id="vixExpirySchedule"></ul>
 </div>
 
 <div class="main">
@@ -147,6 +161,12 @@
     <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
   </div>
   <div id="recommendation"></div>
+
+  <!-- Secondary signals -->
+  <div id="secondarySignals" style="max-width:880px;margin:10px auto 0 auto;text-align:left;">
+    <div id="bobfSignal" class="sub-signal"></div>
+    <div id="atm1pmSignal" class="sub-signal" style="margin-top:6px;"></div>
+  </div>
 
   <div class="flowchart">
     <div class="mermaid">
@@ -227,15 +247,19 @@ flowchart TD
 
       <li><strong>Wednesdays (non-Fed, non-CPI):</strong> <strong>NO Straddle</strong> take <strong>M8 Butterfly</strong> instead.</li>
 
-      <li><strong>Quarterly OPEX:</strong> <strong>No Straddle</strong> <em>Post-OPEX Monday:</em> if Purple Day signal, use <strong>afternoon M8</strong>. <em>After other OPEX:</em> if Purple Day signal, use <strong>morning M8</strong>.</li>
+      <li><strong>Quarterly OPEX:</strong> <strong>No Straddle</strong>. <em>Post-OPEX Monday:</em> if Purple Day signal, use <strong>afternoon M8</strong>. <em>After other OPEX:</em> if Purple Day signal, use <strong>morning M8</strong>.</li>
 
       <li><strong>Day After Market Holiday:</strong> <strong>No M8 Butterflies</strong>.</li>
 
       <li><strong>End-of-Month (EOM):</strong> <strong>Automatic Straddle @ 9:32 AM</strong> (“EOM Straddle”).</li>
 
       <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
+    </ul>
 
-      <li><em>Teal Days:</em> If the Straddle hasn’t triggered by <strong>1:30 PM</strong> due to high VIX, cancel the order (expected behavior).</li>
+    <h3>Additional Trade Signals</h3>
+    <ul>
+      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>. Otherwise, “BOBF in play”.</li>
+      <li><strong>1PM ATM BF signal:</strong> “1PM ATM BF in play” only if <em>Overnight VIX is up</em> (yesterday close − today open &lt; 0). Block it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
     </ul>
 
     <h3>Money Management</h3>
@@ -267,7 +291,7 @@ flowchart TD
 const bfTimes = {
   1: { day: "Monday", time: "9:35 AM" },
   2: { day: "Tuesday", time: "10:50 AM" },
-  3: { day: "Wednesday", time: "13:35 PM" },
+  3: { day: "Wednesday", time: "13:35 PM" }, // keep as you last set it
   4: { day: "Thursday", time: "10:35 AM" },
   5: { day: "Friday", time: "10:55 AM" }
 };
@@ -283,7 +307,7 @@ function renderBFList() {
 }
 renderBFList();
 
-// CPI dates (remaining 2025)
+// CPI dates (remaining 2025) — using your latest list
 const cpiSchedule = [
   "September 11, 2025",
   "October 24, 2025",
@@ -382,6 +406,23 @@ function renderHolidaySchedule() {
 }
 renderHolidaySchedule();
 
+// VIX monthly option expirations — remaining 2025
+const vixExpirySchedule = [
+  "October 22, 2025",
+  "November 19, 2025",
+  "December 17, 2025"
+];
+function renderVixExpiry() {
+  const ul = document.getElementById('vixExpirySchedule');
+  vixExpirySchedule.forEach(date => {
+    const li = document.createElement('li');
+    li.textContent = date;
+    li.setAttribute('data-date', date);
+    ul.appendChild(li);
+  });
+}
+renderVixExpiry();
+
 // Cross-out helpers (keeps past dates visible but struck-through)
 function hasPassed(dateStr) {
   const d = new Date(dateStr);
@@ -403,6 +444,7 @@ function refreshCrossedDates() {
   crossOffPastDates('opexSchedule');
   crossOffPastDates('monthlyOpexSchedule');
   crossOffPastDates('holidaySchedule');
+  crossOffPastDates('vixExpirySchedule');
 }
 document.addEventListener('DOMContentLoaded', () => {
   refreshCrossedDates();
@@ -428,6 +470,9 @@ function isOpexDay() {
 }
 function isMonthlyOpexDay() {
   return monthlyOpexSchedule.includes(todayLongUS());
+}
+function isVixExpiryDay() {
+  return vixExpirySchedule.includes(todayLongUS());
 }
 
 // Trading-day helpers
@@ -477,8 +522,6 @@ function isPostHoliday() {
 
 // EOM detection (last TRADING day of month)
 function isLastTradingDayOfMonth(date = new Date()) {
-  // Walk forward from 'date' until you hit the next trading day.
-  // If that next trading day is in a different month, 'date' is the last trading day.
   const next = nextTradingDay(date);
   return next.getMonth() !== date.getMonth();
 }
@@ -511,6 +554,8 @@ function calculateStrategy() {
   const postMonthlyOpex = isPostMonthlyOpex();
   const postHoliday = isPostHoliday();
   const eomTradingDay = isLastTradingDayOfMonth(new Date());
+  const isMonday = new Date().getDay() === 1;
+  const vixExpiryToday = isVixExpiryDay();
 
   // show context tags
   document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
@@ -564,7 +609,7 @@ function calculateStrategy() {
       bgColor = "#b49aff";
     }
 
-    // Fed-day override: block ONLY M8 Butterfly; allow BvS Butterfly
+    // Fed-day override: block ONLY M8 Butterfly; allow Straddle and BvS
     if (fedToday && /M8 Butterfly/.test(recommendation)) {
       recommendation = "No Trade (Fed day — no M8 butterflies)";
       bgColor = "#eee";
@@ -608,11 +653,37 @@ function calculateStrategy() {
   const recBox = document.getElementById("recommendation");
   recBox.innerHTML = `👉 <span style="font-size: 28px;">${recommendation}</span>`;
   recBox.style.backgroundColor = bgColor;
+
+  // ---------- Secondary signals ----------
+  const bobfEl = document.getElementById("bobfSignal");
+  const atm1pmEl = document.getElementById("atm1pmSignal");
+
+  // BOBF rules: No BOBF on Mondays, on VIX expiration days, or on EOM trading day
+  let bobfText = "BOBF in play";
+  if (isMonday) {
+    bobfText = "No BOBF (Monday)";
+  } else if (vixExpiryToday) {
+    bobfText = "No BOBF (VIX expiration)";
+  } else if (eomTradingDay) {
+    bobfText = "No BOBF (EOM)";
+  }
+  bobfEl.textContent = `BOBF: ${bobfText}`;
+
+  // 1PM ATM BF rules: only when Overnight VIX is up (overnightDrop < 0)
+  // Block on Mondays, VIX expiration, EOM
+  let atmText = "1PM ATM BF in play";
+  if (!(overnightDrop < 0)) {
+    atmText = "No 1PM ATM BF (needs overnight VIX up)";
+  } else if (isMonday) {
+    atmText = "No 1PM ATM BF (Monday)";
+  } else if (vixExpiryToday) {
+    atmText = "No 1PM ATM BF (VIX expiration)";
+  } else if (eomTradingDay) {
+    atmText = "No 1PM ATM BF (EOM)";
+  }
+  atm1pmEl.textContent = atmText;
 }
 </script>
 
 </body>
 </html>
-
-
-

@@ -40,10 +40,22 @@
     input { width: 100%; margin-top: 5px; margin-bottom: 10px; }
     input:disabled { opacity: 0.6; cursor: not-allowed; }
     button { width: 100%; padding: 8px; margin-top: 10px; }
-    #recommendation {
-      margin: 20px auto; font-size: 32px; font-weight: bold; color: #333;
-      padding: 15px; max-width: 880px; border-radius: 8px; box-shadow: 0 0 5px #ccc;
+
+    /* Unified recommendation block */
+    #recBlock {
+      margin: 20px auto;
+      padding: 15px;
+      max-width: 880px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ccc;
+      color: #333;
+      text-align: left;
+      line-height: 1.35;
+      font-size: 18px;
     }
+    #recBlock .row { margin: 6px 0; }
+    #recBlock .mainline { font-size: 28px; font-weight: bold; }
+
     .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
     .tag {
       display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px;
@@ -76,16 +88,6 @@
 
     /* Crossed-out past dates in schedules */
     .crossed { text-decoration: line-through; color: #999; }
-
-    /* Secondary signals UI */
-    .sub-signal {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 14px;
-      box-shadow: 0 0 3px rgba(0,0,0,0.05);
-    }
   </style>
 </head>
 <body>
@@ -160,12 +162,12 @@
   <div style="text-align: right;">
     <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
   </div>
-  <div id="recommendation"></div>
 
-  <!-- Secondary signals -->
-  <div id="secondarySignals" style="max-width:880px;margin:10px auto 0 auto;text-align:left;">
-    <div id="bobfSignal" class="sub-signal"></div>
-    <div id="atm1pmSignal" class="sub-signal" style="margin-top:6px;"></div>
+  <!-- Unified recommendation + sub-signals block -->
+  <div id="recBlock">
+    <div class="row mainline" id="mainRec">👉 —</div>
+    <div class="row" id="atm1pmLine">—</div>
+    <div class="row" id="bobfLine">—</div>
   </div>
 
   <div class="flowchart">
@@ -258,8 +260,8 @@ flowchart TD
 
     <h3>Additional Trade Signals</h3>
     <ul>
-      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>. Otherwise, “BOBF in play”.</li>
-      <li><strong>1PM ATM BF signal:</strong> “1PM ATM BF in play” only if <em>Overnight VIX is up</em> (yesterday close − today open &lt; 0). Block it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
+      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Fridays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>. Otherwise, “BOBF in play”.</li>
+      <li><strong>1PM ATM BF signal:</strong> “1 PM ATM BF in play” only if <em>Overnight VIX is up</em>. Block it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
     </ul>
 
     <h3>Money Management</h3>
@@ -291,7 +293,7 @@ flowchart TD
 const bfTimes = {
   1: { day: "Monday", time: "9:35 AM" },
   2: { day: "Tuesday", time: "10:50 AM" },
-  3: { day: "Wednesday", time: "13:35 PM" }, // keep as you last set it
+  3: { day: "Wednesday", time: "13:35 PM" }, // per your latest
   4: { day: "Thursday", time: "10:35 AM" },
   5: { day: "Friday", time: "10:55 AM" }
 };
@@ -307,7 +309,7 @@ function renderBFList() {
 }
 renderBFList();
 
-// CPI dates (remaining 2025) — using your latest list
+// CPI dates (remaining 2025)
 const cpiSchedule = [
   "September 11, 2025",
   "October 24, 2025",
@@ -459,43 +461,26 @@ document.addEventListener('DOMContentLoaded', () => {
 function todayLongUS() {
   return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
-function isCpiDay() {
-  return cpiSchedule.includes(todayLongUS());
-}
-function isFedDay() {
-  return fedSchedule.includes(todayLongUS());
-}
-function isOpexDay() {
-  return opexSchedule.includes(todayLongUS());
-}
-function isMonthlyOpexDay() {
-  return monthlyOpexSchedule.includes(todayLongUS());
-}
-function isVixExpiryDay() {
-  return vixExpirySchedule.includes(todayLongUS());
-}
+function isCpiDay() { return cpiSchedule.includes(todayLongUS()); }
+function isFedDay() { return fedSchedule.includes(todayLongUS()); }
+function isOpexDay() { return opexSchedule.includes(todayLongUS()); }
+function isMonthlyOpexDay() { return monthlyOpexSchedule.includes(todayLongUS()); }
+function isVixExpiryDay() { return vixExpirySchedule.includes(todayLongUS()); }
 
 // Trading-day helpers
-function isWeekend(d) {
-  const day = d.getDay();
-  return day === 0 || day === 6;
-}
+function isWeekend(d) { const day = d.getDay(); return day === 0 || day === 6; }
 function isHoliday(d) {
   const asLong = d.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
   return marketHolidays.includes(asLong);
 }
 function nextTradingDay(d) {
   const nd = new Date(d);
-  do {
-    nd.setDate(nd.getDate() + 1);
-  } while (isWeekend(nd) || isHoliday(nd));
+  do { nd.setDate(nd.getDate() + 1); } while (isWeekend(nd) || isHoliday(nd));
   return nd;
 }
 function prevTradingDay(d) {
   const pd = new Date(d);
-  do {
-    pd.setDate(pd.getDate() - 1);
-  } while (isWeekend(pd) || isHoliday(pd));
+  do { pd.setDate(pd.getDate() - 1); } while (isWeekend(pd) || isHoliday(pd));
   return pd;
 }
 function isTodayFirstTradingDayAfter(dateStr) {
@@ -503,22 +488,16 @@ function isTodayFirstTradingDayAfter(dateStr) {
   if (isNaN(d)) return false;
   const after = nextTradingDay(d);
   const today = new Date();
-  return (
-    after.getFullYear() === today.getFullYear() &&
-    after.getMonth() === today.getMonth() &&
-    after.getDate() === today.getDate()
-  );
+  return after.getFullYear() === today.getFullYear()
+      && after.getMonth() === today.getMonth()
+      && after.getDate() === today.getDate();
 }
 function isPostQuarterlyOpexMonday() {
   const postAny = opexSchedule.some(isTodayFirstTradingDayAfter);
   return postAny && new Date().getDay() === 1;
 }
-function isPostMonthlyOpex() {
-  return monthlyOpexSchedule.some(isTodayFirstTradingDayAfter);
-}
-function isPostHoliday() {
-  return marketHolidays.some(isTodayFirstTradingDayAfter);
-}
+function isPostMonthlyOpex() { return monthlyOpexSchedule.some(isTodayFirstTradingDayAfter); }
+function isPostHoliday() { return marketHolidays.some(isTodayFirstTradingDayAfter); }
 
 // EOM detection (last TRADING day of month)
 function isLastTradingDayOfMonth(date = new Date()) {
@@ -555,9 +534,10 @@ function calculateStrategy() {
   const postHoliday = isPostHoliday();
   const eomTradingDay = isLastTradingDayOfMonth(new Date());
   const isMonday = new Date().getDay() === 1;
+  const isFriday = new Date().getDay() === 5;
   const vixExpiryToday = isVixExpiryDay();
 
-  // show context tags
+  // context tags
   document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
   document.getElementById('fedTag').style.display = fedToday ? 'inline-block' : 'none';
   document.getElementById('opexTag').style.display = opexToday ? 'inline-block' : 'none';
@@ -573,7 +553,8 @@ function calculateStrategy() {
   const overnightDrop = yClose - today; // used on CPI + non-CPI
 
   // UI numbers
-  document.getElementById('overnightDropDisplay').textContent = isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
+  document.getElementById('overnightDropDisplay').textContent =
+    isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
   const openDiffDisplay = document.getElementById('openDiffDisplay');
   const openDiffNote = document.getElementById('openDiffNote');
   if (cpiToday) {
@@ -588,7 +569,6 @@ function calculateStrategy() {
   let bgColor = "#eee";
 
   if (cpiToday) {
-    // CPI: use Yesterday’s Close − Today’s Open only
     if (overnightDrop < 0) {
       recommendation = "No Trade (CPI day)";
       bgColor = "#eee";
@@ -609,7 +589,7 @@ function calculateStrategy() {
       bgColor = "#b49aff";
     }
 
-    // Fed-day override: block ONLY M8 Butterfly; allow Straddle and BvS
+    // Fed-day: block ONLY M8 Butterfly; allow Straddle/BvS
     if (fedToday && /M8 Butterfly/.test(recommendation)) {
       recommendation = "No Trade (Fed day — no M8 butterflies)";
       bgColor = "#eee";
@@ -621,13 +601,13 @@ function calculateStrategy() {
       bgColor = "#eee";
     }
 
-    // EOM override: last trading day of month forces Straddle @ 9:32 (EOM Straddle)
+    // EOM override
     if (eomTradingDay) {
       recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
       bgColor = "#61f7d6";
     }
 
-    // Wednesday rule: Wed + NOT Fed + NOT CPI + Straddle -> M8 (but do NOT convert on EOM)
+    // Wednesday rule (not on CPI/Fed/EOM)
     const isWednesday = dayOfWeek === 3;
     if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && /Straddle/.test(recommendation)) {
       recommendation = `M8 Butterfly — ${m8Time}`;
@@ -644,44 +624,44 @@ function calculateStrategy() {
     }
   }
 
-  // Quarterly OPEX override: if Straddle is recommended, say No Trade
+  // Quarterly OPEX override: block Straddle
   if (opexToday && /Straddle/.test(recommendation)) {
     recommendation = "No Trade (Quarterly OPEX — no Straddles)";
     bgColor = "#eee";
   }
 
-  const recBox = document.getElementById("recommendation");
-  recBox.innerHTML = `👉 <span style="font-size: 28px;">${recommendation}</span>`;
-  recBox.style.backgroundColor = bgColor;
+  // ---------- Unified block rendering ----------
+  const recBlock = document.getElementById("recBlock");
+  const mainRec = document.getElementById("mainRec");
+  const atm1pmLine = document.getElementById("atm1pmLine");
+  const bobfLine = document.getElementById("bobfLine");
 
-  // ---------- Secondary signals ----------
-  const bobfEl = document.getElementById("bobfSignal");
-  const atm1pmEl = document.getElementById("atm1pmSignal");
+  mainRec.innerHTML = `👉 ${recommendation}`;
+  recBlock.style.backgroundColor = bgColor;
 
-  // BOBF rules: No BOBF on Mondays, on VIX expiration days, or on EOM trading day
+  // 1 PM ATM BF signal: overnight VIX must be up (overnightDrop < 0); block on Monday, VIX expiry, EOM
+  let atmText = "1 PM ATM BF in play";
+  if (!(overnightDrop < 0)) {
+    atmText = "No 1 PM ATM BF";
+  } else if (isMonday) {
+    atmText = "No 1 PM ATM BF (Monday)";
+  } else if (vixExpiryToday) {
+    atmText = "No 1 PM ATM BF (VIX expiration)";
+  } else if (eomTradingDay) {
+    atmText = "No 1 PM ATM BF (EOM)";
+  }
+  atm1pmLine.textContent = atmText;
+
+  // BOBF signal: block on Fridays, VIX expiration, EOM (Mondays allowed per your change)
   let bobfText = "BOBF in play";
-  if (isMonday) {
-    bobfText = "No BOBF (Monday)";
+  if (isFriday) {
+    bobfText = "No BOBF (Friday)";
   } else if (vixExpiryToday) {
     bobfText = "No BOBF (VIX expiration)";
   } else if (eomTradingDay) {
     bobfText = "No BOBF (EOM)";
   }
-  bobfEl.textContent = `BOBF: ${bobfText}`;
-
-  // 1PM ATM BF rules: only when Overnight VIX is up (overnightDrop < 0)
-  // Block on Mondays, VIX expiration, EOM
-  let atmText = "1PM ATM BF in play";
-  if (!(overnightDrop < 0)) {
-    atmText = "No 1PM ATM BF (needs overnight VIX up)";
-  } else if (isMonday) {
-    atmText = "No 1PM ATM BF (Monday)";
-  } else if (vixExpiryToday) {
-    atmText = "No 1PM ATM BF (VIX expiration)";
-  } else if (eomTradingDay) {
-    atmText = "No 1PM ATM BF (EOM)";
-  }
-  atm1pmEl.textContent = atmText;
+  bobfLine.textContent = bobfText;
 }
 </script>
 

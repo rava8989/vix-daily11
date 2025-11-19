@@ -538,13 +538,13 @@ function calculateStrategy() {
   const vixExpiryToday = isVixExpiryDay();
 
   // context tags
-  document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
-  document.getElementById('fedTag').style.display = fedToday ? 'inline-block' : 'none';
-  document.getElementById('opexTag').style.display = opexToday ? 'inline-block' : 'none';
+  document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block': 'none';
+  document.getElementById('fedTag').style.display = fedToday ? 'inline-block': 'none';
+  document.getElementById('opexTag').style.display = opexToday ? 'inline-block': 'none';
   document.getElementById('postOpexTag').style.display =
-    (postQuarterlyOpexMonday || postMonthlyOpex) ? 'inline-block' : 'none';
-  document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block' : 'none';
-  document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block' : 'none';
+    (postQuarterlyOpexMonday || postMonthlyOpex) ? 'inline-block': 'none';
+  document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block': 'none';
+  document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block': 'none';
 
   const dayOfWeek = new Date().getDay(); // 0=Sun,1=Mon,...,3=Wed
   let m8Time = bfTimes[dayOfWeek]?.time || "";
@@ -562,7 +562,7 @@ function calculateStrategy() {
     openDiffNote.style.display = 'inline-block';
   } else {
     openDiffNote.style.display = 'none';
-    openDiffDisplay.textContent = isNaN(openDiff) ? '—' : openDiff.toFixed(2);
+    openDiffDisplay.textContent = isNaN(openDiff) ? '—': openDiff.toFixed(2);
   }
 
   let recommendation = "";
@@ -579,7 +579,7 @@ function calculateStrategy() {
   } else {
     // BASE non-CPI logic
     if (overnightDrop > 0.65 && openDiff < 1.4) {
-      recommendation = "GEX Butterfly(BXBF) @ 9:36 AM";
+      recommendation = "GEX Butterfly(GXBF) @ 9:36 AM";
       bgColor = "#fff399";
     } else if (overnightDrop >= 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
       recommendation = "Straddle @ 9:32 AM";
@@ -667,6 +667,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

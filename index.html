@@ -171,26 +171,28 @@
   </div>
 
   <div class="flowchart">
-    <div class="mermaid">
+   <div class="mermaid">
 flowchart TD
-    A[SPX overnight gap UP/DOWN &lt; 0.9%?]
-    A -->|No| B1[M8 Butterfly]
-    A -->|Yes| C[Yesterday's VIX open - Today's VIX open &lt; 1.4?]
-    C -->|No| B2[M8 Butterfly]
-    C -->|Yes| D[Overnight VIX drop &gt; 0.65?]
-    D -->|Yes| E[Gex Butterfly(GXBF) @ 9:36 AM]
-    D -->|No| F[Overnight VIX drop 0.01–0.65?]
-    F -->|Yes| G[Straddle @ 9:32 AM]
-    F -->|No| B3[M8 Butterfly]
+    A["SPX overnight gap UP/DOWN < 0.9%?"]
+    A -->|No| B1["M8 Butterfly"]
+    A -->|Yes| C["Yesterday's VIX open - Today's VIX open < 1.4?"]
+    C -->|No| B2["M8 Butterfly"]
+    C -->|Yes| D["Overnight VIX drop > 0.65?"]
+    D -->|Yes| E["Gex Butterfly (GXBF) @ 9:36 AM"]
+    D -->|No| F["Overnight VIX drop 0.01-0.65?"]
+    F -->|Yes| G["Straddle @ 9:32 AM"]
+    F -->|No| B3["M8 Butterfly"]
 
-    class B1,B2,B3 butterfly
-    class E atm
-    class G straddle
+    classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px;
+    classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px;
+    classDef atm fill:#fff399,stroke:#333,stroke-width:1px;
 
-    classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px
-    classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px
-    classDef atm fill:#fff399,stroke:#333,stroke-width:1px
-    </div>
+    class B1 butterfly;
+    class B2 butterfly;
+    class B3 butterfly;
+    class G straddle;
+    class E atm;
+</div>
   </div>
 
   <!-- Bottom strategy documentation -->
@@ -671,3 +673,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

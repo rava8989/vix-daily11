@@ -178,7 +178,7 @@ flowchart TD
     A -->|Yes| C[Yesterday's VIX open - Today's VIX open &lt; 1.4?]
     C -->|No| B2[M8 Butterfly]
     C -->|Yes| D[Overnight VIX drop &gt; 0.65?]
-    D -->|Yes| E[BvS Butterfly @ 9:36 AM]
+    D -->|Yes| E[Gex Butterfly(GXBF) @ 9:36 AM]
     D -->|No| F[Overnight VIX drop 0.01–0.65?]
     F -->|Yes| G[Straddle @ 9:32 AM]
     F -->|No| B3[M8 Butterfly]
@@ -211,7 +211,7 @@ flowchart TD
         <li>I’ll try my best to update the best entry times weekly on my webpage.</li>
       </ul>
 
-      <h3>Yellow Days — BvS Butterfly</h3>
+      <h3>Yellow Days — Gex Butterfly(GXBF)</h3>
       <ul>
         <li>Traded at <strong>9:36 AM</strong>, centered around a major positive gamma value taken from <strong>9:35 AM gex-bot-stream</strong> feed.</li>
       </ul>
@@ -233,7 +233,7 @@ flowchart TD
       </li>
 
       <li><strong>Overnight VIX drop:</strong> (Yesterday’s VIX close @ 4:15 PM − today’s VIX open @ 9:30 AM)<br/>
-        • If <strong>&gt; 0.65</strong> → <strong>Yellow Day (BvS Butterfly @ 9:36 AM)</strong>.<br/>
+        • If <strong>&gt; 0.65</strong> → <strong>Yellow Day (Gex Butterfly(GXBF) @ 9:36 AM)</strong>.<br/>
         • If <strong>0.01–0.65</strong> → <strong>Teal Day (Straddle @ 9:32 AM)</strong>.<br/>
         • If none of the above → <strong>Purple Day</strong>.
       </li>
@@ -245,7 +245,7 @@ flowchart TD
         • If zero/positive → <strong>Straddle @ 9:32 AM</strong>.
       </li>
 
-      <li><strong>Fed days:</strong> <strong>No M8 Butterfly,</strong> <strong>Straddle and</strong> <em>BvS Butterfly is allowed.</em></li>
+      <li><strong>Fed days:</strong> <strong>No M8 Butterfly,</strong> <strong>Straddle and</strong> <em>GEX Butterfly(GXBF) is allowed.</em></li>
 
       <li><strong>Wednesdays (non-Fed, non-CPI):</strong> <strong>NO Straddle</strong> take <strong>M8 Butterfly</strong> instead.</li>
 
@@ -579,7 +579,7 @@ function calculateStrategy() {
   } else {
     // BASE non-CPI logic
     if (overnightDrop > 0.65 && openDiff < 1.4) {
-      recommendation = "BvS Butterfly @ 9:36 AM";
+      recommendation = "GEX Butterfly(BXBF) @ 9:36 AM";
       bgColor = "#fff399";
     } else if (overnightDrop >= 0.01 && overnightDrop < 0.65 && openDiff < 1.4) {
       recommendation = "Straddle @ 9:32 AM";
@@ -589,7 +589,7 @@ function calculateStrategy() {
       bgColor = "#b49aff";
     }
 
-    // Fed-day: block ONLY M8 Butterfly; allow Straddle/BvS
+    // Fed-day: block ONLY M8 Butterfly; allow Straddle/GEX
     if (fedToday && /M8 Butterfly/.test(recommendation)) {
       recommendation = "No Trade (Fed day — no M8 butterflies)";
       bgColor = "#eee";
@@ -667,6 +667,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

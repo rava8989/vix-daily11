@@ -173,17 +173,17 @@
   <div class="flowchart">
     <div class="mermaid">
 flowchart TD
-    A[SPX overnight gap UP/DOWN < `0.9%`?]
+    A[SPX overnight gap under 0.9 percent] 
     A -->|No| B1[M8 Butterfly]
-    A -->|Yes| D[Overnight VIX drop > `0.65`?]
+    A -->|Yes| D[VIX drop over 0.65]
 
-    D -->|Yes| E[Gex Butterfly(GXBF) @ 9:36 AM]
-    D -->|No| C[Yesterday's VIX open - Today's VIX open > `1.4`?]
+    D -->|Yes| E[GXBF at 9 36 AM]
+    D -->|No| C[VIX open to open over 1.4]
 
     C -->|Yes| B2[M8 Butterfly]
-    C -->|No| F[Overnight VIX drop `0.01–0.65`?]
+    C -->|No| F[VIX drop between 0.01 and 0.65]
 
-    F -->|Yes| G[Straddle @ 9:32 AM]
+    F -->|Yes| G[Straddle at 9 32 AM]
     F -->|No| B3[M8 Butterfly]
 
     class B1,B2,B3 butterfly
@@ -677,6 +677,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

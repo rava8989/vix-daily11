@@ -230,15 +230,17 @@ flowchart TD
         • If the gap is <strong>&lt; 0.9%</strong>, continue:
       </li>
 
-      <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open − today’s VIX open.<br/>
-        • If this value is <strong>&gt; 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
-        • Otherwise, continue:
-      </li>
+  
 
       <li><strong>Overnight VIX drop:</strong> (Yesterday’s VIX close @ 4:15 PM − today’s VIX open @ 9:30 AM)<br/>
         • If <strong>&gt; 0.65</strong> → <strong>Yellow Day (Gex Butterfly @ 9:36 AM)</strong>.<br/>
         • If <strong>0.01–0.65</strong> → <strong>Teal Day (Straddle @ 9:32 AM)</strong>.<br/>
         • If none of the above → <strong>Purple Day</strong>.
+      </li>
+    
+      <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open − today’s VIX open.<br/>
+        • If this value is <strong>&gt; 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
+        • Otherwise, continue:
       </li>
     </ul>
 
@@ -677,6 +679,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

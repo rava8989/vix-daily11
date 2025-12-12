@@ -651,10 +651,13 @@ function calculateStrategy() {
   mainRec.innerHTML = `👉 ${recommendation}`;
   recBlock.style.backgroundColor = bgColor;
 
-  // 1 PM ATM BF signal: overnight VIX must be up (overnightDrop < 0); block on Monday, VIX expiry, EOM
+    // 1 PM ATM BF signal: overnight VIX must be up (overnightDrop < 0); block on Monday, VIX expiry, EOM
+  // NEW: also block if VIX Today’s Open < 16
   let atmText = "1 PM ATM BF in play";
   if (!(overnightDrop < 0)) {
     atmText = "No 1 PM ATM BF";
+  } else if (today < 16) {
+    atmText = "No 1 PM ATM BF (low VIX)";
   } else if (isMonday) {
     atmText = "No 1 PM ATM BF (Monday)";
   } else if (vixExpiryToday) {
@@ -679,6 +682,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

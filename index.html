@@ -173,26 +173,21 @@
   <div class="flowchart">
     <div class="mermaid">
 flowchart TD
-    A[SPX overnight gap under 0.9 percent] 
-    A -->|No| B1[M8 Butterfly]
-    A -->|Yes| D[VIX drop over 0.65]
-
-    D -->|Yes| E[GXBF at 9 36 AM]
-    D -->|No| C[VIX open to open over 1.4]
-
-    C -->|Yes| B2[M8 Butterfly]
-    C -->|No| F[VIX drop between 0.01 and 0.65]
-
-    F -->|Yes| G[Straddle at 9 32 AM]
-    F -->|No| B3[M8 Butterfly]
-
-    class B1,B2,B3 butterfly
-    class E atm
-    class G straddle
-
-    classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px
-    classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px
-    classDef atm fill:#fff399,stroke:#333,stroke-width:1px
+A[SPX overnight gap under 0.9 percent]
+A -->|No| B1[M8 Butterfly]
+A -->|Yes| D[VIX drop over 0.65]
+D -->|Yes| E[GXBF at 9 36 AM]
+D -->|No| C[VIX open to open over 1.4]
+C -->|Yes| B2[M8 Butterfly]
+C -->|No| F[VIX drop between 0.01 and 0.65]
+F -->|Yes| G[Straddle at 9 32 AM]
+F -->|No| B3[M8 Butterfly]
+class B1,B2,B3 butterfly
+class E atm
+class G straddle
+classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px
+classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px
+classDef atm fill:#fff399,stroke:#333,stroke-width:1px
     </div>
   </div>
 
@@ -230,14 +225,12 @@ flowchart TD
         • If the gap is <strong>&lt; 0.9%</strong>, continue:
       </li>
 
-  
-
       <li><strong>Overnight VIX drop:</strong> (Yesterday’s VIX close @ 4:15 PM − today’s VIX open @ 9:30 AM)<br/>
         • If <strong>&gt; 0.65</strong> → <strong>Yellow Day (Gex Butterfly @ 9:36 AM)</strong>.<br/>
         • If <strong>0.01–0.65</strong> → <strong>Teal Day (Straddle @ 9:32 AM)</strong>.<br/>
         • If none of the above → <strong>Purple Day</strong>.
       </li>
-    
+
       <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open − today’s VIX open.<br/>
         • If this value is <strong>&gt; 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
         • Otherwise, continue:
@@ -533,7 +526,7 @@ function calculateStrategy() {
   const cpiToday = isCpiDay();
   const fedToday = isFedDay();
   const opexToday = isOpexDay();
-  const monthlyOpexToday = isMonthlyOpexDay();
+  const monthlyOpexToday = isMonthlyOpexDay(); // kept for later rules (not used here)
   const postQuarterlyOpexMonday = isPostQuarterlyOpexMonday();
   const postMonthlyOpex = isPostMonthlyOpex();
   const postHoliday = isPostHoliday();
@@ -574,6 +567,7 @@ function calculateStrategy() {
   let bgColor = "#eee";
 
   if (cpiToday) {
+    // CPI: use Yesterday’s Close − Today’s Open only
     if (overnightDrop < 0) {
       recommendation = "No Trade (CPI day)";
       bgColor = "#eee";
@@ -581,27 +575,23 @@ function calculateStrategy() {
       recommendation = "Straddle @ 9:32 AM (CPI day)";
       bgColor = "#61f7d6";
     }
-    } else {
+  } else {
     // BASE non-CPI logic – GXBF has priority over open-to-open filter
     if (overnightDrop > 0.65) {
-      // Big overnight VIX drop → always GXBF, regardless of openDiff
       recommendation = "Gex Butterfly(GXBF) @ 9:36 AM";
       bgColor = "#fff399";
     } else if (openDiff > 1.4) {
-      // No big drop, but open-to-open VIX up a lot → Purple (M8)
       recommendation = `M8 Butterfly — ${m8Time}`;
       bgColor = "#b49aff";
     } else if (overnightDrop >= 0.01 && overnightDrop < 0.65) {
-      // Small overnight drop and openDiff not extreme → Teal Straddle
       recommendation = "Straddle @ 9:32 AM";
       bgColor = "#61f7d6";
     } else {
-      // Everything else → Purple (M8)
       recommendation = `M8 Butterfly — ${m8Time}`;
       bgColor = "#b49aff";
     }
 
-    // Fed-day: block ONLY M8 Butterfly; allow Straddle/BvS
+    // Fed-day: block ONLY M8 Butterfly; allow Straddle/GXBF
     if (fedToday && /M8 Butterfly/.test(recommendation)) {
       recommendation = "No Trade (Fed day — no M8 butterflies)";
       bgColor = "#eee";
@@ -648,11 +638,25 @@ function calculateStrategy() {
   const atm1pmLine = document.getElementById("atm1pmLine");
   const bobfLine = document.getElementById("bobfLine");
 
-  mainRec.innerHTML = `👉 ${recommendation}`;
+  // Cross-out helpers for the three lines
+  function strikeIfNo(text) {
+    return /^No\b/.test(text)
+      ? `<span style="text-decoration: line-through;">${text}</span>`
+      : text;
+  }
+  function strikeIfNoTradeM8(text) {
+    return (/^No Trade\b/.test(text) && /no M8/i.test(text))
+      ? `<span style="text-decoration: line-through;">${text}</span>`
+      : text;
+  }
+
+  mainRec.innerHTML = `👉 ${strikeIfNoTradeM8(recommendation)}`;
   recBlock.style.backgroundColor = bgColor;
 
-    // 1 PM ATM BF signal: overnight VIX must be up (overnightDrop < 0); block on Monday, VIX expiry, EOM
-  // NEW: also block if VIX Today’s Open < 16
+  // 1 PM ATM BF signal:
+  // - overnight VIX must be up (overnightDrop < 0)
+  // - NEW: if VIX Today’s Open < 16 => No 1 PM ATM BF (low VIX)
+  // - block on Monday, VIX expiry, EOM
   let atmText = "1 PM ATM BF in play";
   if (!(overnightDrop < 0)) {
     atmText = "No 1 PM ATM BF";
@@ -665,9 +669,9 @@ function calculateStrategy() {
   } else if (eomTradingDay) {
     atmText = "No 1 PM ATM BF (EOM)";
   }
-  atm1pmLine.textContent = atmText;
+  atm1pmLine.innerHTML = strikeIfNo(atmText);
 
-  // BOBF signal: block on Fridays, VIX expiration, EOM (Mondays allowed per your change)
+  // BOBF signal: block on Fridays, VIX expiration, EOM
   let bobfText = "BOBF in play";
   if (isFriday) {
     bobfText = "No BOBF (Friday)";
@@ -676,18 +680,9 @@ function calculateStrategy() {
   } else if (eomTradingDay) {
     bobfText = "No BOBF (EOM)";
   }
-  bobfLine.textContent = bobfText;
+  bobfLine.innerHTML = strikeIfNo(bobfText);
 }
 </script>
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-

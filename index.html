@@ -265,8 +265,8 @@ flowchart TD
 
     <h3>Additional Trade Signals</h3>
     <ul>
-      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Fridays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>. Otherwise, “BOBF in play”.</li>
-      <li><strong>1PM ATM BF signal:</strong> “1 PM ATM BF in play” only if <em>Overnight VIX is up</em>. Block it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
+      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Fridays</em>, on <em>VIX monthly expiration</em> days, Max VIX 23, Min VIX 15, otherwise, “BOBF in play”.</li>
+      <li><strong>1PM ATM BF signal:</strong> “1 PM ATM BF in play” only if <em>Overnight VIX is up</em>. Skip it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, and on the <em>last trading day of the month</em>.</li>
     </ul>
 
     <h3>Money Management</h3>
@@ -679,6 +679,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

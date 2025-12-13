@@ -255,10 +255,17 @@ flowchart TD
     </ul>
 
     <h3>Additional Trade Signals</h3>
-    <ul>
-      <li><strong>BOBF signal:</strong> “No BOBF” on <em>Fridays</em>, on <em>VIX monthly expiration</em> days, on <em>EOM-2</em>, <em>EOM-1</em>, and on <em>OPEX-1</em>. Also only when VIX Today’s Open is between <em>15</em> and <em>23</em>.</li>
-      <li><strong>1PM BF signal:</strong> “1PM BF in play” only if <em>Overnight VIX is up</em>. Skip it on <em>Mondays</em>, on <em>VIX monthly expiration</em> days, on <em>EOM</em> and <em>EOM-1</em>, and if <em>VIX Today’s Open</em> is below <em>16</em>.</li>
-    </ul>
+<ul>
+  <li><strong>BOBF rules:</strong>
+    Skip <em>Fridays</em>, <em>monthly VIX expiration</em> days, <em>OPEX-1</em>,
+    and <em>EOM-2 / EOM-1</em>. Also require <em>VIX between 15 and 23</em>.
+  </li>
+  <li><strong>1PM BF rules:</strong>
+    Skip <em>Mondays</em>, trade only on <em>overnight VIX up</em> days,
+    skip <em>monthly VIX expiration</em> days, skip <em>EOM and EOM-1</em>,
+    skip if <em>VIX open &lt; 16</em>. Max risk <em>$1,400</em>.
+  </li>
+</ul>
 
     <h3>Money Management</h3>
     <ul>
@@ -267,12 +274,8 @@ flowchart TD
       <li>All trades are held to <strong>expiration</strong>.</li>
     </ul>
 
-    <h3>Backtest Results (September 1, 2024 → September 1, 2025)</h3>
+   
     <ul>
-      <li><strong>Teal Days (Straddle):</strong> +$63K</li>
-      <li><strong>Purple Days (M8 Butterfly):</strong> +$84K</li>
-      <li><strong>Yellow Days (GXBF):</strong> +$19K</li>
-      <li><strong>Total P/L:</strong> ~<strong>$166K</strong> in a year.</li>
       <li><em>Only one trade is allowed per day. Some days may have no trade if conditions aren’t met.</em></li>
     </ul>
 
@@ -718,3 +721,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

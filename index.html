@@ -527,7 +527,7 @@ function calculateStrategy() {
   if (cpiToday) {
     // CPI: Yesterday Close − Today Open only
     if (overnightDrop < 0) {
-      recommendation = "No Trade (CPI day)";
+      recommendation = "No M8BF (CPI day)";
       bgColor = "#eee";
       isNoTrade = true;
     } else {
@@ -656,3 +656,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

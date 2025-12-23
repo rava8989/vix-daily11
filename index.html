@@ -521,17 +521,19 @@ function calculateStrategy() {
   let crossedMain = false;
   let addPostOpexNote = false;
 
-  if (cpiToday) {
-    // CPI: use Yesterday’s Close − Today’s Open only
-    if (overnightDrop < 0) {
-      recommendation = "No M8BF (CPI day)";
-      bgColor = "#eee";
-      crossedMain = true;
-    } else {
-      recommendation = "Straddle @ 9:32 AM (CPI day)";
-      bgColor = "#61f7d6";
-    }
+ if (cpiToday) {
+  // CPI rule:
+  // overnightDrop = Yesterday Close − Today Open
+  // If > 0 (VIX down) => Long ATM Call @ 9:32 (max entry premium $13)
+  // If <= 0 (VIX up or flat) => No Trade
+  if (overnightDrop > 0) {
+    recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
+    bgColor = "#61f7d6";
   } else {
+    recommendation = "No Trade (CPI day — VIX up)";
+    bgColor = "#eee";
+  }
+} else {
     // BASE non-CPI logic – GXBF has priority over open-to-open filter
     if (overnightDrop > 0.65) {
       recommendation = "GXBF @ 9:36 AM";
@@ -676,3 +678,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

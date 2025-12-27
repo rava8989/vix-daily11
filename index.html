@@ -240,10 +240,7 @@ flowchart TD
     </ul>
 
     <ul>
-      <li><strong>CPI days:</strong> Use <em>only</em> one filter → <strong>Yesterday’s Close − Today’s Open</strong>.<br/>
-        • If negative → (blocked)<br/>
-        • If zero/positive → <strong>Straddle @ 9:32 AM</strong>.
-      </li>
+      <li><strong>CPI days:</strong> Use <em>only</em> one filter → <strong>Yesterday’s Close − Today’s Open</strong>.</li>
 
       <li><strong>Fed days:</strong> <strong>No M8 Butterfly,</strong> <strong>Straddle and</strong> <em>GXBF is allowed.</em></li>
 
@@ -251,11 +248,13 @@ flowchart TD
 
       <li><strong>OPEX:</strong> <strong>No Straddle</strong>. Post-OPEX Monday: if M8 Butterfly, use afternoon timing note.</li>
 
-      <li><strong>Day After Market Holiday:</strong> <strong>No M8 Butterflies</strong>.</li>
+      <li><strong>Day After Market Holiday:</strong> <strong>No M8 Butterflies</strong> (unless NM day converts it to NM Straddle).</li>
+
+      <li><strong>First trading day of the month (NM):</strong> If the calculator would recommend <strong>M8 Butterfly</strong>, take <strong>NM Straddle @ 9:32 AM</strong> instead (other signals still apply as usual).</li>
 
       <li><strong>End-of-Month (EOM):</strong> <strong>Automatic Straddle @ 9:32 AM</strong> (“EOM Straddle”).</li>
 
-      <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong> trade, using the same rules as the overnight VIX-down (Teal day) straddle.</li>
+      <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong>.</li>
     </ul>
 
     <h3>Additional Trade Signals</h3>
@@ -450,6 +449,12 @@ function isTodayTradingDayBefore(dateStr) {
       && before.getDate() === today.getDate();
 }
 
+/* NEW: NM detection (first trading day of month) */
+function isFirstTradingDayOfMonth(date = new Date()) {
+  const prev = prevTradingDay(date);
+  return prev.getMonth() !== date.getMonth();
+}
+
 /* ===== UI INIT ===== */
 
 function updateCpiUI() {
@@ -478,6 +483,8 @@ function calculateStrategy() {
   const isMonday = dayOfWeek === 1;
   const isFriday = dayOfWeek === 5;
   const isWednesday = dayOfWeek === 3;
+
+  const nmToday = isFirstTradingDayOfMonth(now); /* NEW */
 
   const cpiToday = isCpiDay();
   const fedToday = isFedDay();
@@ -522,18 +529,18 @@ function calculateStrategy() {
   let addPostOpexNote = false;
 
   if (cpiToday) {
-  // CPI rule:
-  // overnightDrop = Yesterday Close − Today Open
-  // If > 0 (VIX down) => Long ATM Call @ 9:32 (max entry premium $13)
-  // If <= 0 (VIX up or flat) => No Trade
-  if (overnightDrop > 0) {
-    recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
-    bgColor = "#61f7d6";
+    // CPI rule:
+    // overnightDrop = Yesterday Close − Today Open
+    // If > 0 (VIX down) => Long ATM Call @ 9:32 (max entry premium $13)
+    // If <= 0 (VIX up or flat) => No Trade
+    if (overnightDrop > 0) {
+      recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
+      bgColor = "#61f7d6";
+    } else {
+      recommendation = "No Trade (CPI day — VIX up)";
+      bgColor = "#eee";
+    }
   } else {
-    recommendation = "No Trade (CPI day — VIX up)";
-    bgColor = "#eee";
-  }
-} else {
     // BASE non-CPI logic – GXBF has priority over open-to-open filter
     if (overnightDrop > 0.65) {
       recommendation = "GXBF @ 9:36 AM";
@@ -563,6 +570,14 @@ function calculateStrategy() {
       crossedMain = true;
     }
 
+    /* NEW: NM override — if NM day and we'd be M8 (or got blocked as No M8BF), convert to NM Straddle.
+       This explicitly overrides the post-holiday M8 block on NM days. */
+    if (nmToday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
+      recommendation = "NM Straddle @ 9:32 AM";
+      bgColor = "#61f7d6";
+      crossedMain = false;
+    }
+
     // EOM override: last trading day of month forces Straddle
     if (eomTradingDay) {
       recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
@@ -574,9 +589,15 @@ function calculateStrategy() {
     if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && recommendation.startsWith("Straddle")) {
       recommendation = "M8 Butterfly";
       bgColor = "#b49aff";
+
+      /* If Wednesday rule flips to M8 on NM day, convert again to NM Straddle */
+      if (nmToday) {
+        recommendation = "NM Straddle @ 9:32 AM";
+        bgColor = "#61f7d6";
+      }
     }
 
-    // OPEX day rule: no straddles on OPEX
+    // OPEX day rule: no straddles on OPEX (still applies to NM Straddle)
     if (opexToday && recommendation.startsWith("Straddle")) {
       recommendation = "No Straddle (OPEX day)";
       bgColor = "#eee";

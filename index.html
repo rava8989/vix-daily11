@@ -585,17 +585,12 @@ function calculateStrategy() {
       crossedMain = false;
     }
 
-    // Wednesday rule: Wed + NOT Fed + NOT CPI + Straddle -> M8 (but do NOT convert on EOM)
-    if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && recommendation.startsWith("Straddle")) {
-      recommendation = "M8 Butterfly";
-      bgColor = "#b49aff";
-
-      /* If Wednesday rule flips to M8 on NM day, convert again to NM Straddle */
-      if (nmToday) {
-        recommendation = "NM Straddle @ 9:32 AM";
-        bgColor = "#61f7d6";
-      }
-    }
+    // Wednesday rule: Wed + NOT Fed + NOT CPI + NOT EOM + NOT NM + Straddle -> M8
+// NM overrides this rule (NM day keeps the straddle / NM straddle logic).
+if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recommendation.startsWith("Straddle")) {
+  recommendation = "M8 Butterfly";
+  bgColor = "#b49aff";
+}
 
     // OPEX day rule: no straddles on OPEX (still applies to NM Straddle)
     if (opexToday && recommendation.startsWith("Straddle")) {
@@ -699,3 +694,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

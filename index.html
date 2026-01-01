@@ -54,6 +54,7 @@
       text-align: left;
       line-height: 1.35;
       font-size: 28px;          /* same size for all lines */
+      background: #eee;
     }
     #recBlock .row { margin: 6px 0; }
     #recBlock .mainline { font-weight: bold; }
@@ -77,19 +78,29 @@
     }
     .strategy-doc h2 { font-size: 20px; margin: 0 0 10px 0; }
     .strategy-doc h3 { font-size: 16px; margin: 18px 0 8px 0; color: #333; }
-    .strategy-doc .divider { margin: 16px 0; text-align: center; color: #999; letter-spacing: 2px; }
     .strategy-doc ul { margin: 6px 0 12px 22px; }
     .strategy-doc li { margin: 2px 0; }
     .muted-note { font-size: 12px; color: #666; margin-top: 6px; }
-    .highlight {
-      background: #f6f6ff;
-      border-left: 3px solid #b49aff;
-      padding: 10px 12px;
-      border-radius: 6px;
-    }
+    .divider { margin: 16px 0; text-align: center; color: #999; letter-spacing: 2px; }
 
     /* Crossed-out past dates in schedules + blocked signals */
     .crossed { text-decoration: line-through; color: #999; }
+
+    /* Images inside overview (IMPORTANT for GitHub Pages) */
+    .strategy-image { margin: 12px 0 6px 0; }
+    .strategy-image img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 8px 0 0 0;
+      border-radius: 10px;
+      box-shadow: 0 0 5px #ccc;
+    }
+    .strategy-image .img-note {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+    }
   </style>
 </head>
 
@@ -100,23 +111,18 @@
   <p>9:32 AM</p>
   <p class="muted">Last update: 10/20/2025</p>
 
-  <!-- CPI Schedule -->
   <h2>CPI Schedule</h2>
   <ul id="cpiSchedule"></ul>
 
-  <!-- Fed Day Schedule -->
   <h2>Fed Day Schedule</h2>
   <ul id="fedSchedule"></ul>
 
-  <!-- OPEX (combined list) -->
   <h2>OPEX Days</h2>
   <ul id="opexSchedule"></ul>
 
-  <!-- Market Holidays -->
   <h2>Market Holidays</h2>
   <ul id="holidaySchedule"></ul>
 
-  <!-- VIX Expiration -->
   <h2>VIX Expiration</h2>
   <ul id="vixExpirySchedule"></ul>
 </div>
@@ -159,13 +165,13 @@
     <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
   </div>
 
-  <!-- Unified recommendation + sub-signals block -->
   <div id="recBlock">
     <div class="row mainline" id="mainRec">—</div>
     <div class="row" id="pm1Line">—</div>
     <div class="row" id="bobfLine">—</div>
   </div>
 
+  <!-- FLOWCHART (UNCHANGED) -->
   <div class="flowchart">
     <div class="mermaid">
 flowchart TD
@@ -189,108 +195,108 @@ flowchart TD
     </div>
   </div>
 
-  <!-- Bottom strategy documentation -->
+  <!-- UPDATED OVERVIEW SECTION -->
   <section class="strategy-doc" id="strategy-doc">
-  <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
+    <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
 
-  <p>
-    Sigma 3 is a rules-based SPX 0DTE framework that combines multiple option structures.
-    The VIX calculator determines which trade (if any) is valid for the day based on
-    overnight VIX behavior, calendar constraints, and risk limits.
-  </p>
+    <p>
+      Sigma 3 is a rules-based SPX 0DTE framework that combines multiple option structures.
+      The VIX calculator determines which trade (if any) is valid for the day based on
+      overnight VIX behavior, calendar constraints, and risk limits.
+    </p>
 
-  <div class="divider">⸻</div>
+    <div class="divider">⸻</div>
 
-  <h3>M8 Butterfly (M8BF)</h3>
-  <ul>
-    <li>Used when overnight VIX is <strong>up</strong> or flat.</li>
-    <li>Triggered when <strong>open-to-open VIX &gt; 1.4</strong>, or when overnight VIX does not meet straddle or GXBF thresholds.</li>
-    <li><strong>Not traded</strong> on Fed days.</li>
-    <li><strong>Not traded</strong> on the first trading day after a market holiday (unless overridden by NM rule).</li>
-    <li>On the first trading day of the month (NM), M8BF converts to <strong>NM Straddle</strong>.</li>
-    <li>Post-OPEX Monday note: when M8BF appears, afternoon timing is preferred.</li>
-    <li>Max risk: <strong>$1,400</strong>.</li>
-  </ul>
+    <h3>M8 Butterfly (M8BF)</h3>
+    <ul>
+      <li>Used when overnight VIX is <strong>up</strong> or flat.</li>
+      <li>Triggered when <strong>open-to-open VIX &gt; 1.4</strong>, or when overnight VIX does not meet straddle or GXBF thresholds.</li>
+      <li><strong>Not traded</strong> on Fed days.</li>
+      <li><strong>Not traded</strong> on the first trading day after a market holiday (unless overridden by NM rule).</li>
+      <li>On the first trading day of the month (NM), M8BF converts to <strong>NM Straddle</strong> (not on Mondays).</li>
+      <li>Post-OPEX Monday note: when M8BF appears, afternoon timing is preferred.</li>
+      <li>Max risk: <strong>$1,400</strong>.</li>
+    </ul>
 
-  <div class="divider">⸻</div>
+    <div class="divider">⸻</div>
 
-  <h3>Straddle</h3>
-  <ul>
-    <li>Used when overnight VIX is <strong>moderately down</strong> (<strong>0.01 – 0.65</strong>).</li>
-    <li>Entry time: <strong>9:32 AM</strong>.</li>
-    <li><strong>Not traded</strong> on OPEX days.</li>
-    <li>On Wednesdays (non-Fed, non-CPI), straddles convert to M8BF unless overridden.</li>
-    <li><strong>End-of-Month (EOM):</strong> automatic <strong>EOM Straddle</strong>.</li>
-    <li><strong>NM rule:</strong> On the first trading day of the month, if M8BF would be selected, trade <strong>NM Straddle</strong> instead (not on Mondays).</li>
-    <li>EOM Straddle max risk: <strong>$3,500</strong>.</li>
-  </ul>
+    <h3>Straddle</h3>
+    <ul>
+      <li>Used when overnight VIX is <strong>moderately down</strong> (<strong>0.01 – 0.65</strong>).</li>
+      <li>Entry time: <strong>9:32 AM</strong>.</li>
+      <li><strong>Not traded</strong> on OPEX days.</li>
+      <li>On Wednesdays (non-Fed, non-CPI), straddles convert to M8BF unless overridden.</li>
+      <li><strong>End-of-Month (EOM):</strong> automatic <strong>EOM Straddle</strong>.</li>
+      <li>EOM Straddle max risk: <strong>$3,500</strong>.</li>
+    </ul>
 
-  <div class="divider">⸻</div>
+    <div class="divider">⸻</div>
 
-  <h3>GXBF (GEX Butterfly)</h3>
-  <ul>
-    <li>Used when overnight VIX is <strong>strongly down</strong> (<strong>&gt; 0.65</strong>).</li>
-    <li>Takes priority over open-to-open VIX logic.</li>
-    <li>Entry time: <strong>9:36 AM</strong>, centered on major positive gamma.</li>
-    <li>Allowed on Fed days.</li>
-    <li>Max risk: <strong>$1,400</strong>.</li>
-  </ul>
+    <h3>GXBF (GEX Butterfly)</h3>
+    <ul>
+      <li>Used when overnight VIX is <strong>strongly down</strong> (<strong>&gt; 0.65</strong>).</li>
+      <li>Takes priority over open-to-open VIX logic.</li>
+      <li>Entry time: <strong>9:36 AM</strong>, centered on major positive gamma.</li>
+      <li>Allowed on Fed days.</li>
+      <li>Max risk: <strong>$1,400</strong>.</li>
+    </ul>
+    <div class="strategy-image">
+      <!-- If your images are in the SAME folder as this HTML, this works. -->
+      <img src="./Gex.jpg" alt="GXBF strategy visual" loading="lazy" />
+      <div class="img-note">If this doesn’t show on GitHub Pages, check filename case: <strong>Gex.jpg</strong> must match exactly.</div>
+    </div>
 
-  <div class="strategy-image">
-    <img src="Gex.jpg" alt="GXBF strategy visual">
-  </div>
+    <div class="divider">⸻</div>
 
-  <div class="divider">⸻</div>
+    <h3>1PM Butterfly (1PM BF)</h3>
+    <ul>
+      <li>Only traded when overnight VIX is <strong>up</strong>.</li>
+      <li><strong>Not traded</strong> on Mondays.</li>
+      <li><strong>Not traded</strong> on VIX expiration days.</li>
+      <li><strong>Not traded</strong> on EOM or EOM-1.</li>
+      <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
+      <li>Max risk: <strong>$1,400</strong>.</li>
+    </ul>
 
-  <h3>1PM Butterfly (1PM BF)</h3>
-  <ul>
-    <li>Only traded when overnight VIX is <strong>up</strong>.</li>
-    <li><strong>Not traded</strong> on Mondays.</li>
-    <li><strong>Not traded</strong> on VIX expiration days.</li>
-    <li><strong>Not traded</strong> on EOM or EOM-1.</li>
-    <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
-    <li>Max risk: <strong>$1,400</strong>.</li>
-  </ul>
+    <div class="divider">⸻</div>
 
-  <div class="divider">⸻</div>
+    <h3>BOBF</h3>
+    <ul>
+      <li><strong>Not traded</strong> on Fridays.</li>
+      <li><strong>Not traded</strong> on monthly VIX expiration days.</li>
+      <li><strong>Not traded</strong> on OPEX-1.</li>
+      <li><strong>Not traded</strong> on EOM-2 and EOM-1.</li>
+      <li>Maximum VIX allowed: <strong>23</strong>.</li>
+    </ul>
+    <div class="strategy-image">
+      <img src="./BOBF.jpg" alt="BOBF strategy visual" loading="lazy" />
+      <div class="img-note">If this doesn’t show, confirm the file is exactly <strong>BOBF.jpg</strong> (case-sensitive).</div>
+    </div>
 
-  <h3>BOBF</h3>
-  <ul>
-    <li><strong>Not traded</strong> on Fridays.</li>
-    <li><strong>Not traded</strong> on monthly VIX expiration days.</li>
-    <li><strong>Not traded</strong> on OPEX-1.</li>
-    <li><strong>Not traded</strong> on EOM-2 and EOM-1.</li>
-    <li>Maximum VIX allowed: <strong>23</strong>.</li>
-  </ul>
+    <div class="divider">⸻</div>
 
-  <div class="strategy-image">
-    <img src="BOBF.jpg" alt="BOBF strategy visual">
-  </div>
+    <h3>CPI Rule</h3>
+    <ul>
+      <li>Uses only <strong>Yesterday’s VIX Close − Today’s VIX Open</strong>.</li>
+      <li>If VIX is <strong>down</strong>: trade <strong>Long ATM Call @ 9:32 AM</strong>.</li>
+      <li>Max entry premium: <strong>$13</strong>.</li>
+      <li>If VIX is up or flat: <strong>No trade</strong>.</li>
+    </ul>
 
-  <div class="divider">⸻</div>
+    <div class="divider">⸻</div>
 
-  <h3>CPI Rule</h3>
-  <ul>
-    <li>Uses only <strong>Yesterday’s VIX Close − Today’s VIX Open</strong>.</li>
-    <li>If VIX is <strong>down</strong>: trade <strong>Long ATM Call @ 9:32 AM</strong>.</li>
-    <li>Max entry premium: <strong>$13</strong>.</li>
-    <li>If VIX is up or flat: <strong>No trade</strong>.</li>
-  </ul>
+    <p>All trades are held to expiration. Only one primary trade is allowed per day.</p>
 
-  <div class="divider">⸻</div>
+    <p class="muted-note">
+      <strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial or investment advice. Trading options involves significant risk.
+    </p>
+  </section>
 
-  <p>
-    All trades are held to expiration.  
-    Only one primary trade is allowed per day.
-  </p>
+</div>
 
-  <p class="muted-note">
-    <strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial or investment advice. Trading options involves significant risk.
-  </p>
-</section>
+<script>
 /* ===== SCHEDULES ===== */
 
-// CPI dates (remaining 2025)
 const cpiSchedule = [
   "January 23, 2026",
   "February 11, 2026",
@@ -305,7 +311,6 @@ const cpiSchedule = [
   "December 10, 2026"
 ];
 
-// Fed Day dates (remaining 2025)
 const fedSchedule = [
   "January 28, 2026",
   "March 18, 2026",
@@ -317,7 +322,6 @@ const fedSchedule = [
   "December 9, 2026"
 ];
 
-// OPEX Days (combined: quarterlies + non-quarterlies) — 2025
 const opexSchedule = [
   "January 16, 2026",
   "February 20, 2026",
@@ -333,7 +337,6 @@ const opexSchedule = [
   "December 18, 2026"
 ];
 
-// US Market Holidays — 2025 (observed full-day closures)
 const marketHolidays = [
   "January 1, 2026",
   "January 19, 2026",
@@ -347,7 +350,6 @@ const marketHolidays = [
   "December 25, 2026"
 ];
 
-// VIX monthly option expirations — remaining 2025
 const vixExpirySchedule = [
   "January 21, 2026",
   "February 18, 2026",
@@ -461,7 +463,7 @@ function isLastTradingDayOfMonth(date = new Date()) {
 }
 function isEomMinusN(n, date = new Date()) {
   const firstNextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  const eom = prevTradingDay(firstNextMonth); // last trading day of current month
+  const eom = prevTradingDay(firstNextMonth);
   let target = new Date(eom);
   for (let i = 0; i < n; i++) target = prevTradingDay(target);
   return target.getFullYear() === date.getFullYear()
@@ -478,7 +480,7 @@ function isTodayTradingDayBefore(dateStr) {
       && before.getDate() === today.getDate();
 }
 
-/* NEW: NM detection (first trading day of month) */
+// NM detection (first trading day of month)
 function isFirstTradingDayOfMonth(date = new Date()) {
   const prev = prevTradingDay(date);
   return prev.getMonth() !== date.getMonth();
@@ -488,7 +490,7 @@ function isFirstTradingDayOfMonth(date = new Date()) {
 
 function updateCpiUI() {
   const cpi = isCpiDay();
-  document.getElementById('yesterdayOpen').disabled = cpi; // disable Yesterday's Open on CPI days only
+  document.getElementById('yesterdayOpen').disabled = cpi;
 }
 document.addEventListener('DOMContentLoaded', updateCpiUI);
 
@@ -498,9 +500,9 @@ document.getElementById('todayDate').textContent =
 /* ===== MAIN CALCULATOR ===== */
 
 function calculateStrategy() {
-  const today = parseFloat(document.getElementById('todayOpen').value);       // VIX today open
-  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);   // VIX yesterday open
-  const yClose = parseFloat(document.getElementById('yesterdayClose').value); // VIX yesterday close
+  const today = parseFloat(document.getElementById('todayOpen').value);
+  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
+  const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
   if (isNaN(today) || isNaN(yClose) || (!isCpiDay() && isNaN(yOpen))) {
     alert("Please enter valid numbers.");
@@ -508,12 +510,12 @@ function calculateStrategy() {
   }
 
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=Sun,1=Mon,...,5=Fri
+  const dayOfWeek = now.getDay();
   const isMonday = dayOfWeek === 1;
   const isFriday = dayOfWeek === 5;
   const isWednesday = dayOfWeek === 3;
 
-  const nmToday = isFirstTradingDayOfMonth(now); /* NEW */
+  const nmToday = isFirstTradingDayOfMonth(now);
 
   const cpiToday = isCpiDay();
   const fedToday = isFedDay();
@@ -535,10 +537,9 @@ function calculateStrategy() {
   document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block' : 'none';
   document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block' : 'none';
 
-  const openDiff = (isNaN(yOpen) ? NaN : yOpen - today); // ignored on CPI day
-  const overnightDrop = yClose - today;                  // used on CPI + non-CPI
+  const openDiff = (isNaN(yOpen) ? NaN : yOpen - today);
+  const overnightDrop = yClose - today; // yClose - todayOpen
 
-  // UI numbers
   document.getElementById('overnightDropDisplay').textContent =
     isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
 
@@ -558,19 +559,17 @@ function calculateStrategy() {
   let addPostOpexNote = false;
 
   if (cpiToday) {
-    // CPI rule:
-    // overnightDrop = Yesterday Close − Today Open
-    // If > 0 (VIX down) => Long ATM Call @ 9:32 (max entry premium $13)
-    // If <= 0 (VIX up or flat) => No Trade
+    // CPI rule: if VIX down (yClose - todayOpen > 0) => long call, else no trade
     if (overnightDrop > 0) {
       recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
       bgColor = "#61f7d6";
     } else {
       recommendation = "No Trade (CPI day — VIX up)";
       bgColor = "#eee";
+      crossedMain = false;
     }
   } else {
-    // BASE non-CPI logic – GXBF has priority over open-to-open filter
+    // Base logic
     if (overnightDrop > 0.65) {
       recommendation = "GXBF @ 9:36 AM";
       bgColor = "#fff399";
@@ -585,56 +584,53 @@ function calculateStrategy() {
       bgColor = "#b49aff";
     }
 
-    // Fed-day: block ONLY M8 Butterfly; allow Straddle/GXBF
+    // Fed blocks only M8
     if (fedToday && recommendation === "M8 Butterfly") {
       recommendation = "No M8BF (Fed day)";
       bgColor = "#eee";
       crossedMain = true;
     }
 
-    // Day after market holiday: no M8 butterflies
+    // Post-holiday blocks M8 (unless NM converts)
     if (postHoliday && recommendation === "M8 Butterfly") {
       recommendation = "No M8BF (Post-holiday)";
       bgColor = "#eee";
       crossedMain = true;
     }
 
-    /* NEW: NM override — if NM day and we'd be M8 (or got blocked as No M8BF), convert to NM Straddle.
-       This explicitly overrides the post-holiday M8 block on NM days. */
-    if (nmToday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
+    // NM override: convert M8 or No M8BF to NM Straddle (NOT on Monday)
+    if (nmToday && !isMonday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
       recommendation = "NM Straddle @ 9:32 AM";
       bgColor = "#61f7d6";
       crossedMain = false;
     }
 
-    // EOM override: last trading day of month forces Straddle
+    // EOM override
     if (eomTradingDay) {
       recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
       bgColor = "#61f7d6";
       crossedMain = false;
     }
 
-    // Wednesday rule: Wed + NOT Fed + NOT CPI + NOT EOM + NOT NM + Straddle -> M8
-// NM overrides this rule (NM day keeps the straddle / NM straddle logic).
-if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recommendation.startsWith("Straddle")) {
-  recommendation = "M8 Butterfly";
-  bgColor = "#b49aff";
-}
+    // Wednesday rule (NM overrides)
+    if (isWednesday && !fedToday && !eomTradingDay && !nmToday && recommendation.startsWith("Straddle")) {
+      recommendation = "M8 Butterfly";
+      bgColor = "#b49aff";
+    }
 
-    // OPEX day rule: no straddles on OPEX (still applies to NM Straddle)
+    // OPEX: no straddles
     if (opexToday && recommendation.startsWith("Straddle")) {
       recommendation = "No Straddle (OPEX day)";
       bgColor = "#eee";
       crossedMain = true;
     }
 
-    // Note on post-OPEX Mondays when M8 shows
+    // Post-OPEX Monday note
     if (postOpexMonday && recommendation === "M8 Butterfly") {
       addPostOpexNote = true;
     }
   }
 
-  // ---------- Render unified block ----------
   const recBlock = document.getElementById("recBlock");
   const mainRec = document.getElementById("mainRec");
   const pm1Line = document.getElementById("pm1Line");
@@ -644,20 +640,10 @@ if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recom
     ? `${recommendation} (use afternoon times for post OPEX Mondays)`
     : recommendation;
 
-  mainRec.innerHTML = crossedMain
-    ? `<span class="crossed">${mainText}</span>`
-    : mainText;
-
+  mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
   recBlock.style.backgroundColor = bgColor;
 
-  /* ===== 1PM BF signal (rename + added low VIX + crossed when blocked) =====
-     Rules:
-     - Skip Mondays
-     - Trade only on overnight VIX up days (overnightDrop < 0)
-     - Skip monthly VIX expiration
-     - Skip EOM and EOM-1
-     - Skip if VIX today open < 16
-  */
+  // 1PM BF rules: overnight VIX must be UP => overnightDrop < 0
   let pm1Text = "1PM BF in play";
   let pm1Crossed = false;
 
@@ -683,14 +669,7 @@ if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recom
 
   pm1Line.innerHTML = pm1Crossed ? `<span class="crossed">${pm1Text}</span>` : pm1Text;
 
-  /* ===== BOBF signal (MIN VIX REMOVED, MAX VIX kept) =====
-     Rules:
-     - Skip Fridays
-     - Skip monthly VIX expiration
-     - Skip OPEX-1   ✅ ADDED
-     - Skip EOM-2 and EOM-1
-     - Max VIX 23
-  */
+  // BOBF rules
   let bobfText = "BOBF in play";
   let bobfCrossed = false;
 
@@ -711,7 +690,6 @@ if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recom
     bobfCrossed = true;
   }
 
-  // MAX VIX only
   if (!bobfCrossed && !isNaN(today) && today > 23) {
     bobfText = "No BOBF (high VIX)";
     bobfCrossed = true;
@@ -723,6 +701,3 @@ if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recom
 
 </body>
 </html>
-
-
-

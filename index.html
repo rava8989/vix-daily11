@@ -191,95 +191,103 @@ flowchart TD
 
   <!-- Bottom strategy documentation -->
   <section class="strategy-doc" id="strategy-doc">
-    <h2>Hybrid SPX 0DTE Strategy — Overview</h2>
-    <p>This is the hybrid SPX 0DTE strategy. It classifies days into three distinct types:</p>
+  <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
 
-    <div class="highlight">
-      <h3>Teal Days — Straddle</h3>
-      <ul>
-        <li>Traded between <strong>9:32 AM</strong> and <strong>1:30 PM</strong>.</li>
-      </ul>
+  <p>
+    Sigma 3 is a rules-based SPX 0DTE framework that combines multiple option structures.
+    The VIX calculator determines which trade (if any) is valid for the day based on
+    overnight VIX behavior, calendar constraints, and risk limits.
+  </p>
 
-      <h3>Purple Days — M8 Butterfly</h3>
-      <ul>
-        <li>Based on M8’s recommendation, with entry times varying by day of the week.</li>
-        <li>This setup is less effective without TTV software, which helps identify optimal entry windows for butterflies.</li>
-        <li>I’ll try my best to update the best entry times weekly on my webpage.</li>
-      </ul>
+  <div class="divider">⸻</div>
 
-      <h3>Yellow Days — Gex Butterfly (GXBF)</h3>
-      <ul>
-        <li>Traded at <strong>9:36 AM</strong>, centered around a major positive gamma value taken from <strong>9:35 AM gex-bot-stream</strong> feed.</li>
-      </ul>
-    </div>
+  <h3>M8 Butterfly (M8BF)</h3>
+  <ul>
+    <li>Used when overnight VIX is <strong>up</strong> or flat.</li>
+    <li>Triggered when <strong>open-to-open VIX &gt; 1.4</strong>, or when overnight VIX does not meet straddle or GXBF thresholds.</li>
+    <li><strong>Not traded</strong> on Fed days.</li>
+    <li><strong>Not traded</strong> on the first trading day after a market holiday (unless overridden by NM rule).</li>
+    <li>On the first trading day of the month (NM), M8BF converts to <strong>NM Straddle</strong>.</li>
+    <li>Post-OPEX Monday note: when M8BF appears, afternoon timing is preferred.</li>
+    <li>Max risk: <strong>$1,400</strong>.</li>
+  </ul>
 
-    <div class="divider">⸻</div>
+  <div class="divider">⸻</div>
 
-    <h3>Rules for Day Classification</h3>
-    <p>Here’s the logic:</p>
-    <ul>
-      <li><strong>Check SPX overnight gap at the open:</strong><br/>
-        • If the gap (up or down) is <strong>&gt; 0.9%</strong>, it’s a <strong>Purple Day (M8 Butterfly)</strong>.<br/>
-        • If the gap is <strong>&lt; 0.9%</strong>, continue:
-      </li>
+  <h3>Straddle</h3>
+  <ul>
+    <li>Used when overnight VIX is <strong>moderately down</strong> (<strong>0.01 – 0.65</strong>).</li>
+    <li>Entry time: <strong>9:32 AM</strong>.</li>
+    <li><strong>Not traded</strong> on OPEX days.</li>
+    <li>On Wednesdays (non-Fed, non-CPI), straddles convert to M8BF unless overridden.</li>
+    <li><strong>End-of-Month (EOM):</strong> automatic <strong>EOM Straddle</strong>.</li>
+    <li><strong>NM rule:</strong> On the first trading day of the month, if M8BF would be selected, trade <strong>NM Straddle</strong> instead (not on Mondays).</li>
+    <li>EOM Straddle max risk: <strong>$3,500</strong>.</li>
+  </ul>
 
-      <li><strong>Overnight VIX drop:</strong> (Yesterday’s VIX close @ 4:15 PM − today’s VIX open @ 9:30 AM)<br/>
-        • If <strong>&gt; 0.65</strong> → <strong>Yellow Day (GXBF @ 9:36 AM)</strong>.<br/>
-        • If not, continue:
-      </li>
+  <div class="divider">⸻</div>
 
-      <li><strong>Open-to-open VIX:</strong> Yesterday’s VIX open − today’s VIX open.<br/>
-        • If this value is <strong>&gt; 1.4</strong>, it’s a <strong>Purple Day</strong>.<br/>
-        • Otherwise, continue:
-      </li>
+  <h3>GXBF (GEX Butterfly)</h3>
+  <ul>
+    <li>Used when overnight VIX is <strong>strongly down</strong> (<strong>&gt; 0.65</strong>).</li>
+    <li>Takes priority over open-to-open VIX logic.</li>
+    <li>Entry time: <strong>9:36 AM</strong>, centered on major positive gamma.</li>
+    <li>Allowed on Fed days.</li>
+    <li>Max risk: <strong>$1,400</strong>.</li>
+  </ul>
 
-      <li><strong>Overnight VIX drop (again):</strong><br/>
-        • If <strong>0.01–0.65</strong> → <strong>Teal Day (Straddle @ 9:32 AM)</strong>.<br/>
-        • If none of the above → <strong>Purple Day</strong>.
-      </li>
-    </ul>
+  <div class="strategy-image">
+    <img src="Gex.jpg" alt="GXBF strategy visual">
+  </div>
 
-    <ul>
-      <li><strong>CPI days:</strong> Use <em>only</em> one filter → <strong>Yesterday’s Close − Today’s Open</strong>.</li>
+  <div class="divider">⸻</div>
 
-      <li><strong>Fed days:</strong> <strong>No M8 Butterfly,</strong> <strong>Straddle and</strong> <em>GXBF is allowed.</em></li>
+  <h3>1PM Butterfly (1PM BF)</h3>
+  <ul>
+    <li>Only traded when overnight VIX is <strong>up</strong>.</li>
+    <li><strong>Not traded</strong> on Mondays.</li>
+    <li><strong>Not traded</strong> on VIX expiration days.</li>
+    <li><strong>Not traded</strong> on EOM or EOM-1.</li>
+    <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
+    <li>Max risk: <strong>$1,400</strong>.</li>
+  </ul>
 
-      <li><strong>Wednesdays (non-Fed, non-CPI):</strong> <strong>NO Straddle</strong> take <strong>M8 Butterfly</strong> instead.</li>
+  <div class="divider">⸻</div>
 
-      <li><strong>OPEX:</strong> <strong>No Straddle</strong>. Post-OPEX Monday: if M8 Butterfly, use afternoon timing note.</li>
+  <h3>BOBF</h3>
+  <ul>
+    <li><strong>Not traded</strong> on Fridays.</li>
+    <li><strong>Not traded</strong> on monthly VIX expiration days.</li>
+    <li><strong>Not traded</strong> on OPEX-1.</li>
+    <li><strong>Not traded</strong> on EOM-2 and EOM-1.</li>
+    <li>Maximum VIX allowed: <strong>23</strong>.</li>
+  </ul>
 
-      <li><strong>Day After Market Holiday:</strong> <strong>No M8 Butterflies</strong> (unless NM day converts it to NM Straddle).</li>
+  <div class="strategy-image">
+    <img src="BOBF.jpg" alt="BOBF strategy visual">
+  </div>
 
-      <li><strong>First trading day of the month (NM):</strong> If the calculator would recommend <strong>M8 Butterfly</strong>, take <strong>NM Straddle @ 9:32 AM</strong> instead (other signals still apply as usual).</li>
+  <div class="divider">⸻</div>
 
-      <li><strong>End-of-Month (EOM):</strong> <strong>Automatic Straddle @ 9:32 AM</strong> (“EOM Straddle”).</li>
+  <h3>CPI Rule</h3>
+  <ul>
+    <li>Uses only <strong>Yesterday’s VIX Close − Today’s VIX Open</strong>.</li>
+    <li>If VIX is <strong>down</strong>: trade <strong>Long ATM Call @ 9:32 AM</strong>.</li>
+    <li>Max entry premium: <strong>$13</strong>.</li>
+    <li>If VIX is up or flat: <strong>No trade</strong>.</li>
+  </ul>
 
-      <li><strong>0% Win-Rate Rule:</strong> If the M8 SPX Butterfly prediction has a <strong>0% win rate</strong> for the entire day, then the <strong>next day</strong> we automatically take a <strong>9:32 AM Straddle</strong>.</li>
-    </ul>
+  <div class="divider">⸻</div>
 
-    <h3>Additional Trade Signals</h3>
-    <ul>
-      <li><strong>BOBF rules:</strong> Skip Fridays; skip monthly VIX expiration; skip OPEX-1; skip EOM-2 and EOM-1; Max VIX 23.</li>
-      <li><strong>1PM BF rules:</strong> Skip Mondays; trade only on overnight VIX up days; skip monthly VIX expiration; skip EOM and EOM-1; skip if VIX open &lt; 16.</li>
-    </ul>
+  <p>
+    All trades are held to expiration.  
+    Only one primary trade is allowed per day.
+  </p>
 
-    <h3>Money Management</h3>
-    <ul>
-      <li><strong>Butterflies (Purple & Yellow):</strong> Max risk <strong>$1,400</strong>.</li>
-      <li><strong>Straddles (Teal):</strong> Max risk <strong>$3,200</strong>. On <strong>Thursdays</strong>, use <strong>$2,700 take-profit</strong>.</li>
-      <li>All trades are held to <strong>expiration</strong>.</li>
-    </ul>
-
-    <div class="divider">⸻</div>
-
-    <p>I know the rules can seem complicated at first, which is why I created a calculator page. Simply input the VIX data, and it will indicate the type of day it is.</p>
-
-    <p class="muted-note"><strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial, investment, or trading advice. Past performance is not indicative of future results. Trading options involves significant risk and may not be suitable for all investors. You are solely responsible for your own investment decisions.</p>
-  </section>
-
-</div>
-
-<script>
+  <p class="muted-note">
+    <strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial or investment advice. Trading options involves significant risk.
+  </p>
+</section>
 /* ===== SCHEDULES ===== */
 
 // CPI dates (remaining 2025)
@@ -715,5 +723,6 @@ if (isWednesday && !fedToday && !cpiToday && !eomTradingDay && !nmToday && recom
 
 </body>
 </html>
+
 
 

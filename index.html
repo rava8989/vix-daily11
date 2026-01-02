@@ -197,14 +197,19 @@ flowchart TD
   <section class="strategy-doc" id="strategy-doc">
     <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
 
-    <p>
-      Sigma 3 is a rules-based SPX 0DTE framework that combines multiple option structures.
-      The VIX calculator determines which trade (if any) is valid for the day based on
-      overnight VIX behavior, calendar constraints, and risk limits.
-    </p>
+<p>
+  Sigma 3 consists of five SPX 0DTE strategies:
+  <strong>M8 Butterfly (M8BF)</strong>,
+  <strong>Straddle</strong>,
+  <strong>GXBF (GEX Butterfly)</strong>,
+  <strong>1PM Butterfly (1PM BF)</strong>,
+  and <strong>BOBF</strong>.
+  Each strategy has its own entry rules, risk limits, and calendar filters.
+  The VIX calculator determines which strategies are valid on any given day
+  based on overnight VIX behavior and market conditions.
+</p>
 
-    <div class="divider">⸻</div>
-
+<div class="divider">⸻</div>
     <h3>M8 Butterfly (M8BF)</h3>
     <ul>
       <li>Used when overnight VIX is <strong>up</strong>.</li>
@@ -736,6 +741,7 @@ function calculateStrategy() {
 
 </body>
 </html>
+
 
 
 

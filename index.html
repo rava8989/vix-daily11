@@ -211,7 +211,8 @@
 <body>
 
   <div class="sidebar">
-    <details open>
+    <!-- schedules collapse on mobile by JS -->
+    <details id="scheduleDetails">
       <summary><strong>Schedules</strong></summary>
 
       <h2>CPI Schedule</h2>
@@ -248,7 +249,10 @@
           M8BF win rate = 0%
         </label>
 
-       
+        <div class="winrateHint">
+          These overrides affect the <strong>main recommendation</strong> only.
+          1PM BF and BOBF still follow their own rules.
+        </div>
       </div>
 
       <!-- Calculator -->
@@ -398,7 +402,6 @@ flowchart TD
         <li>Use 1:00 PM SPX price as a center strike. Widen wings till you get close to $14 entry cost.</li>
       </ul>
       <div class="strategy-image">
-        <!-- NOTE: file name contains a space, so use %20 -->
         <img src="./1pm%20BF.jpg" alt="1PM BF" loading="lazy" />
       </div>
 
@@ -544,6 +547,8 @@ flowchart TD
       "December 16, 2026"
     ];
 
+    /* ===== RENDER SCHEDULES ===== */
+
     function renderSchedule(list, ulId) {
       const ul = document.getElementById(ulId);
       list.forEach(date => {
@@ -559,6 +564,24 @@ flowchart TD
     renderSchedule(opexSchedule, 'opexSchedule');
     renderSchedule(marketHolidays, 'holidaySchedule');
     renderSchedule(vixExpirySchedule, 'vixExpirySchedule');
+
+    /* ===== MOBILE: COLLAPSE SCHEDULES BY DEFAULT ===== */
+    document.addEventListener("DOMContentLoaded", () => {
+      const details = document.getElementById("scheduleDetails");
+      if (!details) return;
+
+      const mq = window.matchMedia("(max-width: 900px)");
+
+      const apply = () => {
+        if (mq.matches) details.removeAttribute("open");     // collapsed on mobile
+        else details.setAttribute("open", "");               // open on desktop
+      };
+
+      apply();
+
+      if (mq.addEventListener) mq.addEventListener("change", apply);
+      else mq.addListener(apply); // older Safari
+    });
 
     /* ===== WIN RATE CHECKBOX MUTUAL EXCLUSION ===== */
 
@@ -832,9 +855,8 @@ flowchart TD
         */
 
         if (winrateZero) {
-          // Force Straddle unless OPEX blocks it (and keep EOM straddle as straddle)
           if (recommendation === "No Straddle (OPEX day)") {
-            // do nothing, still blocked
+            // keep blocked
           } else if (recommendation.startsWith("Straddle")) {
             recommendation = recommendation.includes("(EOM Straddle)")
               ? "Straddle @ 9:32 AM (EOM Straddle)"
@@ -847,7 +869,6 @@ flowchart TD
             crossedMain = false;
           }
         } else if (winrateHigh) {
-          // Replace only the plain straddle signal (not NM Straddle, not EOM Straddle)
           if (recommendation === "Straddle @ 9:32 AM") {
             recommendation = "M8 Butterfly (Win rate > 90% prior day)";
             bgColor = "#b49aff";
@@ -894,7 +915,7 @@ flowchart TD
 
       pm1Line.innerHTML = pm1Crossed ? `<span class="crossed">${pm1Text}</span>` : pm1Text;
 
-      // BOBF rules (not blocked on CPI by default)
+      // BOBF rules
       let bobfText = "BOBF in play";
       let bobfCrossed = false;
 
@@ -926,4 +947,3 @@ flowchart TD
 
 </body>
 </html>
-

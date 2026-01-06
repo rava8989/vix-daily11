@@ -30,42 +30,72 @@
       overflow-y: auto;
     }
     .sidebar h2 { font-size: 16px; margin-top: 0; }
-    .sidebar .muted { font-size: 12px; color: #666; margin: 6px 0 10px 0; }
     .sidebar ul { padding-left: 18px; margin-top: 6px; margin-bottom: 18px; }
 
+    .sidebar details summary {
+      cursor: pointer;
+      padding: 8px 0;
+      font-size: 16px;
+    }
+    .sidebar details { user-select: none; }
+
     .main { flex: 1; text-align: center; padding: 20px; }
-    .calculator {
-      background: #fff; padding: 15px; border-radius: 8px;
-      box-shadow: 0 0 5px #ccc; max-width: 460px; margin: 0 auto 20px auto;
-    }
 
-    /* calculator layout w/ checkboxes on left */
-    .calcRow { display: flex; gap: 14px; align-items: flex-start; }
-    .calcChecks {
-      width: 180px;
-      text-align: left;
-      font-size: 13px;
-      line-height: 1.25;
-      padding-top: 6px;
-    }
-    .calcChecks .title {
-      font-weight: bold;
-      margin-bottom: 8px;
-      font-size: 13px;
-    }
-    .checkItem {
+    /* Calculator row with left checkboxes */
+    .calcRow {
       display: flex;
-      gap: 8px;
-      align-items: flex-start;
-      margin: 8px 0;
-      user-select: none;
+      gap: 12px;
+      align-items: stretch;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
     }
-    .checkItem input { width: auto; margin: 2px 0 0 0; }
-    .checkItem label { margin: 0; cursor: pointer; }
 
-    .calcInputs { flex: 1; }
+    .winrateBox {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ccc;
+      padding: 12px;
+      width: 220px;
+      text-align: left;
+      box-sizing: border-box;
+    }
+    .winrateBox h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #333;
+    }
+    .winrateBox label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .winrateBox input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .winrateHint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+      line-height: 1.35;
+    }
 
-    label { display: block; margin-top: 10px; text-align: left; }
+    .calculator {
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px #ccc;
+      max-width: 300px;
+      width: 300px;
+      box-sizing: border-box;
+    }
+
+    label { display: block; margin-top: 10px; }
     input { width: 100%; margin-top: 5px; margin-bottom: 10px; }
     input:disabled { opacity: 0.6; cursor: not-allowed; }
     button { width: 100%; padding: 8px; margin-top: 10px; }
@@ -88,8 +118,14 @@
 
     .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
     .tag {
-      display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px;
-      border: 1px solid #ccc; color: #555; margin-left: 6px; background: #fafafa;
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      border: 1px solid #ccc;
+      color: #555;
+      margin-left: 6px;
+      background: #fafafa;
     }
 
     /* Bottom strategy section */
@@ -107,13 +143,12 @@
     .strategy-doc h3 { font-size: 16px; margin: 18px 0 8px 0; color: #333; }
     .strategy-doc ul { margin: 6px 0 12px 22px; }
     .strategy-doc li { margin: 2px 0; }
+
     .muted-note { font-size: 12px; color: #666; margin-top: 6px; }
     .divider { margin: 16px 0; text-align: center; color: #999; letter-spacing: 2px; }
 
-    /* Crossed-out past dates in schedules + blocked signals */
     .crossed { text-decoration: line-through; color: #999; }
 
-    /* Images inside overview (IMPORTANT for GitHub Pages) */
     .strategy-image { margin: 12px 0 6px 0; }
     .strategy-image img {
       max-width: 100%;
@@ -123,96 +158,152 @@
       border-radius: 10px;
       box-shadow: 0 0 5px #ccc;
     }
+
+    /* ---------- Mobile improvements ---------- */
+    @media (max-width: 900px) {
+      body { flex-direction: column; }
+
+      .sidebar {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid #ccc;
+        box-shadow: none;
+        position: static;
+        overflow: visible;
+      }
+
+      .main { padding: 12px; }
+
+      .calculator {
+        max-width: 100%;
+        width: 100%;
+        margin: 0 auto 12px auto;
+      }
+
+      .winrateBox {
+        width: 100%;
+        max-width: 520px;
+      }
+
+      #recBlock {
+        max-width: 100%;
+        font-size: 20px;
+        padding: 12px;
+      }
+
+      .strategy-doc {
+        max-width: 100%;
+        margin: 12px auto 40px auto;
+        padding: 14px;
+      }
+
+      input, button {
+        font-size: 16px; /* prevents iOS zoom */
+        padding: 10px;
+      }
+
+      .strategy-doc, #recBlock { word-break: break-word; }
+    }
   </style>
 </head>
 
 <body>
 
-<div class="sidebar">
-  <h2>CPI Schedule</h2>
-  <ul id="cpiSchedule"></ul>
+  <div class="sidebar">
+    <details open>
+      <summary><strong>Schedules</strong></summary>
 
-  <h2>Fed Day Schedule</h2>
-  <ul id="fedSchedule"></ul>
+      <h2>CPI Schedule</h2>
+      <ul id="cpiSchedule"></ul>
 
-  <h2>OPEX Days</h2>
-  <ul id="opexSchedule"></ul>
+      <h2>Fed Day Schedule</h2>
+      <ul id="fedSchedule"></ul>
 
-  <h2>Market Holidays</h2>
-  <ul id="holidaySchedule"></ul>
+      <h2>OPEX Days</h2>
+      <ul id="opexSchedule"></ul>
 
-  <h2>VIX Expiration</h2>
-  <ul id="vixExpirySchedule"></ul>
-</div>
+      <h2>Market Holidays</h2>
+      <ul id="holidaySchedule"></ul>
 
-<div class="main">
+      <h2>VIX Expiration</h2>
+      <ul id="vixExpirySchedule"></ul>
+    </details>
+  </div>
 
-  <div class="calculator">
-    <h1 style="margin-top:0;">VIX Calculator</h1>
+  <div class="main">
 
     <div class="calcRow">
-      <!-- NEW: checkboxes on the left -->
-      <div class="calcChecks">
-        <div class="title">M8BF Win Rate Flags</div>
+      <!-- Win rate checkboxes -->
+      <div class="winrateBox">
+        <h3>Win rate override (previous day)</h3>
 
-        <div class="checkItem">
-          <input type="checkbox" id="m8HighWin" />
-          <label for="m8HighWin">M8BF win rate &gt; 90%</label>
-        </div>
+        <label>
+          <input type="checkbox" id="winrate90" />
+          M8BF win rate &gt; 90%
+        </label>
 
-        <div class="checkItem">
-          <input type="checkbox" id="m8ZeroWin" />
-          <label for="m8ZeroWin">M8BF win rate = 0%</label>
+        <label>
+          <input type="checkbox" id="winrate0" />
+          M8BF win rate = 0%
+        </label>
+
+        <div class="winrateHint">
+          Only one can be selected. These override only the “Straddle signal” behavior.
         </div>
       </div>
 
-      <!-- existing inputs on the right -->
-      <div class="calcInputs">
+      <!-- Calculator -->
+      <div class="calculator">
+        <h1>VIX Calculator</h1>
+
         <label>VIX Today’s Open:
           <input type="number" id="todayOpen" step="0.01" />
         </label>
+
         <label>VIX Yesterday’s Open:
           <input type="number" id="yesterdayOpen" step="0.01" />
         </label>
+
         <label>VIX Yesterday’s Close:
           <input type="number" id="yesterdayClose" step="0.01" />
         </label>
+
         <button onclick="calculateStrategy()">Calculate</button>
       </div>
     </div>
-  </div>
 
-  <div style="margin-top: 10px; font-size: 14px; text-align: center;">
-    <p>
-      <strong>Overnight VIX Drop:</strong>
-      <span id="overnightDropDisplay">—</span>
-      <span id="cpiTag" class="tag" style="display:none;">CPI day</span>
-      <span id="fedTag" class="tag" style="display:none;">Fed day</span>
-      <span id="opexTag" class="tag" style="display:none;">OPEX</span>
-      <span id="postOpexTag" class="tag" style="display:none;">Post-OPEX</span>
-      <span id="postHolidayTag" class="tag" style="display:none;">Post-Holiday</span>
-      <span id="eomTag" class="tag" style="display:none;">EOM</span>
-    </p>
-    <p>
-      <strong>Yesterday’s VIX Open − Today’s VIX Open:</strong>
-      <span id="openDiffDisplay">—</span>
-      <span id="openDiffNote" class="tag" style="display:none;">ignored on CPI day</span>
-    </p>
-  </div>
+    <div style="margin-top: 10px; font-size: 14px; text-align: center;">
+      <p>
+        <strong>Overnight VIX Drop:</strong>
+        <span id="overnightDropDisplay">—</span>
+        <span id="cpiTag" class="tag" style="display:none;">CPI day</span>
+        <span id="fedTag" class="tag" style="display:none;">Fed day</span>
+        <span id="opexTag" class="tag" style="display:none;">OPEX</span>
+        <span id="postOpexTag" class="tag" style="display:none;">Post-OPEX</span>
+        <span id="postHolidayTag" class="tag" style="display:none;">Post-Holiday</span>
+        <span id="eomTag" class="tag" style="display:none;">EOM</span>
+      </p>
+      <p>
+        <strong>Yesterday’s VIX Open − Today’s VIX Open:</strong>
+        <span id="openDiffDisplay">—</span>
+        <span id="openDiffNote" class="tag" style="display:none;">ignored on CPI day</span>
+      </p>
+    </div>
 
-  <div style="text-align: right;">
-    <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
-  </div>
+    <div style="text-align: right;">
+      <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
+    </div>
 
-  <div id="recBlock">
-    <div class="row mainline" id="mainRec">—</div>
-    <div class="row" id="pm1Line">—</div>
-    <div class="row" id="bobfLine">—</div>
-  </div>
+    <div id="recBlock">
+      <div class="row mainline" id="mainRec">—</div>
+      <div class="row" id="pm1Line">—</div>
+      <div class="row" id="bobfLine">—</div>
+    </div>
 
-  <!-- FLOWCHART (UNCHANGED) -->
-  <div class="flowchart">
-    <div class="mermaid">
+    <!-- FLOWCHART (UNCHANGED) -->
+    <div class="flowchart">
+      <div class="mermaid">
 flowchart TD
   A["SPX overnight gap < 0.9%?"]
   A -->|No| M1["M8 Butterfly"]
@@ -231,587 +322,609 @@ flowchart TD
   classDef butterfly fill:#b49aff,stroke:#333,stroke-width:1px
   classDef straddle fill:#61f7d6,stroke:#333,stroke-width:1px
   classDef atm fill:#fff399,stroke:#333,stroke-width:1px
+      </div>
     </div>
+
+    <!-- OVERVIEW -->
+    <section class="strategy-doc" id="strategy-doc">
+      <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
+
+      <p>
+        Sigma 3 consists of five SPX 0DTE strategies:
+        <strong>M8 Butterfly (M8BF)</strong>,
+        <strong>Straddle</strong>,
+        <strong>GXBF (GEX Butterfly)</strong>,
+        <strong>1PM Butterfly (1PM BF)</strong>,
+        and <strong>BOBF</strong>.
+        Each strategy has its own entry rules, risk limits, and calendar filters.
+        The VIX calculator determines which strategies are valid on any given day
+        based on overnight VIX behavior and market conditions.
+      </p>
+
+      <div class="divider">⸻</div>
+
+      <h3>M8 Butterfly (M8BF)</h3>
+      <ul>
+        <li>Used when overnight VIX is <strong>up</strong>.</li>
+        <li>Triggered when <strong>open-to-open VIX &gt; 1.4</strong>, or when overnight VIX does not meet straddle or GXBF thresholds.</li>
+        <li><strong>Not traded</strong> on Fed days.</li>
+        <li><strong>Not traded</strong> on the first trading day after a market holiday (unless overridden by NM rule).</li>
+        <li>On the first trading day of the month (NM), M8BF converts to <strong>NM Straddle</strong> (not on Mondays).</li>
+        <li>Post-OPEX Monday note: when M8BF appears, afternoon timing is preferred.</li>
+        <li>Max risk: <strong>$1,400</strong>.</li>
+        <li>Use center strike from M8 prediction. Widen wings till you get close to $14 entry cost.</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./M8BF.jpg" alt="M8BF" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <h3>Straddle</h3>
+      <ul>
+        <li>Used when overnight VIX is <strong>moderately down</strong> (<strong>0.01 – 0.65</strong>).</li>
+        <li>Entry time: <strong>9:32 AM</strong>.</li>
+        <li><strong>Not traded</strong> on OPEX days.</li>
+        <li>On Wednesdays (non-Fed, non-CPI), straddles convert to M8BF unless overridden.</li>
+        <li><strong>End-of-Month (EOM):</strong> automatic <strong>EOM Straddle</strong>.</li>
+        <li>EOM Straddle max risk: <strong>$3,500</strong>.</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./Straddle.jpg" alt="Straddle payoff diagram" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <h3>GXBF (GEX Butterfly)</h3>
+      <ul>
+        <li>Used when overnight VIX is <strong>strongly down</strong> (<strong>&gt; 0.65</strong>).</li>
+        <li>Takes priority over open-to-open VIX logic.</li>
+        <li>Entry time: <strong>9:36 AM</strong>, centered on major positive gamma.</li>
+        <li>Allowed on Fed days.</li>
+        <li>Max risk: <strong>$1,400</strong>.</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./gex.jpg" alt="GXBF strategy visual" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <h3>1PM Butterfly (1PM BF)</h3>
+      <ul>
+        <li>Only traded when overnight VIX is <strong>up</strong>.</li>
+        <li><strong>Not traded</strong> on Mondays.</li>
+        <li><strong>Not traded</strong> on VIX expiration days.</li>
+        <li><strong>Not traded</strong> on EOM or EOM-1.</li>
+        <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
+        <li>Max risk: <strong>$1,400</strong>.</li>
+        <li>Use 1:00 PM SPX price as a center strike. Widen wings till you get close to $14 entry cost.</li>
+      </ul>
+      <div class="strategy-image">
+        <!-- NOTE: file name contains a space, so use %20 -->
+        <img src="./1pm%20BF.jpg" alt="1PM BF" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <h3>BOBF</h3>
+      <ul>
+        <li><strong>Not traded</strong> on Fridays.</li>
+        <li><strong>Not traded</strong> on monthly VIX expiration days.</li>
+        <li><strong>Not traded</strong> on OPEX-1.</li>
+        <li><strong>Not traded</strong> on EOM-2 and EOM-1.</li>
+        <li>Maximum VIX allowed: <strong>23</strong>.</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./BOBF.jpg" alt="BOBF strategy visual" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <h3>CPI Rule</h3>
+      <ul>
+        <li>Uses only <strong>Yesterday’s VIX Close − Today’s VIX Open</strong>.</li>
+        <li>If VIX is <strong>down</strong>: trade <strong>Long ATM Call @ 9:32 AM</strong>.</li>
+        <li>Max entry premium: <strong>$13</strong>.</li>
+        <li>If VIX is up or flat: <strong>No trade</strong>.</li>
+      </ul>
+
+      <div class="divider">⸻</div>
+
+      <h3>Win Rate Rules</h3>
+      <ul>
+        <li>If <strong>M8BF win rate was &gt; 90%</strong> the previous day, the next day’s <strong>Straddle signal</strong> is replaced with <strong>M8BF</strong>.</li>
+        <li>If <strong>M8BF win rate was 0%</strong> the previous day, the next day is an <strong>automatic Straddle</strong> (BOBF can still be in play if not blocked by its filters).</li>
+      </ul>
+
+      <div class="divider">⸻</div>
+
+      <h3>P/L</h3>
+      <ul>
+        <li>P/L from September 1st 2024 to January 1st 2026</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./pl.jpg" alt="P/L" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <ul>
+        <li>Winrate for the last 2 digits of the center strike M8BF prediction. AM vs PM. Stay away from low win rate strikes.</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./last.jpg" alt="Last 2 digits win rate" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <ul>
+        <li>Optional modification for M8BF: some strike can be changed.</li>
+      </ul>
+      <div class="strategy-image">
+        <img src="./move.jpg" alt="Optional M8BF modification" loading="lazy" />
+      </div>
+
+      <div class="divider">⸻</div>
+
+      <p>All trades are held to expiration.</p>
+
+      <p class="muted-note">
+        <strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial or investment advice. Trading options involves significant risk.
+      </p>
+    </section>
+
   </div>
 
-  <!-- OVERVIEW SECTION (same as your current version) -->
-  <section class="strategy-doc" id="strategy-doc">
-    <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
+  <script>
+    /* ===== SCHEDULES ===== */
 
-    <p>
-      Sigma 3 consists of five SPX 0DTE strategies:
-      <strong>M8 Butterfly (M8BF)</strong>,
-      <strong>Straddle</strong>,
-      <strong>GXBF (GEX Butterfly)</strong>,
-      <strong>1PM Butterfly (1PM BF)</strong>,
-      and <strong>BOBF</strong>.
-      Each strategy has its own entry rules, risk limits, and calendar filters.
-      The VIX calculator determines which strategies are valid on any given day
-      based on overnight VIX behavior and market conditions.
-    </p>
+    const cpiSchedule = [
+      "January 23, 2026",
+      "February 11, 2026",
+      "March 11, 2026",
+      "April 10, 2026",
+      "June 10, 2026",
+      "July 14, 2026",
+      "August 12, 2026",
+      "September 11, 2026",
+      "October 14, 2026",
+      "November 10, 2026",
+      "December 10, 2026"
+    ];
 
-    <div class="divider">⸻</div>
+    const fedSchedule = [
+      "January 28, 2026",
+      "March 18, 2026",
+      "April 29, 2026",
+      "June 17, 2026",
+      "July 29, 2026",
+      "September 16, 2026",
+      "October 28, 2026",
+      "December 9, 2026"
+    ];
 
-    <h3>M8 Butterfly (M8BF)</h3>
-    <ul>
-      <li>Used when overnight VIX is <strong>up</strong>.</li>
-      <li>Triggered when <strong>open-to-open VIX &gt; 1.4</strong>, or when overnight VIX does not meet straddle or GXBF thresholds.</li>
-      <li><strong>Not traded</strong> on Fed days.</li>
-      <li><strong>Not traded</strong> on the first trading day after a market holiday (unless overridden by NM rule).</li>
-      <li>On the first trading day of the month (NM), M8BF converts to <strong>NM Straddle</strong> (not on Mondays).</li>
-      <li>Post-OPEX Monday note: when M8BF appears, afternoon timing is preferred.</li>
-      <li>Max risk: <strong>$1,400</strong>.</li>
-      <li>Use center strike from M8 prediction. Widen wings till you get close to $14 entry cost.</li>
-    </ul>
-    <img src="./M8BF.jpg" alt="M8BF"
-         style="max-width:100%; border-radius:8px; margin-top:12px;">
+    const opexSchedule = [
+      "January 16, 2026",
+      "February 20, 2026",
+      "March 20, 2026",
+      "April 17, 2026",
+      "May 15, 2026",
+      "June 18, 2026",
+      "July 17, 2026",
+      "August 21, 2026",
+      "September 18, 2026",
+      "October 16, 2026",
+      "November 20, 2026",
+      "December 18, 2026"
+    ];
 
-    <div class="divider">⸻</div>
+    const marketHolidays = [
+      "January 1, 2026",
+      "January 19, 2026",
+      "February 16, 2026",
+      "April 3, 2026",
+      "May 25, 2026",
+      "June 19, 2026",
+      "July 3, 2026",
+      "September 7, 2026",
+      "November 26, 2026",
+      "December 25, 2026"
+    ];
 
-    <h3>Straddle</h3>
-    <ul>
-      <li>Used when overnight VIX is <strong>moderately down</strong> (<strong>0.01 – 0.65</strong>).</li>
-      <li>Entry time: <strong>9:32 AM</strong>.</li>
-      <li><strong>Not traded</strong> on OPEX days.</li>
-      <li>On Wednesdays (non-Fed, non-CPI), straddles convert to M8BF unless overridden.</li>
-      <li><strong>End-of-Month (EOM):</strong> automatic <strong>EOM Straddle</strong>.</li>
-      <li>EOM Straddle max risk: <strong>$3,500</strong>.</li>
-    </ul>
-    <img src="./Straddle.jpg" alt="Straddle payoff diagram"
-         style="max-width:100%; border-radius:8px; margin-top:12px;">
+    const vixExpirySchedule = [
+      "January 21, 2026",
+      "February 18, 2026",
+      "March 18, 2026",
+      "April 15, 2026",
+      "May 20, 2026",
+      "June 17, 2026",
+      "July 15, 2026",
+      "August 19, 2026",
+      "September 16, 2026",
+      "October 21, 2026",
+      "November 18, 2026",
+      "December 16, 2026"
+    ];
 
-    <div class="divider">⸻</div>
-
-    <h3>GXBF (GEX Butterfly)</h3>
-    <ul>
-      <li>Used when overnight VIX is <strong>strongly down</strong> (<strong>&gt; 0.65</strong>).</li>
-      <li>Takes priority over open-to-open VIX logic.</li>
-      <li>Entry time: <strong>9:36 AM</strong>, centered on major positive gamma.</li>
-      <li>Allowed on Fed days.</li>
-      <li>Max risk: <strong>$1,400</strong>.</li>
-    </ul>
-    <div class="strategy-image">
-      <img src="./gex.jpg" alt="GXBF strategy visual" loading="lazy" />
-    </div>
-
-    <div class="divider">⸻</div>
-
-    <h3>1PM Butterfly (1PM BF)</h3>
-    <ul>
-      <li>Only traded when overnight VIX is <strong>up</strong>.</li>
-      <li><strong>Not traded</strong> on Mondays.</li>
-      <li><strong>Not traded</strong> on VIX expiration days.</li>
-      <li><strong>Not traded</strong> on EOM or EOM-1.</li>
-      <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
-      <li>Max risk: <strong>$1,400</strong>.</li>
-      <li>Use 1:00 pm SPX price as a center strike. Widen wings till you get close to $14 entry cost.</li>
-    </ul>
-    <img src="./1pm BF.jpg" alt="1pm BF"
-         style="max-width:100%; border-radius:8px; margin-top:12px;">
-
-    <div class="divider">⸻</div>
-
-    <h3>BOBF</h3>
-    <ul>
-      <li><strong>Not traded</strong> on Fridays.</li>
-      <li><strong>Not traded</strong> on monthly VIX expiration days.</li>
-      <li><strong>Not traded</strong> on OPEX-1.</li>
-      <li><strong>Not traded</strong> on EOM-2 and EOM-1.</li>
-      <li>Maximum VIX allowed: <strong>23</strong>.</li>
-    </ul>
-    <div class="strategy-image">
-      <img src="./BOBF.jpg" alt="BOBF strategy visual" loading="lazy" />
-    </div>
-
-    <div class="divider">⸻</div>
-
-    <h3>CPI Rule</h3>
-    <ul>
-      <li>Uses only <strong>Yesterday’s VIX Close − Today’s VIX Open</strong>.</li>
-      <li>If VIX is <strong>down</strong>: trade <strong>Long ATM Call @ 9:32 AM</strong>.</li>
-      <li>Max entry premium: <strong>$13</strong>.</li>
-      <li>If VIX is up or flat: <strong>No trade</strong>.</li>
-    </ul>
-
-    <div class="divider">⸻</div>
-
-<h3>Win Rate Rules</h3>
-<ul>
-  <li>
-    If <strong>M8BF win rate was above 90%</strong> the previous day, then the next day any <strong>Straddle</strong> signal is replaced with <strong>M8BF</strong>.
-  </li>
-  <li>
-    If <strong>M8BF win rate was 0%</strong> the previous day, then the next day is an automatic <strong>Straddle @ 9:32 AM</strong>.
-  </li>
-</ul>
-    <div class="divider">⸻</div>
-
-    <p>All trades are held to expiration.</p>
-
-    <p class="muted-note">
-      <strong>Disclaimer:</strong> This content is for informational and educational purposes only and does not constitute financial or investment advice. Trading options involves significant risk.
-    </p>
-  </section>
-
-</div>
-
-<script>
-/* ===== SCHEDULES ===== */
-
-const cpiSchedule = [
-  "January 23, 2026",
-  "February 11, 2026",
-  "March 11, 2026",
-  "April 10, 2026",
-  "June 10, 2026",
-  "July 14, 2026",
-  "August 12, 2026",
-  "September 11, 2026",
-  "October 14, 2026",
-  "November 10, 2026",
-  "December 10, 2026"
-];
-
-const fedSchedule = [
-  "January 28, 2026",
-  "March 18, 2026",
-  "April 29, 2026",
-  "June 17, 2026",
-  "July 29, 2026",
-  "September 16, 2026",
-  "October 28, 2026",
-  "December 9, 2026"
-];
-
-const opexSchedule = [
-  "January 16, 2026",
-  "February 20, 2026",
-  "March 20, 2026",
-  "April 17, 2026",
-  "May 15, 2026",
-  "June 18, 2026",
-  "July 17, 2026",
-  "August 21, 2026",
-  "September 18, 2026",
-  "October 16, 2026",
-  "November 20, 2026",
-  "December 18, 2026"
-];
-
-const marketHolidays = [
-  "January 1, 2026",
-  "January 19, 2026",
-  "February 16, 2026",
-  "April 3, 2026",
-  "May 25, 2026",
-  "June 19, 2026",
-  "July 3, 2026",
-  "September 7, 2026",
-  "November 26, 2026",
-  "December 25, 2026"
-];
-
-const vixExpirySchedule = [
-  "January 21, 2026",
-  "February 18, 2026",
-  "March 18, 2026",
-  "April 15, 2026",
-  "May 20, 2026",
-  "June 17, 2026",
-  "July 15, 2026",
-  "August 19, 2026",
-  "September 16, 2026",
-  "October 21, 2026",
-  "November 18, 2026",
-  "December 16, 2026"
-];
-
-/* ===== RENDER SCHEDULES ===== */
-
-function renderSchedule(list, ulId) {
-  const ul = document.getElementById(ulId);
-  list.forEach(date => {
-    const li = document.createElement('li');
-    li.textContent = date;
-    li.setAttribute('data-date', date);
-    ul.appendChild(li);
-  });
-}
-
-renderSchedule(cpiSchedule, 'cpiSchedule');
-renderSchedule(fedSchedule, 'fedSchedule');
-renderSchedule(opexSchedule, 'opexSchedule');
-renderSchedule(marketHolidays, 'holidaySchedule');
-renderSchedule(vixExpirySchedule, 'vixExpirySchedule');
-
-/* ===== CROSS OFF PAST DATES ===== */
-
-function hasPassed(dateStr) {
-  const d = new Date(dateStr);
-  if (isNaN(d)) return false;
-  const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-  return new Date() > endOfDay;
-}
-function crossOffPastDates(ulId) {
-  const ul = document.getElementById(ulId);
-  if (!ul) return;
-  Array.from(ul.children).forEach(li => {
-    const dateText = li.getAttribute('data-date') || li.textContent.trim();
-    if (hasPassed(dateText)) li.classList.add('crossed');
-  });
-}
-function refreshCrossedDates() {
-  crossOffPastDates('cpiSchedule');
-  crossOffPastDates('fedSchedule');
-  crossOffPastDates('opexSchedule');
-  crossOffPastDates('holidaySchedule');
-  crossOffPastDates('vixExpirySchedule');
-}
-document.addEventListener('DOMContentLoaded', () => {
-  refreshCrossedDates();
-  const now = new Date();
-  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2);
-  setTimeout(() => {
-    refreshCrossedDates();
-    setInterval(refreshCrossedDates, 24 * 60 * 60 * 1000);
-  }, midnight - now);
-});
-
-/* ===== CHECKBOX MUTUAL EXCLUSION ===== */
-
-function enforceExclusiveChecks(changedId) {
-  const high = document.getElementById('m8HighWin');
-  const zero = document.getElementById('m8ZeroWin');
-  if (!high || !zero) return;
-
-  if (changedId === 'm8HighWin' && high.checked) zero.checked = false;
-  if (changedId === 'm8ZeroWin' && zero.checked) high.checked = false;
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const high = document.getElementById('m8HighWin');
-  const zero = document.getElementById('m8ZeroWin');
-  if (high) high.addEventListener('change', () => enforceExclusiveChecks('m8HighWin'));
-  if (zero) zero.addEventListener('change', () => enforceExclusiveChecks('m8ZeroWin'));
-});
-
-/* ===== DATE HELPERS ===== */
-
-function todayLongUS() {
-  return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
-function isCpiDay() { return cpiSchedule.includes(todayLongUS()); }
-function isFedDay() { return fedSchedule.includes(todayLongUS()); }
-function isOpexDay() { return opexSchedule.includes(todayLongUS()); }
-function isVixExpiryDay() { return vixExpirySchedule.includes(todayLongUS()); }
-
-function isWeekend(d) { const day = d.getDay(); return day === 0 || day === 6; }
-function isHoliday(d) {
-  const asLong = d.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
-  return marketHolidays.includes(asLong);
-}
-function nextTradingDay(d) {
-  const nd = new Date(d);
-  do { nd.setDate(nd.getDate() + 1); } while (isWeekend(nd) || isHoliday(nd));
-  return nd;
-}
-function prevTradingDay(d) {
-  const pd = new Date(d);
-  do { pd.setDate(pd.getDate() - 1); } while (isWeekend(pd) || isHoliday(pd));
-  return pd;
-}
-function isTodayFirstTradingDayAfter(dateStr) {
-  const d = new Date(dateStr);
-  if (isNaN(d)) return false;
-  const after = nextTradingDay(d);
-  const today = new Date();
-  return after.getFullYear() === today.getFullYear()
-      && after.getMonth() === today.getMonth()
-      && after.getDate() === today.getDate();
-}
-function isPostHoliday() { return marketHolidays.some(isTodayFirstTradingDayAfter); }
-function isPostOpexMonday() {
-  const postAnyOpex = opexSchedule.some(isTodayFirstTradingDayAfter);
-  return postAnyOpex && new Date().getDay() === 1;
-}
-
-// EOM detection (last TRADING day of month)
-function isLastTradingDayOfMonth(date = new Date()) {
-  const next = nextTradingDay(date);
-  return next.getMonth() !== date.getMonth();
-}
-function isEomMinusN(n, date = new Date()) {
-  const firstNextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  const eom = prevTradingDay(firstNextMonth);
-  let target = new Date(eom);
-  for (let i = 0; i < n; i++) target = prevTradingDay(target);
-  return target.getFullYear() === date.getFullYear()
-      && target.getMonth() === date.getMonth()
-      && target.getDate() === date.getDate();
-}
-function isTodayTradingDayBefore(dateStr) {
-  const d = new Date(dateStr);
-  if (isNaN(d)) return false;
-  const before = prevTradingDay(d);
-  const today = new Date();
-  return before.getFullYear() === today.getFullYear()
-      && before.getMonth() === today.getMonth()
-      && before.getDate() === today.getDate();
-}
-
-// NM detection (first trading day of month)
-function isFirstTradingDayOfMonth(date = new Date()) {
-  const prev = prevTradingDay(date);
-  return prev.getMonth() !== date.getMonth();
-}
-
-/* ===== UI INIT ===== */
-
-function updateCpiUI() {
-  const cpi = isCpiDay();
-  document.getElementById('yesterdayOpen').disabled = cpi;
-}
-document.addEventListener('DOMContentLoaded', updateCpiUI);
-
-document.getElementById('todayDate').textContent =
-  "Today’s Date: " + new Date().toLocaleDateString();
-
-/* ===== MAIN CALCULATOR ===== */
-
-function calculateStrategy() {
-  const today = parseFloat(document.getElementById('todayOpen').value);
-  const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
-  const yClose = parseFloat(document.getElementById('yesterdayClose').value);
-
-  const highWin = !!document.getElementById('m8HighWin')?.checked;
-  const zeroWin = !!document.getElementById('m8ZeroWin')?.checked;
-
-  // Safety (should be prevented by UI listeners anyway)
-  if (highWin && zeroWin) {
-    document.getElementById('m8HighWin').checked = false;
-    document.getElementById('m8ZeroWin').checked = true;
-  }
-
-  if (isNaN(today) || isNaN(yClose) || (!isCpiDay() && isNaN(yOpen))) {
-    alert("Please enter valid numbers.");
-    return;
-  }
-
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const isMonday = dayOfWeek === 1;
-  const isFriday = dayOfWeek === 5;
-  const isWednesday = dayOfWeek === 3;
-
-  const nmToday = isFirstTradingDayOfMonth(now);
-
-  const cpiToday = isCpiDay();
-  const fedToday = isFedDay();
-  const opexToday = isOpexDay();
-  const postHoliday = isPostHoliday();
-  const postOpexMonday = isPostOpexMonday();
-  const eomTradingDay = isLastTradingDayOfMonth(now);
-  const eomMinus1 = isEomMinusN(1, now);
-  const eomMinus2 = isEomMinusN(2, now);
-  const vixExpiryToday = isVixExpiryDay();
-
-  const opexMinus1 = opexSchedule.some(isTodayTradingDayBefore);
-
-  // context tags
-  document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
-  document.getElementById('fedTag').style.display = fedToday ? 'inline-block' : 'none';
-  document.getElementById('opexTag').style.display = opexToday ? 'inline-block' : 'none';
-  document.getElementById('postOpexTag').style.display = postOpexMonday ? 'inline-block' : 'none';
-  document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block' : 'none';
-  document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block' : 'none';
-
-  const openDiff = (isNaN(yOpen) ? NaN : yOpen - today);
-  const overnightDrop = yClose - today; // yClose - todayOpen
-
-  document.getElementById('overnightDropDisplay').textContent =
-    isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
-
-  const openDiffDisplay = document.getElementById('openDiffDisplay');
-  const openDiffNote = document.getElementById('openDiffNote');
-  if (cpiToday) {
-    openDiffDisplay.textContent = '—';
-    openDiffNote.style.display = 'inline-block';
-  } else {
-    openDiffNote.style.display = 'none';
-    openDiffDisplay.textContent = isNaN(openDiff) ? '—' : openDiff.toFixed(2);
-  }
-
-  let recommendation = "";
-  let bgColor = "#eee";
-  let crossedMain = false;
-  let addPostOpexNote = false;
-
-  // Used to stop Wednesday conversion when you force Straddle via the 0% rule
-  let forcedStraddleByZeroWin = false;
-
-  if (cpiToday) {
-    // CPI rule: if VIX down (yClose - todayOpen > 0) => long call, else no trade
-    if (overnightDrop > 0) {
-      recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
-      bgColor = "#61f7d6";
-    } else {
-      recommendation = "No Trade (CPI day — VIX up)";
-      bgColor = "#eee";
-      crossedMain = false;
+    function renderSchedule(list, ulId) {
+      const ul = document.getElementById(ulId);
+      list.forEach(date => {
+        const li = document.createElement('li');
+        li.textContent = date;
+        li.setAttribute('data-date', date);
+        ul.appendChild(li);
+      });
     }
-  } else {
-    // NEW RULE: if M8BF win rate = 0% is checked => force next day Straddle
-    if (zeroWin) {
-      recommendation = "Straddle @ 9:32 AM (0% win-rate rule)";
-      bgColor = "#61f7d6";
-      crossedMain = false;
-      forcedStraddleByZeroWin = true;
-    } else {
-      // Base logic
-      if (overnightDrop > 0.65) {
-        recommendation = "GXBF @ 9:36 AM";
-        bgColor = "#fff399";
-      } else if (openDiff > 1.4) {
-        recommendation = "M8 Butterfly";
-        bgColor = "#b49aff";
-      } else if (overnightDrop >= 0.01 && overnightDrop < 0.65) {
-        recommendation = "Straddle @ 9:32 AM";
-        bgColor = "#61f7d6";
-      } else {
-        recommendation = "M8 Butterfly";
-        bgColor = "#b49aff";
+
+    renderSchedule(cpiSchedule, 'cpiSchedule');
+    renderSchedule(fedSchedule, 'fedSchedule');
+    renderSchedule(opexSchedule, 'opexSchedule');
+    renderSchedule(marketHolidays, 'holidaySchedule');
+    renderSchedule(vixExpirySchedule, 'vixExpirySchedule');
+
+    /* ===== WIN RATE CHECKBOX MUTUAL EXCLUSION ===== */
+
+    const winrate90 = document.getElementById('winrate90');
+    const winrate0 = document.getElementById('winrate0');
+
+    function enforceMutualExclusion(changed) {
+      if (changed === '90' && winrate90.checked) winrate0.checked = false;
+      if (changed === '0' && winrate0.checked) winrate90.checked = false;
+    }
+
+    winrate90.addEventListener('change', () => enforceMutualExclusion('90'));
+    winrate0.addEventListener('change', () => enforceMutualExclusion('0'));
+
+    /* ===== CROSS OFF PAST DATES ===== */
+
+    function hasPassed(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d)) return false;
+      const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      return new Date() > endOfDay;
+    }
+
+    function crossOffPastDates(ulId) {
+      const ul = document.getElementById(ulId);
+      if (!ul) return;
+      Array.from(ul.children).forEach(li => {
+        const dateText = li.getAttribute('data-date') || li.textContent.trim();
+        if (hasPassed(dateText)) li.classList.add('crossed');
+      });
+    }
+
+    function refreshCrossedDates() {
+      crossOffPastDates('cpiSchedule');
+      crossOffPastDates('fedSchedule');
+      crossOffPastDates('opexSchedule');
+      crossOffPastDates('holidaySchedule');
+      crossOffPastDates('vixExpirySchedule');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshCrossedDates();
+      const now = new Date();
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2);
+      setTimeout(() => {
+        refreshCrossedDates();
+        setInterval(refreshCrossedDates, 24 * 60 * 60 * 1000);
+      }, midnight - now);
+    });
+
+    /* ===== DATE HELPERS ===== */
+
+    function todayLongUS() {
+      return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+    function isCpiDay() { return cpiSchedule.includes(todayLongUS()); }
+    function isFedDay() { return fedSchedule.includes(todayLongUS()); }
+    function isOpexDay() { return opexSchedule.includes(todayLongUS()); }
+    function isVixExpiryDay() { return vixExpirySchedule.includes(todayLongUS()); }
+
+    function isWeekend(d) { const day = d.getDay(); return day === 0 || day === 6; }
+    function isHoliday(d) {
+      const asLong = d.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+      return marketHolidays.includes(asLong);
+    }
+    function nextTradingDay(d) {
+      const nd = new Date(d);
+      do { nd.setDate(nd.getDate() + 1); } while (isWeekend(nd) || isHoliday(nd));
+      return nd;
+    }
+    function prevTradingDay(d) {
+      const pd = new Date(d);
+      do { pd.setDate(pd.getDate() - 1); } while (isWeekend(pd) || isHoliday(pd));
+      return pd;
+    }
+    function isTodayFirstTradingDayAfter(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d)) return false;
+      const after = nextTradingDay(d);
+      const today = new Date();
+      return after.getFullYear() === today.getFullYear()
+          && after.getMonth() === today.getMonth()
+          && after.getDate() === today.getDate();
+    }
+    function isPostHoliday() { return marketHolidays.some(isTodayFirstTradingDayAfter); }
+    function isPostOpexMonday() {
+      const postAnyOpex = opexSchedule.some(isTodayFirstTradingDayAfter);
+      return postAnyOpex && new Date().getDay() === 1;
+    }
+
+    // EOM detection (last TRADING day of month)
+    function isLastTradingDayOfMonth(date = new Date()) {
+      const next = nextTradingDay(date);
+      return next.getMonth() !== date.getMonth();
+    }
+    function isEomMinusN(n, date = new Date()) {
+      const firstNextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      const eom = prevTradingDay(firstNextMonth);
+      let target = new Date(eom);
+      for (let i = 0; i < n; i++) target = prevTradingDay(target);
+      return target.getFullYear() === date.getFullYear()
+          && target.getMonth() === date.getMonth()
+          && target.getDate() === date.getDate();
+    }
+    function isTodayTradingDayBefore(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d)) return false;
+      const before = prevTradingDay(d);
+      const today = new Date();
+      return before.getFullYear() === today.getFullYear()
+          && before.getMonth() === today.getMonth()
+          && before.getDate() === today.getDate();
+    }
+
+    // NM detection (first trading day of month)
+    function isFirstTradingDayOfMonth(date = new Date()) {
+      const prev = prevTradingDay(date);
+      return prev.getMonth() !== date.getMonth();
+    }
+
+    /* ===== UI INIT ===== */
+
+    function updateCpiUI() {
+      const cpi = isCpiDay();
+      document.getElementById('yesterdayOpen').disabled = cpi;
+    }
+    document.addEventListener('DOMContentLoaded', updateCpiUI);
+
+    document.getElementById('todayDate').textContent =
+      "Today’s Date: " + new Date().toLocaleDateString();
+
+    /* ===== MAIN CALCULATOR ===== */
+
+    function calculateStrategy() {
+      const today = parseFloat(document.getElementById('todayOpen').value);
+      const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
+      const yClose = parseFloat(document.getElementById('yesterdayClose').value);
+
+      if (isNaN(today) || isNaN(yClose) || (!isCpiDay() && isNaN(yOpen))) {
+        alert("Please enter valid numbers.");
+        return;
       }
+
+      const winrateHigh = winrate90.checked; // M8BF win rate >90%
+      const winrateZero = winrate0.checked;  // M8BF win rate =0%
+
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const isMonday = dayOfWeek === 1;
+      const isFriday = dayOfWeek === 5;
+      const isWednesday = dayOfWeek === 3;
+
+      const nmToday = isFirstTradingDayOfMonth(now);
+
+      const cpiToday = isCpiDay();
+      const fedToday = isFedDay();
+      const opexToday = isOpexDay();
+      const postHoliday = isPostHoliday();
+      const postOpexMonday = isPostOpexMonday();
+      const eomTradingDay = isLastTradingDayOfMonth(now);
+      const eomMinus1 = isEomMinusN(1, now);
+      const eomMinus2 = isEomMinusN(2, now);
+      const vixExpiryToday = isVixExpiryDay();
+
+      const opexMinus1 = opexSchedule.some(isTodayTradingDayBefore);
+
+      // context tags
+      document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
+      document.getElementById('fedTag').style.display = fedToday ? 'inline-block' : 'none';
+      document.getElementById('opexTag').style.display = opexToday ? 'inline-block' : 'none';
+      document.getElementById('postOpexTag').style.display = postOpexMonday ? 'inline-block' : 'none';
+      document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block' : 'none';
+      document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block' : 'none';
+
+      const openDiff = (isNaN(yOpen) ? NaN : yOpen - today);
+      const overnightDrop = yClose - today; // yClose - todayOpen
+
+      document.getElementById('overnightDropDisplay').textContent =
+        isNaN(overnightDrop) ? '—' : overnightDrop.toFixed(2);
+
+      const openDiffDisplay = document.getElementById('openDiffDisplay');
+      const openDiffNote = document.getElementById('openDiffNote');
+      if (cpiToday) {
+        openDiffDisplay.textContent = '—';
+        openDiffNote.style.display = 'inline-block';
+      } else {
+        openDiffNote.style.display = 'none';
+        openDiffDisplay.textContent = isNaN(openDiff) ? '—' : openDiff.toFixed(2);
+      }
+
+      let recommendation = "";
+      let bgColor = "#eee";
+      let crossedMain = false;
+      let addPostOpexNote = false;
+
+      if (cpiToday) {
+        // CPI rule: if VIX down (yClose - todayOpen > 0) => long call, else no trade
+        if (overnightDrop > 0) {
+          recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
+          bgColor = "#61f7d6";
+        } else {
+          recommendation = "No Trade (CPI day — VIX up)";
+          bgColor = "#eee";
+          crossedMain = false;
+        }
+      } else {
+        // Base logic
+        if (overnightDrop > 0.65) {
+          recommendation = "GXBF @ 9:36 AM";
+          bgColor = "#fff399";
+        } else if (openDiff > 1.4) {
+          recommendation = "M8 Butterfly";
+          bgColor = "#b49aff";
+        } else if (overnightDrop >= 0.01 && overnightDrop < 0.65) {
+          recommendation = "Straddle @ 9:32 AM";
+          bgColor = "#61f7d6";
+        } else {
+          recommendation = "M8 Butterfly";
+          bgColor = "#b49aff";
+        }
+
+        // Fed blocks only M8
+        if (fedToday && recommendation === "M8 Butterfly") {
+          recommendation = "No M8BF (Fed day)";
+          bgColor = "#eee";
+          crossedMain = true;
+        }
+
+        // Post-holiday blocks M8 (unless NM converts)
+        if (postHoliday && recommendation === "M8 Butterfly") {
+          recommendation = "No M8BF (Post-holiday)";
+          bgColor = "#eee";
+          crossedMain = true;
+        }
+
+        // NM override: convert M8 or No M8BF to NM Straddle (NOT on Monday)
+        if (nmToday && !isMonday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
+          recommendation = "NM Straddle @ 9:32 AM";
+          bgColor = "#61f7d6";
+          crossedMain = false;
+        }
+
+        // EOM override
+        if (eomTradingDay) {
+          recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
+          bgColor = "#61f7d6";
+          crossedMain = false;
+        }
+
+        // Wednesday rule (NM overrides)
+        if (isWednesday && !fedToday && !eomTradingDay && !nmToday && recommendation.startsWith("Straddle")) {
+          recommendation = "M8 Butterfly";
+          bgColor = "#b49aff";
+        }
+
+        // OPEX: no straddles
+        if (opexToday && recommendation.startsWith("Straddle")) {
+          recommendation = "No Straddle (OPEX day)";
+          bgColor = "#eee";
+          crossedMain = true;
+        }
+
+        // Post-OPEX Monday note
+        if (postOpexMonday && recommendation === "M8 Butterfly") {
+          addPostOpexNote = true;
+        }
+
+        /* ===== Win rate overrides =====
+           - If 0% checked: automatic Straddle (still respects OPEX no-straddle)
+           - If >90% checked: replace ONLY the base “Straddle @ 9:32 AM” with M8BF
+        */
+
+        if (winrateZero) {
+          // Force Straddle unless OPEX blocks it (and keep EOM straddle as straddle)
+          if (recommendation === "No Straddle (OPEX day)") {
+            // do nothing, still blocked
+          } else if (recommendation.startsWith("Straddle")) {
+            recommendation = recommendation.includes("(EOM Straddle)")
+              ? "Straddle @ 9:32 AM (EOM Straddle)"
+              : "Straddle @ 9:32 AM (Win rate 0% prior day)";
+            bgColor = "#61f7d6";
+            crossedMain = false;
+          } else {
+            recommendation = "Straddle @ 9:32 AM (Win rate 0% prior day)";
+            bgColor = "#61f7d6";
+            crossedMain = false;
+          }
+        } else if (winrateHigh) {
+          // Replace only the plain straddle signal (not NM Straddle, not EOM Straddle)
+          if (recommendation === "Straddle @ 9:32 AM") {
+            recommendation = "M8 Butterfly (Win rate > 90% prior day)";
+            bgColor = "#b49aff";
+            crossedMain = false;
+          }
+        }
+      }
+
+      const recBlock = document.getElementById("recBlock");
+      const mainRec = document.getElementById("mainRec");
+      const pm1Line = document.getElementById("pm1Line");
+      const bobfLine = document.getElementById("bobfLine");
+
+      const mainText = addPostOpexNote
+        ? `${recommendation} (use afternoon times for post OPEX Mondays)`
+        : recommendation;
+
+      mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
+      recBlock.style.backgroundColor = bgColor;
+
+      // 1PM BF rules: overnight VIX must be UP => overnightDrop < 0
+      let pm1Text = "1PM BF in play";
+      let pm1Crossed = false;
+
+      if (!(overnightDrop < 0)) {
+        pm1Text = "No 1PM BF";
+        pm1Crossed = true;
+      } else if (isMonday) {
+        pm1Text = "No 1PM BF (Monday)";
+        pm1Crossed = true;
+      } else if (vixExpiryToday) {
+        pm1Text = "No 1PM BF (VIX expiration)";
+        pm1Crossed = true;
+      } else if (eomTradingDay) {
+        pm1Text = "No 1PM BF (EOM)";
+        pm1Crossed = true;
+      } else if (eomMinus1) {
+        pm1Text = "No 1PM BF (EOM-1)";
+        pm1Crossed = true;
+      } else if (!isNaN(today) && today < 16) {
+        pm1Text = "No 1PM BF (low VIX)";
+        pm1Crossed = true;
+      }
+
+      pm1Line.innerHTML = pm1Crossed ? `<span class="crossed">${pm1Text}</span>` : pm1Text;
+
+      // BOBF rules (not blocked on CPI by default)
+      let bobfText = "BOBF in play";
+      let bobfCrossed = false;
+
+      if (isFriday) {
+        bobfText = "No BOBF (Friday)";
+        bobfCrossed = true;
+      } else if (vixExpiryToday) {
+        bobfText = "No BOBF (VIX expiration)";
+        bobfCrossed = true;
+      } else if (opexMinus1) {
+        bobfText = "No BOBF (OPEX-1)";
+        bobfCrossed = true;
+      } else if (eomMinus2) {
+        bobfText = "No BOBF (EOM-2)";
+        bobfCrossed = true;
+      } else if (eomMinus1) {
+        bobfText = "No BOBF (EOM-1)";
+        bobfCrossed = true;
+      }
+
+      if (!bobfCrossed && !isNaN(today) && today > 23) {
+        bobfText = "No BOBF (high VIX)";
+        bobfCrossed = true;
+      }
+
+      bobfLine.innerHTML = bobfCrossed ? `<span class="crossed">${bobfText}</span>` : bobfText;
     }
-
-    // NM override: convert M8 or No M8BF to NM Straddle (NOT on Monday)
-    // (kept same priority as before)
-    if (nmToday && !isMonday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
-      recommendation = "NM Straddle @ 9:32 AM";
-      bgColor = "#61f7d6";
-      crossedMain = false;
-    }
-
-    // EOM override (still highest-priority Straddle day)
-    if (eomTradingDay) {
-      recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
-      bgColor = "#61f7d6";
-      crossedMain = false;
-    }
-
-    // Wednesday rule (NM/EOM/0%-forced Straddle overrides)
-    if (isWednesday && !fedToday && !eomTradingDay && !nmToday && !forcedStraddleByZeroWin && recommendation.startsWith("Straddle")) {
-      recommendation = "M8 Butterfly";
-      bgColor = "#b49aff";
-    }
-
-    // NEW RULE: if M8BF win rate > 90% is checked => any NORMAL Straddle signal becomes M8BF
-    // (We do NOT override NM Straddle or EOM Straddle.)
-    const isNormalStraddle =
-      recommendation === "Straddle @ 9:32 AM" ||
-      recommendation === "Straddle @ 9:32 AM (0% win-rate rule)";
-
-    if (highWin && isNormalStraddle) {
-      recommendation = "M8 Butterfly";
-      bgColor = "#b49aff";
-      crossedMain = false;
-      forcedStraddleByZeroWin = false;
-    }
-
-    // Fed blocks only M8
-    if (fedToday && recommendation === "M8 Butterfly") {
-      recommendation = "No M8BF (Fed day)";
-      bgColor = "#eee";
-      crossedMain = true;
-    }
-
-    // Post-holiday blocks M8 (unless NM converts — NM already handled above)
-    if (postHoliday && recommendation === "M8 Butterfly") {
-      recommendation = "No M8BF (Post-holiday)";
-      bgColor = "#eee";
-      crossedMain = true;
-    }
-
-    // OPEX: no straddles (applies to all Straddle types)
-    if (opexToday && recommendation.startsWith("Straddle")) {
-      recommendation = "No Straddle (OPEX day)";
-      bgColor = "#eee";
-      crossedMain = true;
-    }
-
-    // Post-OPEX Monday note
-    if (postOpexMonday && recommendation === "M8 Butterfly") {
-      addPostOpexNote = true;
-    }
-  }
-
-  const recBlock = document.getElementById("recBlock");
-  const mainRec = document.getElementById("mainRec");
-  const pm1Line = document.getElementById("pm1Line");
-  const bobfLine = document.getElementById("bobfLine");
-
-  const mainText = addPostOpexNote
-    ? `${recommendation} (use afternoon times for post OPEX Mondays)`
-    : recommendation;
-
-  mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
-  recBlock.style.backgroundColor = bgColor;
-
-  // 1PM BF rules: overnight VIX must be UP => overnightDrop < 0
-  let pm1Text = "1PM BF in play";
-  let pm1Crossed = false;
-
-  if (!(overnightDrop < 0)) {
-    pm1Text = "No 1PM BF";
-    pm1Crossed = true;
-  } else if (isMonday) {
-    pm1Text = "No 1PM BF (Monday)";
-    pm1Crossed = true;
-  } else if (vixExpiryToday) {
-    pm1Text = "No 1PM BF (VIX expiration)";
-    pm1Crossed = true;
-  } else if (eomTradingDay) {
-    pm1Text = "No 1PM BF (EOM)";
-    pm1Crossed = true;
-  } else if (eomMinus1) {
-    pm1Text = "No 1PM BF (EOM-1)";
-    pm1Crossed = true;
-  } else if (!isNaN(today) && today < 16) {
-    pm1Text = "No 1PM BF (low VIX)";
-    pm1Crossed = true;
-  }
-
-  pm1Line.innerHTML = pm1Crossed ? `<span class="crossed">${pm1Text}</span>` : pm1Text;
-
-  // BOBF rules
-  let bobfText = "BOBF in play";
-  let bobfCrossed = false;
-
-  if (isFriday) {
-    bobfText = "No BOBF (Friday)";
-    bobfCrossed = true;
-  } else if (vixExpiryToday) {
-    bobfText = "No BOBF (VIX expiration)";
-    bobfCrossed = true;
-  } else if (opexMinus1) {
-    bobfText = "No BOBF (OPEX-1)";
-    bobfCrossed = true;
-  } else if (eomMinus2) {
-    bobfText = "No BOBF (EOM-2)";
-    bobfCrossed = true;
-  } else if (eomMinus1) {
-    bobfText = "No BOBF (EOM-1)";
-    bobfCrossed = true;
-  }
-
-  if (!bobfCrossed && !isNaN(today) && today > 23) {
-    bobfText = "No BOBF (high VIX)";
-    bobfCrossed = true;
-  }
-
-  bobfLine.innerHTML = bobfCrossed ? `<span class="crossed">${bobfText}</span>` : bobfText;
-}
-</script>
+  </script>
 
 </body>
 </html>
-

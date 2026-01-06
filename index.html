@@ -107,8 +107,6 @@
 <body>
 
 <div class="sidebar">
-
-
   <h2>CPI Schedule</h2>
   <ul id="cpiSchedule"></ul>
 
@@ -193,23 +191,24 @@ flowchart TD
     </div>
   </div>
 
-  <!-- UPDATED OVERVIEW SECTION -->
+  <!-- UPDATED OVERVIEW SECTION (FIXED HTML) -->
   <section class="strategy-doc" id="strategy-doc">
     <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
 
-<p>
-  Sigma 3 consists of five SPX 0DTE strategies:
-  <strong>M8 Butterfly (M8BF)</strong>,
-  <strong>Straddle</strong>,
-  <strong>GXBF (GEX Butterfly)</strong>,
-  <strong>1PM Butterfly (1PM BF)</strong>,
-  and <strong>BOBF</strong>.
-  Each strategy has its own entry rules, risk limits, and calendar filters.
-  The VIX calculator determines which strategies are valid on any given day
-  based on overnight VIX behavior and market conditions.
-</p>
+    <p>
+      Sigma 3 consists of five SPX 0DTE strategies:
+      <strong>M8 Butterfly (M8BF)</strong>,
+      <strong>Straddle</strong>,
+      <strong>GXBF (GEX Butterfly)</strong>,
+      <strong>1PM Butterfly (1PM BF)</strong>,
+      and <strong>BOBF</strong>.
+      Each strategy has its own entry rules, risk limits, and calendar filters.
+      The VIX calculator determines which strategies are valid on any given day
+      based on overnight VIX behavior and market conditions.
+    </p>
 
-<div class="divider">⸻</div>
+    <div class="divider">⸻</div>
+
     <h3>M8 Butterfly (M8BF)</h3>
     <ul>
       <li>Used when overnight VIX is <strong>up</strong>.</li>
@@ -219,10 +218,10 @@ flowchart TD
       <li>On the first trading day of the month (NM), M8BF converts to <strong>NM Straddle</strong> (not on Mondays).</li>
       <li>Post-OPEX Monday note: when M8BF appears, afternoon timing is preferred.</li>
       <li>Max risk: <strong>$1,400</strong>.</li>
-      <li>Use center strike from M8 prediction. Widen wings till you get close to $14 entry cost</li>
-      <img src="./M8BF.jpg" alt="M8BF"
-     style="max-width:100%; border-radius:8px; margin-top:12px;">
+      <li>Use center strike from M8 prediction. Widen wings till you get close to $14 entry cost.</li>
     </ul>
+    <img src="./M8BF.jpg" alt="M8BF"
+         style="max-width:100%; border-radius:8px; margin-top:12px;">
 
     <div class="divider">⸻</div>
 
@@ -235,8 +234,9 @@ flowchart TD
       <li><strong>End-of-Month (EOM):</strong> automatic <strong>EOM Straddle</strong>.</li>
       <li>EOM Straddle max risk: <strong>$3,500</strong>.</li>
     </ul>
-<img src="./Straddle.jpg" alt="Straddle payoff diagram"
-     style="max-width:100%; border-radius:8px; margin-top:12px;">
+    <img src="./Straddle.jpg" alt="Straddle payoff diagram"
+         style="max-width:100%; border-radius:8px; margin-top:12px;">
+
     <div class="divider">⸻</div>
 
     <h3>GXBF (GEX Butterfly)</h3>
@@ -248,9 +248,7 @@ flowchart TD
       <li>Max risk: <strong>$1,400</strong>.</li>
     </ul>
     <div class="strategy-image">
-      <!-- If your images are in the SAME folder as this HTML, this works. -->
       <img src="./gex.jpg" alt="GXBF strategy visual" loading="lazy" />
-      
     </div>
 
     <div class="divider">⸻</div>
@@ -263,10 +261,10 @@ flowchart TD
       <li><strong>Not traded</strong> on EOM or EOM-1.</li>
       <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
       <li>Max risk: <strong>$1,400</strong>.</li>
-      <li>Use 1:00 pm SPX price as a center strike. Widen wings till you get close to $14 entry cost</li>
-      <img src="./1pm BF.jpg" alt="1pm BF"
-     style="max-width:100%; border-radius:8px; margin-top:12px;">
+      <li>Use 1:00 pm SPX price as a center strike. Widen wings till you get close to $14 entry cost.</li>
     </ul>
+    <img src="./1pm BF.jpg" alt="1pm BF"
+         style="max-width:100%; border-radius:8px; margin-top:12px;">
 
     <div class="divider">⸻</div>
 
@@ -280,7 +278,6 @@ flowchart TD
     </ul>
     <div class="strategy-image">
       <img src="./BOBF.jpg" alt="BOBF strategy visual" loading="lazy" />
-     
     </div>
 
     <div class="divider">⸻</div>
@@ -292,36 +289,37 @@ flowchart TD
       <li>Max entry premium: <strong>$13</strong>.</li>
       <li>If VIX is up or flat: <strong>No trade</strong>.</li>
     </ul>
-     <div class="divider">⸻</div>
+
+    <div class="divider">⸻</div>
 
     <h3>P/L</h3>
     <ul>
       <li>P/L from September 1st 2024 to January 1st 2026</li>
-     
     </ul>
     <div class="strategy-image">
-      <img src="./pl.jpg" alt="1pm BF"
-     style="max-width:100%; border-radius:8px; margin-top:12px;">
+      <img src="./pl.jpg" alt="pl"
+           style="max-width:100%; border-radius:8px; margin-top:12px;">
+    </div>
 
     <div class="divider">⸻</div>
 
-      <ul>
+    <ul>
       <li>Winrate for the last 2 digits of the center strike M8BF prediction. AM vs PM. Stay away from low win rate strikes</li>
-     
     </ul>
     <div class="strategy-image">
       <img src="./last.jpg" alt="last"
-     style="max-width:100%; border-radius:8px; margin-top:12px;">
+           style="max-width:100%; border-radius:8px; margin-top:12px;">
+    </div>
 
     <div class="divider">⸻</div>
 
-       <ul>
+    <ul>
       <li>Optional modification for M8BF: some strike can be changed</li>
-     
     </ul>
     <div class="strategy-image">
-      <img src="./move.jpg" alt="last"
-     style="max-width:100%; border-radius:8px; margin-top:12px;">
+      <img src="./move.jpg" alt="move"
+           style="max-width:100%; border-radius:8px; margin-top:12px;">
+    </div>
 
     <div class="divider">⸻</div>
 
@@ -741,15 +739,3 @@ function calculateStrategy() {
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-

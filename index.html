@@ -36,9 +36,36 @@
     .main { flex: 1; text-align: center; padding: 20px; }
     .calculator {
       background: #fff; padding: 15px; border-radius: 8px;
-      box-shadow: 0 0 5px #ccc; max-width: 300px; margin: 0 auto 20px auto;
+      box-shadow: 0 0 5px #ccc; max-width: 460px; margin: 0 auto 20px auto;
     }
-    label { display: block; margin-top: 10px; }
+
+    /* calculator layout w/ checkboxes on left */
+    .calcRow { display: flex; gap: 14px; align-items: flex-start; }
+    .calcChecks {
+      width: 180px;
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.25;
+      padding-top: 6px;
+    }
+    .calcChecks .title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .checkItem {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      margin: 8px 0;
+      user-select: none;
+    }
+    .checkItem input { width: auto; margin: 2px 0 0 0; }
+    .checkItem label { margin: 0; cursor: pointer; }
+
+    .calcInputs { flex: 1; }
+
+    label { display: block; margin-top: 10px; text-align: left; }
     input { width: 100%; margin-top: 5px; margin-bottom: 10px; }
     input:disabled { opacity: 0.6; cursor: not-allowed; }
     button { width: 100%; padding: 8px; margin-top: 10px; }
@@ -53,7 +80,7 @@
       color: #333;
       text-align: left;
       line-height: 1.35;
-      font-size: 28px;          /* same size for all lines */
+      font-size: 28px;
       background: #eee;
     }
     #recBlock .row { margin: 6px 0; }
@@ -96,11 +123,6 @@
       border-radius: 10px;
       box-shadow: 0 0 5px #ccc;
     }
-    .strategy-image .img-note {
-      font-size: 12px;
-      color: #666;
-      margin-top: 6px;
-    }
   </style>
 </head>
 
@@ -126,17 +148,38 @@
 <div class="main">
 
   <div class="calculator">
-    <h1>VIX Calculator</h1>
-    <label>VIX Today’s Open:
-      <input type="number" id="todayOpen" step="0.01" />
-    </label>
-    <label>VIX Yesterday’s Open:
-      <input type="number" id="yesterdayOpen" step="0.01" />
-    </label>
-    <label>VIX Yesterday’s Close:
-      <input type="number" id="yesterdayClose" step="0.01" />
-    </label>
-    <button onclick="calculateStrategy()">Calculate</button>
+    <h1 style="margin-top:0;">VIX Calculator</h1>
+
+    <div class="calcRow">
+      <!-- NEW: checkboxes on the left -->
+      <div class="calcChecks">
+        <div class="title">M8BF Win Rate Flags</div>
+
+        <div class="checkItem">
+          <input type="checkbox" id="m8HighWin" />
+          <label for="m8HighWin">M8BF win rate &gt; 90%</label>
+        </div>
+
+        <div class="checkItem">
+          <input type="checkbox" id="m8ZeroWin" />
+          <label for="m8ZeroWin">M8BF win rate = 0%</label>
+        </div>
+      </div>
+
+      <!-- existing inputs on the right -->
+      <div class="calcInputs">
+        <label>VIX Today’s Open:
+          <input type="number" id="todayOpen" step="0.01" />
+        </label>
+        <label>VIX Yesterday’s Open:
+          <input type="number" id="yesterdayOpen" step="0.01" />
+        </label>
+        <label>VIX Yesterday’s Close:
+          <input type="number" id="yesterdayClose" step="0.01" />
+        </label>
+        <button onclick="calculateStrategy()">Calculate</button>
+      </div>
+    </div>
   </div>
 
   <div style="margin-top: 10px; font-size: 14px; text-align: center;">
@@ -191,7 +234,7 @@ flowchart TD
     </div>
   </div>
 
-  <!-- UPDATED OVERVIEW SECTION (FIXED HTML) -->
+  <!-- OVERVIEW SECTION (same as your current version) -->
   <section class="strategy-doc" id="strategy-doc">
     <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
 
@@ -289,37 +332,6 @@ flowchart TD
       <li>Max entry premium: <strong>$13</strong>.</li>
       <li>If VIX is up or flat: <strong>No trade</strong>.</li>
     </ul>
-
-    <div class="divider">⸻</div>
-
-    <h3>P/L</h3>
-    <ul>
-      <li>P/L from September 1st 2024 to January 1st 2026</li>
-    </ul>
-    <div class="strategy-image">
-      <img src="./pl.jpg" alt="pl"
-           style="max-width:100%; border-radius:8px; margin-top:12px;">
-    </div>
-
-    <div class="divider">⸻</div>
-
-    <ul>
-      <li>Winrate for the last 2 digits of the center strike M8BF prediction. AM vs PM. Stay away from low win rate strikes</li>
-    </ul>
-    <div class="strategy-image">
-      <img src="./last.jpg" alt="last"
-           style="max-width:100%; border-radius:8px; margin-top:12px;">
-    </div>
-
-    <div class="divider">⸻</div>
-
-    <ul>
-      <li>Optional modification for M8BF: some strike can be changed</li>
-    </ul>
-    <div class="strategy-image">
-      <img src="./move.jpg" alt="move"
-           style="max-width:100%; border-radius:8px; margin-top:12px;">
-    </div>
 
     <div class="divider">⸻</div>
 
@@ -454,6 +466,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }, midnight - now);
 });
 
+/* ===== CHECKBOX MUTUAL EXCLUSION ===== */
+
+function enforceExclusiveChecks(changedId) {
+  const high = document.getElementById('m8HighWin');
+  const zero = document.getElementById('m8ZeroWin');
+  if (!high || !zero) return;
+
+  if (changedId === 'm8HighWin' && high.checked) zero.checked = false;
+  if (changedId === 'm8ZeroWin' && zero.checked) high.checked = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const high = document.getElementById('m8HighWin');
+  const zero = document.getElementById('m8ZeroWin');
+  if (high) high.addEventListener('change', () => enforceExclusiveChecks('m8HighWin'));
+  if (zero) zero.addEventListener('change', () => enforceExclusiveChecks('m8ZeroWin'));
+});
+
 /* ===== DATE HELPERS ===== */
 
 function todayLongUS() {
@@ -542,6 +572,15 @@ function calculateStrategy() {
   const yOpen = parseFloat(document.getElementById('yesterdayOpen').value);
   const yClose = parseFloat(document.getElementById('yesterdayClose').value);
 
+  const highWin = !!document.getElementById('m8HighWin')?.checked;
+  const zeroWin = !!document.getElementById('m8ZeroWin')?.checked;
+
+  // Safety (should be prevented by UI listeners anyway)
+  if (highWin && zeroWin) {
+    document.getElementById('m8HighWin').checked = false;
+    document.getElementById('m8ZeroWin').checked = true;
+  }
+
   if (isNaN(today) || isNaN(yClose) || (!isCpiDay() && isNaN(yOpen))) {
     alert("Please enter valid numbers.");
     return;
@@ -596,6 +635,9 @@ function calculateStrategy() {
   let crossedMain = false;
   let addPostOpexNote = false;
 
+  // Used to stop Wednesday conversion when you force Straddle via the 0% rule
+  let forcedStraddleByZeroWin = false;
+
   if (cpiToday) {
     // CPI rule: if VIX down (yClose - todayOpen > 0) => long call, else no trade
     if (overnightDrop > 0) {
@@ -607,19 +649,61 @@ function calculateStrategy() {
       crossedMain = false;
     }
   } else {
-    // Base logic
-    if (overnightDrop > 0.65) {
-      recommendation = "GXBF @ 9:36 AM";
-      bgColor = "#fff399";
-    } else if (openDiff > 1.4) {
-      recommendation = "M8 Butterfly";
-      bgColor = "#b49aff";
-    } else if (overnightDrop >= 0.01 && overnightDrop < 0.65) {
-      recommendation = "Straddle @ 9:32 AM";
+    // NEW RULE: if M8BF win rate = 0% is checked => force next day Straddle
+    if (zeroWin) {
+      recommendation = "Straddle @ 9:32 AM (0% win-rate rule)";
       bgColor = "#61f7d6";
+      crossedMain = false;
+      forcedStraddleByZeroWin = true;
     } else {
+      // Base logic
+      if (overnightDrop > 0.65) {
+        recommendation = "GXBF @ 9:36 AM";
+        bgColor = "#fff399";
+      } else if (openDiff > 1.4) {
+        recommendation = "M8 Butterfly";
+        bgColor = "#b49aff";
+      } else if (overnightDrop >= 0.01 && overnightDrop < 0.65) {
+        recommendation = "Straddle @ 9:32 AM";
+        bgColor = "#61f7d6";
+      } else {
+        recommendation = "M8 Butterfly";
+        bgColor = "#b49aff";
+      }
+    }
+
+    // NM override: convert M8 or No M8BF to NM Straddle (NOT on Monday)
+    // (kept same priority as before)
+    if (nmToday && !isMonday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
+      recommendation = "NM Straddle @ 9:32 AM";
+      bgColor = "#61f7d6";
+      crossedMain = false;
+    }
+
+    // EOM override (still highest-priority Straddle day)
+    if (eomTradingDay) {
+      recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
+      bgColor = "#61f7d6";
+      crossedMain = false;
+    }
+
+    // Wednesday rule (NM/EOM/0%-forced Straddle overrides)
+    if (isWednesday && !fedToday && !eomTradingDay && !nmToday && !forcedStraddleByZeroWin && recommendation.startsWith("Straddle")) {
       recommendation = "M8 Butterfly";
       bgColor = "#b49aff";
+    }
+
+    // NEW RULE: if M8BF win rate > 90% is checked => any NORMAL Straddle signal becomes M8BF
+    // (We do NOT override NM Straddle or EOM Straddle.)
+    const isNormalStraddle =
+      recommendation === "Straddle @ 9:32 AM" ||
+      recommendation === "Straddle @ 9:32 AM (0% win-rate rule)";
+
+    if (highWin && isNormalStraddle) {
+      recommendation = "M8 Butterfly";
+      bgColor = "#b49aff";
+      crossedMain = false;
+      forcedStraddleByZeroWin = false;
     }
 
     // Fed blocks only M8
@@ -629,34 +713,14 @@ function calculateStrategy() {
       crossedMain = true;
     }
 
-    // Post-holiday blocks M8 (unless NM converts)
+    // Post-holiday blocks M8 (unless NM converts — NM already handled above)
     if (postHoliday && recommendation === "M8 Butterfly") {
       recommendation = "No M8BF (Post-holiday)";
       bgColor = "#eee";
       crossedMain = true;
     }
 
-    // NM override: convert M8 or No M8BF to NM Straddle (NOT on Monday)
-    if (nmToday && !isMonday && (recommendation === "M8 Butterfly" || recommendation.startsWith("No M8BF"))) {
-      recommendation = "NM Straddle @ 9:32 AM";
-      bgColor = "#61f7d6";
-      crossedMain = false;
-    }
-
-    // EOM override
-    if (eomTradingDay) {
-      recommendation = "Straddle @ 9:32 AM (EOM Straddle)";
-      bgColor = "#61f7d6";
-      crossedMain = false;
-    }
-
-    // Wednesday rule (NM overrides)
-    if (isWednesday && !fedToday && !eomTradingDay && !nmToday && recommendation.startsWith("Straddle")) {
-      recommendation = "M8 Butterfly";
-      bgColor = "#b49aff";
-    }
-
-    // OPEX: no straddles
+    // OPEX: no straddles (applies to all Straddle types)
     if (opexToday && recommendation.startsWith("Straddle")) {
       recommendation = "No Straddle (OPEX day)";
       bgColor = "#eee";

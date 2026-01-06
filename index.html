@@ -335,6 +335,17 @@ flowchart TD
 
     <div class="divider">⸻</div>
 
+<h3>Win Rate Rules</h3>
+<ul>
+  <li>
+    If <strong>M8BF win rate was above 90%</strong> the previous day, then the next day any <strong>Straddle</strong> signal is replaced with <strong>M8BF</strong>.
+  </li>
+  <li>
+    If <strong>M8BF win rate was 0%</strong> the previous day, then the next day is an automatic <strong>Straddle @ 9:32 AM</strong>.
+  </li>
+</ul>
+    <div class="divider">⸻</div>
+
     <p>All trades are held to expiration.</p>
 
     <p class="muted-note">
@@ -803,3 +814,4 @@ function calculateStrategy() {
 
 </body>
 </html>
+

@@ -78,12 +78,6 @@
       height: 18px;
       cursor: pointer;
     }
-    .winrateHint {
-      font-size: 12px;
-      color: #666;
-      margin-top: 8px;
-      line-height: 1.35;
-    }
 
     .calculator {
       background: #fff;
@@ -289,13 +283,15 @@
     </div>
 
     <div style="text-align: right;">
-      <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 5px;"></div>
+      <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 3px;"></div>
+      <div id="dowRankDate" style="font-size: 12px; color: #666;"></div>
     </div>
 
     <div id="recBlock">
       <div class="row mainline" id="mainRec">—</div>
       <div class="row" id="pm1Line">—</div>
       <div class="row" id="bobfLine">—</div>
+      <div class="row" id="dowRankRec" style="font-size: 13px; color:#666;">—</div>
     </div>
 
     <!-- FLOWCHART (UNCHANGED) -->
@@ -427,19 +423,16 @@ flowchart TD
 
       <div class="divider">⸻</div>
 
-<h3>NM & EOM Straddles</h3>
-<ul>
-  <li><strong>NM Straddle</strong> is used on the <strong>first trading day of the month</strong> except when it falls on Mondays.</li>
-  <li><strong>EOM Straddle</strong> is used on the <strong>last trading day of the month</strong>.</li>
-  <li>Both setups use the standard <strong>9:32 AM Straddle</strong>.</li>
-  <li>These are calendar-driven trades with historically strong behavior.</li>
-  <li><strong>NM Straddle max risk: $3,200.</strong></li>
-  <li><strong>EOM Straddle max risk: $3,500.</strong></li>
-</ul>
+      <h3>NM &amp; EOM Straddles</h3>
+      <ul>
+        <li><strong>NM Straddle</strong> is used on the <strong>first trading day of the month</strong> (except when it falls on Monday).</li>
+        <li><strong>EOM Straddle</strong> is used on the <strong>last trading day of the month</strong>.</li>
+        <li>Both use the standard <strong>9:32 AM Straddle</strong>.</li>
+        <li><strong>NM Straddle max risk: $3,200.</strong></li>
+        <li><strong>EOM Straddle max risk: $3,500.</strong></li>
+      </ul>
 
       <div class="divider">⸻</div>
-
-      
 
       <h3>Win Rate Rules</h3>
       <ul>
@@ -468,7 +461,6 @@ flowchart TD
 
       <div class="divider">⸻</div>
 
-      <!-- NEW: Raw stats section + two images -->
       <h3>Raw stats</h3>
       <div class="strategy-image">
         <img src="./11.jpg" alt="Raw stats 1" loading="lazy" />
@@ -723,7 +715,7 @@ flowchart TD
       return prev.getMonth() !== date.getMonth();
     }
 
-    // NEW: first trading Monday of the month (NM Monday)
+    // First trading Monday of the month (NM Monday)
     function isFirstTradingMondayOfMonth(date = new Date()) {
       const year = date.getFullYear();
       const month = date.getMonth();
@@ -740,16 +732,55 @@ flowchart TD
       return d.getFullYear() === year && d.getMonth() === month && d.getDate() === date.getDate();
     }
 
+    /* ===== NEW: "1st Monday", "2nd Tuesday" label (TRADING weekdays only) ===== */
+
+    function isTradingDay(d) {
+      return !isWeekend(d) && !isHoliday(d);
+    }
+
+    function ordinal(n) {
+      const s = ["th","st","nd","rd"];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+
+    function tradingWeekdayRankLabel(date = new Date()) {
+      if (!isTradingDay(date)) return "Non-trading day";
+
+      const weekdayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      const targetDow = date.getDay();
+
+      let count = 0;
+      const cur = new Date(date.getFullYear(), date.getMonth(), 1);
+
+      while (cur <= date) {
+        if (isTradingDay(cur) && cur.getDay() === targetDow) count++;
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      return `${ordinal(count)} ${weekdayNames[targetDow]}`;
+    }
+
     /* ===== UI INIT ===== */
 
     function updateCpiUI() {
       const cpi = isCpiDay();
       document.getElementById('yesterdayOpen').disabled = cpi;
     }
-    document.addEventListener('DOMContentLoaded', updateCpiUI);
 
-    document.getElementById('todayDate').textContent =
-      "Today’s Date: " + new Date().toLocaleDateString();
+    function updateTodayDateAndRank() {
+      const now = new Date();
+      document.getElementById('todayDate').textContent =
+        "Today’s Date: " + now.toLocaleDateString();
+
+      const el = document.getElementById('dowRankDate');
+      if (el) el.textContent = tradingWeekdayRankLabel(now);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      updateCpiUI();
+      updateTodayDateAndRank();
+    });
 
     /* ===== MAIN CALCULATOR ===== */
 
@@ -927,6 +958,10 @@ flowchart TD
       mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
       recBlock.style.backgroundColor = bgColor;
 
+      // Print weekday rank at bottom of rec block (small)
+      const dowRankRec = document.getElementById("dowRankRec");
+      if (dowRankRec) dowRankRec.textContent = tradingWeekdayRankLabel(now);
+
       // 1PM BF rules: overnight VIX must be UP => overnightDrop < 0
       let pm1Text = "1PM BF in play";
       let pm1Crossed = false;
@@ -957,7 +992,7 @@ flowchart TD
       let bobfText = "BOBF in play";
       let bobfCrossed = false;
 
-      // NEW RULE: No BOBF on first trading Monday of the month (NM Monday)
+      // No BOBF on first trading Monday of the month (NM Monday)
       if (nmMonday) {
         bobfText = "No BOBF (NM Monday)";
         bobfCrossed = true;
@@ -989,5 +1024,3 @@ flowchart TD
 
 </body>
 </html>
-
-

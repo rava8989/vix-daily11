@@ -283,15 +283,14 @@
     </div>
 
     <div style="text-align: right;">
-      <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 3px;"></div>
-      <div id="dowRankDate" style="font-size: 12px; color: #666;"></div>
+      <div id="todayDate" style="font-size: 14px; color: #666; margin-bottom: 2px;"></div>
+      <div id="dayLabel" style="font-size: 12px; color: #888; margin-bottom: 5px;"></div>
     </div>
 
     <div id="recBlock">
       <div class="row mainline" id="mainRec">—</div>
       <div class="row" id="pm1Line">—</div>
       <div class="row" id="bobfLine">—</div>
-      <div class="row" id="dowRankRec" style="font-size: 13px; color:#666;">—</div>
     </div>
 
     <!-- FLOWCHART (UNCHANGED) -->
@@ -423,11 +422,12 @@ flowchart TD
 
       <div class="divider">⸻</div>
 
-      <h3>NM &amp; EOM Straddles</h3>
+      <h3>NM & EOM Straddles</h3>
       <ul>
-        <li><strong>NM Straddle</strong> is used on the <strong>first trading day of the month</strong> (except when it falls on Monday).</li>
+        <li><strong>NM Straddle</strong> is used on the <strong>first trading day of the month</strong> except when it falls on Mondays.</li>
         <li><strong>EOM Straddle</strong> is used on the <strong>last trading day of the month</strong>.</li>
-        <li>Both use the standard <strong>9:32 AM Straddle</strong>.</li>
+        <li>Both setups use the standard <strong>9:32 AM Straddle</strong>.</li>
+        <li>These are calendar-driven trades with historically strong behavior.</li>
         <li><strong>NM Straddle max risk: $3,200.</strong></li>
         <li><strong>EOM Straddle max risk: $3,500.</strong></li>
       </ul>
@@ -461,6 +461,7 @@ flowchart TD
 
       <div class="divider">⸻</div>
 
+      <!-- Raw stats -->
       <h3>Raw stats</h3>
       <div class="strategy-image">
         <img src="./11.jpg" alt="Raw stats 1" loading="lazy" />
@@ -660,6 +661,8 @@ flowchart TD
       const asLong = d.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
       return marketHolidays.includes(asLong);
     }
+    function isTradingDay(d) { return !isWeekend(d) && !isHoliday(d); }
+
     function nextTradingDay(d) {
       const nd = new Date(d);
       do { nd.setDate(nd.getDate() + 1); } while (isWeekend(nd) || isHoliday(nd));
@@ -715,7 +718,7 @@ flowchart TD
       return prev.getMonth() !== date.getMonth();
     }
 
-    // First trading Monday of the month (NM Monday)
+    // first trading Monday of the month (NM Monday)
     function isFirstTradingMondayOfMonth(date = new Date()) {
       const year = date.getFullYear();
       const month = date.getMonth();
@@ -732,11 +735,7 @@ flowchart TD
       return d.getFullYear() === year && d.getMonth() === month && d.getDate() === date.getDate();
     }
 
-    /* ===== NEW: "1st Monday", "2nd Tuesday" label (TRADING weekdays only) ===== */
-
-    function isTradingDay(d) {
-      return !isWeekend(d) && !isHoliday(d);
-    }
+    /* ===== TRADING LABEL (AUTO UNDER TODAY'S DATE, NO CALCULATOR NEEDED) ===== */
 
     function ordinal(n) {
       const s = ["th","st","nd","rd"];
@@ -744,21 +743,35 @@ flowchart TD
       return n + (s[(v - 20) % 10] || s[v] || s[0]);
     }
 
-    function tradingWeekdayRankLabel(date = new Date()) {
-      if (!isTradingDay(date)) return "Non-trading day";
+    function weekdayName(dow) {
+      return ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dow] || "";
+    }
 
-      const weekdayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-      const targetDow = date.getDay();
+    // Example output: "1st Monday", "2nd Tuesday", etc. (counts trading weekdays only)
+    function tradingWeekdayOrdinalLabel(date = new Date()) {
+      const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const dow = target.getDay();
+      const monthStart = new Date(target.getFullYear(), target.getMonth(), 1);
 
       let count = 0;
-      const cur = new Date(date.getFullYear(), date.getMonth(), 1);
-
-      while (cur <= date) {
-        if (isTradingDay(cur) && cur.getDay() === targetDow) count++;
-        cur.setDate(cur.getDate() + 1);
+      for (let d = new Date(monthStart); d <= target; d.setDate(d.getDate() + 1)) {
+        if (!isTradingDay(d)) continue;
+        if (d.getDay() === dow) count++;
       }
 
-      return `${ordinal(count)} ${weekdayNames[targetDow]}`;
+      // if today isn't a trading day, still show which weekday it is
+      if (!isTradingDay(target)) {
+        return `${weekdayName(dow)} (market closed)`;
+      }
+
+      return `${ordinal(count)} ${weekdayName(dow)}`;
+    }
+
+    function updateDateHeader() {
+      document.getElementById('todayDate').textContent =
+        "Today’s Date: " + new Date().toLocaleDateString();
+      document.getElementById('dayLabel').textContent =
+        tradingWeekdayOrdinalLabel(new Date());
     }
 
     /* ===== UI INIT ===== */
@@ -768,18 +781,17 @@ flowchart TD
       document.getElementById('yesterdayOpen').disabled = cpi;
     }
 
-    function updateTodayDateAndRank() {
-      const now = new Date();
-      document.getElementById('todayDate').textContent =
-        "Today’s Date: " + now.toLocaleDateString();
-
-      const el = document.getElementById('dowRankDate');
-      if (el) el.textContent = tradingWeekdayRankLabel(now);
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
       updateCpiUI();
-      updateTodayDateAndRank();
+      updateDateHeader();
+
+      // refresh date label after midnight
+      const now = new Date();
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2);
+      setTimeout(() => {
+        updateDateHeader();
+        setInterval(updateDateHeader, 24 * 60 * 60 * 1000);
+      }, midnight - now);
     });
 
     /* ===== MAIN CALCULATOR ===== */
@@ -873,16 +885,13 @@ flowchart TD
           bgColor = "#b49aff";
         }
 
-        // Fed blocks only M8
-        if (fedToday && recommendation === "M8 Butterfly") {
-          recommendation = "No M8BF (Fed day)";
-          bgColor = "#eee";
-          crossedMain = true;
-        }
+        // ===== M8 block reasons (show ALL) =====
+        const m8BlockReasons = [];
+        if (fedToday && recommendation === "M8 Butterfly") m8BlockReasons.push("Fed day");
+        if (postHoliday && recommendation === "M8 Butterfly") m8BlockReasons.push("Post-holiday");
 
-        // Post-holiday blocks M8 (unless NM converts)
-        if (postHoliday && recommendation === "M8 Butterfly") {
-          recommendation = "No M8BF (Post-holiday)";
+        if (m8BlockReasons.length > 0) {
+          recommendation = `No M8BF (${m8BlockReasons.join(", ")})`;
           bgColor = "#eee";
           crossedMain = true;
         }
@@ -907,15 +916,18 @@ flowchart TD
           bgColor = "#b49aff";
         }
 
-        // OPEX: no straddles
-        if (opexToday && recommendation.startsWith("Straddle")) {
-          recommendation = "No Straddle (OPEX day)";
+        // OPEX: no straddles (show ALL reasons if you add more later)
+        const straddleBlockReasons = [];
+        if (opexToday && recommendation.startsWith("Straddle")) straddleBlockReasons.push("OPEX day");
+
+        if (straddleBlockReasons.length > 0) {
+          recommendation = `No Straddle (${straddleBlockReasons.join(", ")})`;
           bgColor = "#eee";
           crossedMain = true;
         }
 
-        // Post-OPEX Monday note
-        if (postOpexMonday && recommendation === "M8 Butterfly") {
+        // Post-OPEX Monday note (apply to any M8 Butterfly text)
+        if (postOpexMonday && recommendation.startsWith("M8 Butterfly")) {
           addPostOpexNote = true;
         }
 
@@ -924,7 +936,7 @@ flowchart TD
            - If >90% checked: replace ONLY the base “Straddle @ 9:32 AM” with M8BF
         */
         if (winrateZero) {
-          if (recommendation === "No Straddle (OPEX day)") {
+          if (recommendation.startsWith("No Straddle")) {
             // keep blocked
           } else if (recommendation.startsWith("Straddle")) {
             recommendation = recommendation.includes("(EOM Straddle)")
@@ -958,65 +970,47 @@ flowchart TD
       mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
       recBlock.style.backgroundColor = bgColor;
 
-      // Print weekday rank at bottom of rec block (small)
-      const dowRankRec = document.getElementById("dowRankRec");
-      if (dowRankRec) dowRankRec.textContent = tradingWeekdayRankLabel(now);
+      // =========================
+      // 1PM BF rules (ALL reasons)
+      // =========================
+      let pm1Reasons = [];
 
-      // 1PM BF rules: overnight VIX must be UP => overnightDrop < 0
-      let pm1Text = "1PM BF in play";
-      let pm1Crossed = false;
+      // overnight VIX must be UP => overnightDrop < 0
+      if (!(overnightDrop < 0)) pm1Reasons.push("overnight VIX not up");
 
-      if (!(overnightDrop < 0)) {
-        pm1Text = "No 1PM BF";
-        pm1Crossed = true;
-      } else if (isMonday) {
-        pm1Text = "No 1PM BF (Monday)";
-        pm1Crossed = true;
-      } else if (vixExpiryToday) {
-        pm1Text = "No 1PM BF (VIX expiration)";
-        pm1Crossed = true;
-      } else if (eomTradingDay) {
-        pm1Text = "No 1PM BF (EOM)";
-        pm1Crossed = true;
-      } else if (eomMinus1) {
-        pm1Text = "No 1PM BF (EOM-1)";
-        pm1Crossed = true;
-      } else if (!isNaN(today) && today < 16) {
-        pm1Text = "No 1PM BF (low VIX)";
-        pm1Crossed = true;
-      }
+      // calendar filters
+      if (isMonday) pm1Reasons.push("Monday");
+      if (vixExpiryToday) pm1Reasons.push("VIX expiration");
+      if (eomTradingDay) pm1Reasons.push("EOM");
+      if (eomMinus1) pm1Reasons.push("EOM-1");
+
+      // VIX level filter
+      if (!isNaN(today) && today < 16) pm1Reasons.push("low VIX");
+
+      const pm1Crossed = pm1Reasons.length > 0;
+      const pm1Text = pm1Crossed
+        ? `No 1PM BF (${pm1Reasons.join(", ")})`
+        : "1PM BF in play";
 
       pm1Line.innerHTML = pm1Crossed ? `<span class="crossed">${pm1Text}</span>` : pm1Text;
 
-      // BOBF rules
-      let bobfText = "BOBF in play";
-      let bobfCrossed = false;
+      // =======================
+      // BOBF rules (ALL reasons)
+      // =======================
+      let bobfReasons = [];
 
-      // No BOBF on first trading Monday of the month (NM Monday)
-      if (nmMonday) {
-        bobfText = "No BOBF (NM Monday)";
-        bobfCrossed = true;
-      } else if (isFriday) {
-        bobfText = "No BOBF (Friday)";
-        bobfCrossed = true;
-      } else if (vixExpiryToday) {
-        bobfText = "No BOBF (VIX expiration)";
-        bobfCrossed = true;
-      } else if (opexMinus1) {
-        bobfText = "No BOBF (OPEX-1)";
-        bobfCrossed = true;
-      } else if (eomMinus2) {
-        bobfText = "No BOBF (EOM-2)";
-        bobfCrossed = true;
-      } else if (eomMinus1) {
-        bobfText = "No BOBF (EOM-1)";
-        bobfCrossed = true;
-      }
+      if (nmMonday) bobfReasons.push("NM Monday");
+      if (isFriday) bobfReasons.push("Friday");
+      if (vixExpiryToday) bobfReasons.push("VIX expiration");
+      if (opexMinus1) bobfReasons.push("OPEX-1");
+      if (eomMinus2) bobfReasons.push("EOM-2");
+      if (eomMinus1) bobfReasons.push("EOM-1");
+      if (!isNaN(today) && today > 23) bobfReasons.push("high VIX");
 
-      if (!bobfCrossed && !isNaN(today) && today > 23) {
-        bobfText = "No BOBF (high VIX)";
-        bobfCrossed = true;
-      }
+      const bobfCrossed = bobfReasons.length > 0;
+      const bobfText = bobfCrossed
+        ? `No BOBF (${bobfReasons.join(", ")})`
+        : "BOBF in play";
 
       bobfLine.innerHTML = bobfCrossed ? `<span class="crossed">${bobfText}</span>` : bobfText;
     }

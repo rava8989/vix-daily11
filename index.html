@@ -977,7 +977,7 @@ flowchart TD
       let pm1Reasons = [];
 
       // overnight VIX must be UP => overnightDrop < 0
-      if (!(overnightDrop < 0)) pm1Reasons.push("overnight VIX not up");
+      if (!(overnightDrop < 0)) pm1Reasons.push("overnight VIX is down");
 
       // calendar filters
       if (isMonday) pm1Reasons.push("Monday");

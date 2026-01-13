@@ -417,7 +417,7 @@ flowchart TD
         <li>Uses only <strong>Yesterday’s VIX Close − Today’s VIX Open</strong>.</li>
         <li>If VIX is <strong>down</strong>: trade <strong>Long ATM Call @ 9:32 AM</strong>.</li>
         <li>Max entry premium: <strong>$13</strong>.</li>
-        <li>If VIX is up or flat: <strong>No trade</strong>.</li>
+        <li>If VIX is up: <strong>No trade</strong>.</li>
       </ul>
 
       <div class="divider">⸻</div>
@@ -866,10 +866,10 @@ flowchart TD
           recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
           bgColor = "#61f7d6";
         } else {
-          recommendation = "No Trade (CPI day — VIX up)";
-          bgColor = "#eee";
-          crossedMain = false;
-        }
+  recommendation = "No M8BF (CPI day — VIX up)";
+  bgColor = "#eee";
+  crossedMain = true;
+}
       } else {
         // Base logic
         if (overnightDrop > 0.65) {
@@ -1019,4 +1019,5 @@ flowchart TD
 
 </body>
 </html>
+
 

@@ -96,7 +96,7 @@
 
     /* Unified recommendation block */
     #recBlock {
-      margin: 20px auto;
+      margin: 20px auto 6px auto;
       padding: 15px;
       max-width: 880px;
       border-radius: 8px;
@@ -109,6 +109,15 @@
     }
     #recBlock .row { margin: 6px 0; }
     #recBlock .mainline { font-weight: bold; }
+
+    /* NEW: small label under results */
+    #resultDayLabel {
+      max-width: 880px;
+      margin: 0 auto 10px auto;
+      text-align: right;
+      font-size: 12px;
+      color: #888;
+    }
 
     .flowchart { margin: 20px auto; max-width: 100%; overflow-x: auto; }
     .tag {
@@ -184,6 +193,11 @@
         max-width: 100%;
         font-size: 20px;
         padding: 12px;
+      }
+
+      #resultDayLabel {
+        max-width: 100%;
+        padding: 0 2px;
       }
 
       .strategy-doc {
@@ -292,6 +306,9 @@
       <div class="row" id="pm1Line">—</div>
       <div class="row" id="bobfLine">—</div>
     </div>
+
+    <!-- NEW: day label under calculator results -->
+    <div id="resultDayLabel">—</div>
 
     <!-- FLOWCHART (UNCHANGED) -->
     <div class="flowchart">
@@ -601,11 +618,11 @@ flowchart TD
     /* ===== WIN RATE CHECKBOX MUTUAL EXCLUSION ===== */
 
     const winrate90 = document.getElementById('winrate90');
-    const winrate0 = document.getElementById('winrate0');
+    const winrate0  = document.getElementById('winrate0');
 
     function enforceMutualExclusion(changed) {
       if (changed === '90' && winrate90.checked) winrate0.checked = false;
-      if (changed === '0' && winrate0.checked) winrate90.checked = false;
+      if (changed === '0'  && winrate0.checked)  winrate90.checked = false;
     }
 
     winrate90.addEventListener('change', () => enforceMutualExclusion('90'));
@@ -652,10 +669,10 @@ flowchart TD
     function todayLongUS() {
       return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     }
-    function isCpiDay() { return cpiSchedule.includes(todayLongUS()); }
-    function isFedDay() { return fedSchedule.includes(todayLongUS()); }
-    function isOpexDay() { return opexSchedule.includes(todayLongUS()); }
-    function isVixExpiryDay() { return vixExpirySchedule.includes(todayLongUS()); }
+    function isCpiDay()      { return cpiSchedule.includes(todayLongUS()); }
+    function isFedDay()      { return fedSchedule.includes(todayLongUS()); }
+    function isOpexDay()     { return opexSchedule.includes(todayLongUS()); }
+    function isVixExpiryDay(){ return vixExpirySchedule.includes(todayLongUS()); }
 
     function isWeekend(d) { const day = d.getDay(); return day === 0 || day === 6; }
     function isHoliday(d) {
@@ -786,12 +803,22 @@ flowchart TD
       updateCpiUI();
       updateDateHeader();
 
+      // initialize the label under results (so it shows even before Calculate)
+      const resultLbl = document.getElementById("resultDayLabel");
+      if (resultLbl) resultLbl.textContent = tradingWeekdayOrdinalLabel(new Date());
+
       // refresh date label after midnight
       const now = new Date();
       const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2);
       setTimeout(() => {
         updateDateHeader();
-        setInterval(updateDateHeader, 24 * 60 * 60 * 1000);
+        const resultLbl2 = document.getElementById("resultDayLabel");
+        if (resultLbl2) resultLbl2.textContent = tradingWeekdayOrdinalLabel(new Date());
+        setInterval(() => {
+          updateDateHeader();
+          const resultLbl3 = document.getElementById("resultDayLabel");
+          if (resultLbl3) resultLbl3.textContent = tradingWeekdayOrdinalLabel(new Date());
+        }, 24 * 60 * 60 * 1000);
       }, midnight - now);
     });
 
@@ -866,10 +893,10 @@ flowchart TD
           recommendation = "Long ATM Call @ 9:32 AM (CPI day) — Max entry premium $13";
           bgColor = "#61f7d6";
         } else {
-  recommendation = "No M8BF (CPI day — VIX up)";
-  bgColor = "#eee";
-  crossedMain = true;
-}
+          recommendation = "No M8BF (CPI day — VIX up)";
+          bgColor = "#eee";
+          crossedMain = true;
+        }
       } else {
         // Base logic
         if (overnightDrop > 0.65) {
@@ -971,6 +998,10 @@ flowchart TD
       mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
       recBlock.style.backgroundColor = bgColor;
 
+      // ✅ NEW: show the same "1st Monday" label under the calculator results
+      const resultLbl = document.getElementById("resultDayLabel");
+      if (resultLbl) resultLbl.textContent = tradingWeekdayOrdinalLabel(new Date());
+
       // =========================
       // 1PM BF rules (ALL reasons)
       // =========================
@@ -1019,5 +1050,3 @@ flowchart TD
 
 </body>
 </html>
-
-

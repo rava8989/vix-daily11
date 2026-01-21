@@ -110,7 +110,7 @@
     #recBlock .row { margin: 6px 0; }
     #recBlock .mainline { font-weight: bold; }
 
-    /* NEW: small label under results */
+    /* small label under results */
     #resultDayLabel {
       max-width: 880px;
       margin: 0 auto 10px auto;
@@ -303,11 +303,10 @@
 
     <div id="recBlock">
       <div class="row mainline" id="mainRec">—</div>
-      <div class="row" id="pm1Line">—</div>
       <div class="row" id="bobfLine">—</div>
     </div>
 
-    <!-- NEW: day label under calculator results -->
+    <!-- day label under calculator results -->
     <div id="resultDayLabel">—</div>
 
     <!-- FLOWCHART (UNCHANGED) -->
@@ -339,11 +338,10 @@ flowchart TD
       <h2>Sigma 3 — SPX 0DTE Strategy Overview</h2>
 
       <p>
-        Sigma 3 consists of five SPX 0DTE strategies:
+        Sigma 3 consists of four SPX 0DTE strategies:
         <strong>M8 Butterfly (M8BF)</strong>,
         <strong>Straddle</strong>,
         <strong>GXBF (GEX Butterfly)</strong>,
-        <strong>1PM Butterfly (1PM BF)</strong>,
         and <strong>BOBF</strong>.
         Each strategy has its own entry rules, risk limits, and calendar filters.
         The VIX calculator determines which strategies are valid on any given day
@@ -394,22 +392,6 @@ flowchart TD
       </ul>
       <div class="strategy-image">
         <img src="./gex.jpg" alt="GXBF strategy visual" loading="lazy" />
-      </div>
-
-      <div class="divider">⸻</div>
-
-      <h3>1PM Butterfly (1PM BF)</h3>
-      <ul>
-        <li>Only traded when overnight VIX is <strong>up</strong>.</li>
-        <li><strong>Not traded</strong> on Mondays.</li>
-        <li><strong>Not traded</strong> on VIX expiration days.</li>
-        <li><strong>Not traded</strong> on EOM or EOM-1.</li>
-        <li><strong>Not traded</strong> if VIX open is <strong>below 16</strong>.</li>
-        <li>Max risk: <strong>$1,400</strong>.</li>
-        <li>Use 1:00 PM SPX price as a center strike. Adjust the wings until you get close to a $14 entry cost.</li>
-      </ul>
-      <div class="strategy-image">
-        <img src="./1pm%20BF.jpg" alt="1PM BF" loading="lazy" />
       </div>
 
       <div class="divider">⸻</div>
@@ -988,7 +970,6 @@ flowchart TD
 
       const recBlock = document.getElementById("recBlock");
       const mainRec = document.getElementById("mainRec");
-      const pm1Line = document.getElementById("pm1Line");
       const bobfLine = document.getElementById("bobfLine");
 
       const mainText = addPostOpexNote
@@ -998,33 +979,9 @@ flowchart TD
       mainRec.innerHTML = crossedMain ? `<span class="crossed">${mainText}</span>` : mainText;
       recBlock.style.backgroundColor = bgColor;
 
-      // ✅ NEW: show the same "1st Monday" label under the calculator results
+      // show the same "1st Monday" label under the calculator results
       const resultLbl = document.getElementById("resultDayLabel");
       if (resultLbl) resultLbl.textContent = tradingWeekdayOrdinalLabel(new Date());
-
-      // =========================
-      // 1PM BF rules (ALL reasons)
-      // =========================
-      let pm1Reasons = [];
-
-      // overnight VIX must be UP => overnightDrop < 0
-      if (!(overnightDrop < 0)) pm1Reasons.push("overnight VIX is down");
-
-      // calendar filters
-      if (isMonday) pm1Reasons.push("Monday");
-      if (vixExpiryToday) pm1Reasons.push("VIX expiration");
-      if (eomTradingDay) pm1Reasons.push("EOM");
-      if (eomMinus1) pm1Reasons.push("EOM-1");
-
-      // VIX level filter
-      if (!isNaN(today) && today < 16) pm1Reasons.push("low VIX");
-
-      const pm1Crossed = pm1Reasons.length > 0;
-      const pm1Text = pm1Crossed
-        ? `No 1PM BF (${pm1Reasons.join(", ")})`
-        : "1PM BF in play";
-
-      pm1Line.innerHTML = pm1Crossed ? `<span class="crossed">${pm1Text}</span>` : pm1Text;
 
       // =======================
       // BOBF rules (ALL reasons)
@@ -1050,5 +1007,3 @@ flowchart TD
 
 </body>
 </html>
-
-

@@ -887,7 +887,7 @@ flowchart TD
         } else if (openDiff > 1.4) {
           recommendation = "M8 Butterfly";
           bgColor = "#b49aff";
-        } else if (overnightDrop >= 0.01 && overnightDrop < 0.65) {
+        } else if (overnightDrop > 0.001 && overnightDrop < 0.65) {
           recommendation = "Straddle @ 9:32 AM";
           bgColor = "#61f7d6";
         } else {
@@ -1007,3 +1007,4 @@ flowchart TD
 
 </body>
 </html>
+

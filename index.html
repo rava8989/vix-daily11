@@ -989,9 +989,9 @@ flowchart TD
       let bobfReasons = [];
 
       if (nmMonday) bobfReasons.push("NM Monday");
-      if (isFriday) bobfReasons.push("Friday");
+      if (isFriday && !(overnightDrop > 0)) bobfReasons.push("Friday");
       if (vixExpiryToday) bobfReasons.push("VIX expiration");
-      if (opexMinus1) bobfReasons.push("OPEX-1");
+      if (opexMinus1 && !(overnightDrop < 0)) bobfReasons.push("OPEX-1");
       if (eomMinus2) bobfReasons.push("EOM-2");
       if (eomMinus1) bobfReasons.push("EOM-1");
       if (!isNaN(today) && today > 23) bobfReasons.push("high VIX");
@@ -1007,4 +1007,5 @@ flowchart TD
 
 </body>
 </html>
+
 

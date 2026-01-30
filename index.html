@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+i fixed it. this is latest code. remomber it: <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -398,9 +398,9 @@ flowchart TD
 
       <h3>BOBF</h3>
       <ul>
-        <li><strong>Not traded</strong> on Fridays,if overnigh VIX is up</li>
+        <li><strong>Not traded</strong> on Fridays.</li>
         <li><strong>Not traded</strong> on monthly VIX expiration days.</li>
-        <li><strong>Not traded</strong> on OPEX-1, if overnigh VIX is down</li>
+        <li><strong>Not traded</strong> on OPEX-1.</li>
         <li><strong>Not traded</strong> on EOM-2 and EOM-1.</li>
         <li><strong>Not traded</strong> on the first trading Monday of the month (NM Monday).</li>
         <li>Maximum VIX allowed: <strong>23</strong>.</li>
@@ -989,9 +989,9 @@ flowchart TD
       let bobfReasons = [];
 
       if (nmMonday) bobfReasons.push("NM Monday");
-      if (isFriday && !(overnightDrop > 0)) bobfReasons.push("Friday");
+      if (isFriday) bobfReasons.push("Friday");
       if (vixExpiryToday) bobfReasons.push("VIX expiration");
-      if (opexMinus1 && !(overnightDrop < 0)) bobfReasons.push("OPEX-1");
+      if (opexMinus1) bobfReasons.push("OPEX-1");
       if (eomMinus2) bobfReasons.push("EOM-2");
       if (eomMinus1) bobfReasons.push("EOM-1");
       if (!isNaN(today) && today > 23) bobfReasons.push("high VIX");
@@ -1007,6 +1007,3 @@ flowchart TD
 
 </body>
 </html>
-
-
-

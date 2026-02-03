@@ -835,6 +835,7 @@ flowchart TD
       const opexToday = isOpexDay();
       const postHoliday = isPostHoliday();
       const postOpexMonday = isPostOpexMonday();
+      const postOpexDay = opexSchedule.some(isTodayFirstTradingDayAfter);
       const eomTradingDay = isLastTradingDayOfMonth(now);
       const eomMinus1 = isEomMinusN(1, now);
       const eomMinus2 = isEomMinusN(2, now);
@@ -846,7 +847,7 @@ flowchart TD
       document.getElementById('cpiTag').style.display = cpiToday ? 'inline-block' : 'none';
       document.getElementById('fedTag').style.display = fedToday ? 'inline-block' : 'none';
       document.getElementById('opexTag').style.display = opexToday ? 'inline-block' : 'none';
-      document.getElementById('postOpexTag').style.display = postOpexMonday ? 'inline-block' : 'none';
+      document.getElementById('postOpexTag').style.display = postOpexDay ? 'inline-block' : 'none';
       document.getElementById('postHolidayTag').style.display = postHoliday ? 'inline-block' : 'none';
       document.getElementById('eomTag').style.display = eomTradingDay ? 'inline-block' : 'none';
 
@@ -969,6 +970,22 @@ flowchart TD
           }
         }
       }
+     // ===== OPEX+1 override =====
+// On the next trading day after OPEX, replace M8/Straddle with GXBF.
+// BOBF stays unchanged.
+if (postOpexDay) {
+  const isM8 = recommendation.startsWith("M8 Butterfly");
+  const isStraddle =
+    recommendation.startsWith("Straddle") ||
+    recommendation.startsWith("NM Straddle");
+
+  if (isM8 || isStraddle) {
+    recommendation = "GXBF @ 9:36 AM (OPEX+1)";
+    bgColor = "#fff399";
+    crossedMain = false;
+    addPostOpexNote = false;
+  }
+}
 
       const recBlock = document.getElementById("recBlock");
       const mainRec = document.getElementById("mainRec");
@@ -1009,5 +1026,6 @@ flowchart TD
 
 </body>
 </html>
+
 
 

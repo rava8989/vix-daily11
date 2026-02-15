@@ -1016,30 +1016,37 @@ if (postOpexDay) {
       const resultLbl = document.getElementById("resultDayLabel");
       if (resultLbl) resultLbl.textContent = tradingWeekdayOrdinalLabel(new Date());
 
-      // =======================
-      // BOBF rules (ALL reasons)
-      // =======================
-      let bobfReasons = [];
+     // =======================
+// BOBF rules (ALL reasons)
+// =======================
+let bobfReasons = [];
 
-      if (nmMonday) bobfReasons.push("NM Monday");
-      if (isFriday) bobfReasons.push("Friday");
-      if (vixExpiryToday) bobfReasons.push("VIX expiration");
-      if (opexMinus1) bobfReasons.push("OPEX-1");
-      if (eomMinus2) bobfReasons.push("EOM-2");
-      if (eomMinus1) bobfReasons.push("EOM-1");
-      if (!isNaN(today) && today > 23) bobfReasons.push("high VIX");
+if (nmMonday) bobfReasons.push("NM Monday");
+// Friday is NO LONGER a block
+if (vixExpiryToday) bobfReasons.push("VIX expiration");
+if (opexMinus1) bobfReasons.push("OPEX-1");
+if (eomMinus2) bobfReasons.push("EOM-2");
+if (eomMinus1) bobfReasons.push("EOM-1");
+if (!isNaN(today) && today > 23) bobfReasons.push("high VIX");
 
-      const bobfCrossed = bobfReasons.length > 0;
-      const bobfText = bobfCrossed
-        ? `No BOBF (${bobfReasons.join(", ")})`
-        : "BOBF in play";
+const bobfBlocked = bobfReasons.length > 0;
 
-      bobfLine.innerHTML = bobfCrossed ? `<span class="crossed">${bobfText}</span>` : bobfText;
+let bobfText;
+if (bobfBlocked) {
+  bobfText = `No BOBF (${bobfReasons.join(", ")})`;
+} else {
+  bobfText = isFriday ? "BOBF (Friday version)" : "BOBF in play";
+}
+
+bobfLine.innerHTML = bobfBlocked
+  ? `<span class="crossed">${bobfText}</span>`
+  : bobfText;
     }
   </script>
 
 </body>
 </html>
+
 
 
 

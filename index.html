@@ -1024,6 +1024,7 @@ let bobfReasons = [];
 if (nmMonday) bobfReasons.push("NM Monday");
 // Friday is NO LONGER a block
 if (vixExpiryToday) bobfReasons.push("VIX expiration");
+if (opexToday) bobfReasons.push("OPEX");
 if (opexMinus1) bobfReasons.push("OPEX-1");
 if (eomMinus2) bobfReasons.push("EOM-2");
 if (eomMinus1) bobfReasons.push("EOM-1");
@@ -1046,6 +1047,7 @@ bobfLine.innerHTML = bobfBlocked
 
 </body>
 </html>
+
 
 
 

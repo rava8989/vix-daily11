@@ -13358,6 +13358,51 @@ export default {
         return jsonResp({ tail, liveFrom: GEXGATE_LIVE_FROM, updated: keys[keys.length - 1] ?? null }, 200, pub);
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
     }
+    // ── One-shot reconcile (2026-07-24, verified vs ThetaData ground truth):
+    // Jul 20 PNBF scalpPL was a phantom (10:30 capture outage — mf_magnet null,
+    // 0DTE magnet 7525 vs center 7495 = no signal, no trade) → remove it.
+    // Jul 21 was a real verified trade (magnet 7500, ctr 7505, debit 15.37,
+    // TP 14:20, +$300/lot) that never reached mf_closed_log → backfill the row
+    // so the PNBF page's paper record matches history. Idempotent.
+    if (url.pathname === '/pnbf-reconcile-jul20' && request.method === 'POST') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      try {
+        const out = {};
+        const content = await getHistory(env);
+        const row = (content || []).find(r => r.date === '2026-07-20');
+        if (row && row.scalpPL != null) {
+          await backupHistorySnapshot(env, content, '2026-07-20', { scalpPL: 'DELETE(phantom)' });
+          delete row.scalpPL;
+          await setHistory(env, content, { dateStr: '2026-07-20', fields: { scalpPL: 'deleted' }, skipBackup: true });
+          try { await mirrorHistoryToGitHub(env, content, 'fix: remove phantom PNBF scalpPL 2026-07-20 (capture outage, no signal — verified vs ThetaData)'); } catch (_) {}
+          out.jul20 = 'scalpPL removed';
+        } else out.jul20 = 'already clean';
+        const logRaw = await env.SIGNAL_KV.get('mf_closed_log');
+        const log = logRaw ? JSON.parse(logRaw) : [];
+        if (!log.some(x => x.date === '2026-07-21')) {
+          log.push({ date: '2026-07-21', day: 'Tue', magnet: 7500, center: 7505, debit: 1537,
+                     exit: 'TP', exitTime: '14:20', pnl: 300 });
+          log.sort((a, b) => a.date.localeCompare(b.date));
+          await env.SIGNAL_KV.put('mf_closed_log', JSON.stringify(log));
+          out.jul21 = 'paper-log row backfilled';
+        } else out.jul21 = 'already present';
+        return jsonResp({ ok: true, ...out }, 200, {});
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+    // ── Debug: read a stored mf_magnet_<date> snapshot (both magnet bases) ──
+    if (url.pathname === '/mf-magnet' && request.method === 'GET') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      const qd = url.searchParams.get('date');
+      if (!qd || !/^\d{4}-\d{2}-\d{2}$/.test(qd)) return jsonResp({ error: 'date=YYYY-MM-DD required' }, 400, {});
+      const raw = await env.SIGNAL_KV.get(`mf_magnet_${qd}`);
+      return jsonResp({ date: qd, snapshot: raw ? JSON.parse(raw) : null }, 200, {});
+    }
     // ── GEX gate: status probe (seam check + live verdict preview) ──
     if (url.pathname === '/gexgate-status' && request.method === 'GET') {
       const sec = url.searchParams.get('secret');

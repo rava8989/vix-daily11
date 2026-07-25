@@ -131,5 +131,20 @@ finish     ≈ 0.5 × travel                                 # validated rule of
   </ul>
 
 </div>
+  <h2>6 · Gamma-regime pool (added 2026-07-25)</h2>
+  <p>The original pool — "last N same-weekdays" — leans on a variable this page's own validation
+  proved empty (the weekday composite has zero out-of-sample signal). The regime pool replaces it
+  with the variable that demonstrably separates day behavior: the previous session's 10:30 ET
+  0DTE dealer-gamma percentile (the same input as the live GEX gate). Tiers: <b>THIN</b> &lt;p20
+  (the gate's skip zone — moves extend), <b>MID</b> p20–60, <b>FAT</b> ≥p60 (strongest pins).
+  On the full 5-minute fly grid these tiers run 47.6% / 54.7% / 62.6% win rates — the physics is
+  real, not calendar folklore.</p>
+  <p>In regime mode, each shown day's band, ghosts, intensity strip and live projection are built
+  from the N most similar prior days: same tier first, then nearest previous-day VIX close.
+  Today's and future days' tier comes from the latest 10:30 reading (the same number the evening
+  gate verdict uses) and is marked with a tilde (~) as a preview. Historical tiers ship in
+  <span class="mono">cyclelab_regimes.json</span> and self-extend from the public
+  <span class="mono">/gexgate-hist</span> series. SPX only — NDX always uses the classic weekday
+  pool. The walk-forward validation table in section 4 grades the classic weekday method only.</p>
 </body>
 </html>

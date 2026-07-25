@@ -58,14 +58,17 @@ td:first-child,th:first-child{text-align:left}
   <div class="controls">
     <div class="ctl"><label>Week</label><select id="selWeek"></select></div>
     <div class="ctl"><label>Days shown (toggle any)</label><div class="seg" id="segDow"></div></div>
+    <div class="ctl"><label>Prior pool</label><div class="seg" id="segPool">
+      <button data-p="regime" class="on">Gamma regime</button><button data-p="dow">Weekday (classic)</button>
+    </div></div>
     <div class="ctl"><label>Method</label><div class="seg" id="segMethod"></div></div>
-    <div class="ctl"><label>Lookback — N prior same-weekdays each (holidays auto-skipped)</label><div class="seg" id="segLb"></div></div>
+    <div class="ctl"><label>Lookback — N prior days each (holidays auto-skipped)</label><div class="seg" id="segLb"></div></div>
     <div class="ctl"><label>Index</label><div class="seg" id="segSym">
       <button data-s="spx" class="on">SPX</button><button data-s="ndx">NDX</button>
     </div></div>
     <div class="ctl"><label>Options</label><div style="display:flex;gap:14px;align-items:center;font-size:12px;color:var(--text2);padding:4px 0">
       <label style="cursor:pointer"><input type="checkbox" id="optClean"> skip FED/CPI/OPEX in lookback</label>
-      <label style="cursor:pointer"><input type="checkbox" id="optGhosts" checked> prior weeks (1 day selected)</label>
+      <label style="cursor:pointer"><input type="checkbox" id="optGhosts" checked> ghost paths (1 day selected)</label>
     </div></div>
   </div>
 </div>
@@ -237,6 +240,7 @@ function loadData() {
   });
 }
 loadData();
+loadRegimes().then(() => { if (DATA) { render(); } });
 
 // "Expected movement today" — trailing-20-session mean daily range. The
 // 2026-06-12 analog study: this dumb baseline beats weekday-based range
@@ -311,6 +315,16 @@ function buildSegs() {
     document.querySelectorAll('#segSym button').forEach(x => x.classList.toggle('on', x.dataset.s === symbol));
     loadData();
   });
+  const sp = $('segPool');
+  if (sp && !sp._wired) {
+    sp._wired = true;
+    sp.querySelectorAll('button').forEach(b => b.onclick = () => {
+      poolMode = b.dataset.p;
+      sp.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.p === poolMode));
+      render(); buildValidation();
+    });
+  }
+  if (sp) sp.title = symbol === 'ndx' ? 'regime pool is SPX-gamma based — NDX always uses the weekday pool' : '';
   const oc = $('optClean'), og = $('optGhosts');
   if (oc && !oc._wired) { oc._wired = true; oc.onchange = () => { cleanLB = oc.checked; render(); buildValidation(); }; }
   if (og && !og._wired) { og._wired = true; og.onchange = () => { showGhosts = og.checked; render(); }; }
@@ -335,6 +349,76 @@ function eventISOset() {
   }
   return _eventISO;
 }
+// ── Gamma-regime pool (2026-07-25) ─────────────────────────────────────────
+// REGIMES: date -> [prevDayRankPct|null, prevVixClose|null] from the banked
+// 10:30 0DTE GEX series (same input as the live GEX gate). Tier: THIN <20
+// (gated days), MID 20-60, FAT >=60. The band/ghosts/projection pool becomes
+// "days like today" instead of "same weekday" — the weekday composite has
+// zero OOS signal (audit 2026-06-30), the gamma tier is the variable that
+// actually separates day behavior (fly WR 47.6/54.7/62.6% by tier).
+// Self-extending: ranks newer than the static file are computed client-side
+// from the public /gexgate-hist tail. SPX-only (NDX falls back to weekday).
+let poolMode = 'regime';
+let REGIMES = null, NEXT_RANK = null, NEXT_FROM = null;
+function tierOf(pct) { return pct == null ? null : (pct < 20 ? 'THIN' : pct < 60 ? 'MID' : 'FAT'); }
+function loadRegimes() {
+  return fetch('cyclelab_regimes.json?v=' + Date.now()).then(r => r.json()).then(j => {
+    REGIMES = j.days || {}; NEXT_RANK = j.nextRank ?? null; NEXT_FROM = j.nextFrom || null;
+    return fetch(WORKER_URL + '/gexgate-hist', { cache: 'no-store' }).then(r => r.ok ? r.json() : null);
+  }).then(h => {
+    if (!h || !Array.isArray(h.tail)) return;
+    // extend ranks past the static file: rank each reading vs its prior 120,
+    // assign to the NEXT session (prev-day semantics, same as the gate)
+    const t = h.tail, vals = t.map(x => x[1]);
+    for (let i = 0; i < t.length; i++) {
+      const nextIdx = i + 1;
+      if (nextIdx < t.length) {
+        const dNext = t[nextIdx][0];
+        if (!REGIMES[dNext] || REGIMES[dNext][0] == null) {
+          const base = vals.slice(Math.max(0, i - 120), i);
+          if (base.length >= 20) {
+            const pct = Math.round(base.filter(x => x <= vals[i]).length / base.length * 100);
+            REGIMES[dNext] = [pct, (REGIMES[dNext] || [])[1] ?? null];
+          }
+        }
+      }
+    }
+    const lastD = t[t.length - 1][0];
+    const base = vals.slice(0, -1).slice(-120);
+    if (base.length >= 20 && lastD >= (NEXT_FROM || '')) {
+      NEXT_RANK = Math.round(base.filter(x => x <= vals[vals.length - 1]).length / base.length * 100);
+      NEXT_FROM = lastD;
+    }
+  }).catch(() => {});
+}
+function rankFor(iso) {
+  if (!REGIMES) return null;
+  const r = REGIMES[iso];
+  if (r && r[0] != null) return { pct: r[0], est: false };
+  // today/future: preview from the newest reading (what the evening verdict uses)
+  if (NEXT_RANK != null && NEXT_FROM && iso > NEXT_FROM) return { pct: NEXT_RANK, est: true };
+  return null;
+}
+function predForRegime(iso, beforeISO) {
+  const tgt = rankFor(iso);
+  if (!tgt) return null;
+  const tier = tierOf(tgt.pct);
+  const ev = cleanLB ? eventISOset() : null;
+  const tv = (REGIMES[iso] || [])[1];
+  let pool = DATA.days.filter(x => !x._live && x.d < beforeISO && (!ev || !ev.has(x.d))
+    && REGIMES[x.d] && tierOf(REGIMES[x.d][0]) === tier);
+  // order by VIX-level similarity when both sides have it, else recency
+  pool.sort((a, b) => {
+    const va = (REGIMES[a.d] || [])[1], vb = (REGIMES[b.d] || [])[1];
+    if (tv != null && va != null && vb != null) return Math.abs(va - tv) - Math.abs(vb - tv);
+    return a.d < b.d ? 1 : -1;
+  });
+  const pri = pool.slice(0, lookback).sort((a, b) => a.d.localeCompare(b.d));
+  if (pri.length < Math.min(4, lookback)) return null;
+  return { priors: pri.map(p => p.d), ms: pri.map(p => p.m), slots: buildSlots(pri.map(p => p.m)),
+           tier, est: tgt.est, pct: tgt.pct };
+}
+
 function predFor(dowW, beforeISO) {
   // _live (partial, intraday) days never feed predictions — only the chart's actual line.
   // cleanLB drops FED/CPI/OPEX days from the pool (window reaches further back instead).
@@ -353,9 +437,10 @@ function compute() {
     if (!activeDows.has(w)) continue;
     const iso = addDays(weekKey, w);
     if (isHol(iso)) continue;                     // market closed → no column
-    const p = predFor(w, weekKey);
+    const p = (poolMode === 'regime' && symbol === 'spx' && REGIMES) ? predForRegime(iso, weekKey) : predFor(w, weekKey);
     if (!p) continue;
     days.push({ w, iso, pred: p.slots, priors: p.priors, ms: p.ms,
+                tier: p.tier || null, est: p.est || false, pct: p.pct,
                 act: byDate[iso] ? byDate[iso].m : null });
   }
   // continuous cumulative across the shown days. The ACTUAL series is
@@ -368,7 +453,8 @@ function compute() {
   const ghosts = [];   // prior-week paths, only when a single weekday is shown
   const singleDow = days.length >= 1 && activeDows.size === 1 && lookback <= 10;
   days.forEach((d, di) => {
-    const mk = { x: di * ns, label: `${WD[d.w]} ${d.iso.slice(5)}`, w: d.w, iso: d.iso };
+    const mk = { x: di * ns, label: `${WD[d.w]} ${d.iso.slice(5)}`
+      + (d.tier ? ` · ${d.tier}${d.est ? '~' : ''} p${d.pct}` : ''), w: d.w, iso: d.iso };
     marks.push(mk);
     const dayStart = cp;
     let oneSided = 0, bandSlots = 0, widthSum = 0;   // cloud-agreement quality per day

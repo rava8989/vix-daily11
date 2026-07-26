@@ -7904,6 +7904,9 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
 
   // Accumulate per-strike across selected expirations
   const strikeAccum = {}; // strike → { callGex, putGex, callOI, putOI, callVex, putVex, callCex, putCex }
+  // Per-(expiry, strike) net GEX for the term-structure heatmap (2026-07-25).
+  // Same loop, no extra chain work: expGridAccum[expKey][strike] = net $ gamma.
+  const expGridAccum = {};
   let totalCallGex = 0, totalPutGex = 0;
   // INFO-ONLY flow: total traded VOLUME (not OI) across all selected expirations.
   // Volume is the day's flow → summed unconditionally (even when oi===0), not gated on OI.
@@ -7946,6 +7949,11 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
 
       if (!strikeAccum[strikeStr]) strikeAccum[strikeStr] = { strike: K, callGex: 0, putGex: 0, callOI: 0, putOI: 0, callVex: 0, putVex: 0, callCex: 0, putCex: 0, callGexVol: 0, putGexVol: 0 };
       const acc = strikeAccum[strikeStr];
+
+      if (!expGridAccum[expKey]) expGridAccum[expKey] = {};
+      const eg = expGridAccum[expKey];
+      if (eg[strikeStr] == null) eg[strikeStr] = 0;
+      const gexBefore = acc.callGex + acc.putGex;
 
       const callContracts = calls[strikeStr] || [];
       const putContracts = puts[strikeStr] || [];
@@ -8009,6 +8017,7 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
         acc.putCex -= cexP;
         gammaInputs.push({ K, T: T_years, iv: sig, oi, isCall: false });
       }
+      eg[strikeStr] += (acc.callGex + acc.putGex) - gexBefore;   // this expiry's contribution
     }
   }
 
@@ -8176,6 +8185,28 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
     expiry: expiriesToUse[0],
     expiryCount: expiriesToUse.length,
     dte,
+    expGrid: (() => {
+      // Compact term-structure grid for the heatmap: nearest 8 expiries ×
+      // strikes within ±2.5% of spot, values in $M (1dp). Small enough to ride
+      // in KV next to the snapshot; the page renders it directly.
+      try {
+        const exps = expiriesToUse.slice(0, 8).map(k => {
+          const parts = String(k).split(':');
+          return { key: k, d: parts[0], dte: parseInt(parts[1], 10) };
+        }).sort((a, b) => a.dte - b.dte);
+        const gLo = S * 0.975, gHi = S * 1.025;
+        const ks = [...new Set(exps.flatMap(e => Object.keys(expGridAccum[e.key] || {})))]
+          .map(parseFloat).filter(k => k >= gLo && k <= gHi).sort((a, b) => b - a);
+        if (!ks.length || !exps.length) return null;
+        return {
+          exps: exps.map(e => ({ d: e.d, dte: e.dte })),
+          rows: ks.map(k => ({ k, v: exps.map(e => {
+            const v = (expGridAccum[e.key] || {})[String(k)] ?? (expGridAccum[e.key] || {})[k.toFixed(1)];
+            return v == null ? null : +(v / 1e6).toFixed(1);
+          }) })),
+        };
+      } catch (_) { return null; }
+    })(),
   };
 }
 
@@ -8237,10 +8268,42 @@ async function handleGEXUpdate(env, token, preChain = null) {
   delete gexData._flowContracts;
   if (gex0dte) delete gex0dte._flowContracts;
 
-  // Store 0DTE snapshot separately
+  // Store 0DTE snapshot separately (its expGrid would be a single column — drop it)
   if (gex0dte) {
+    delete gex0dte.expGrid;
     await env.SIGNAL_KV.put('gex_current_0dte', JSON.stringify(gex0dte));
   }
+
+  // Intraday per-strike 0DTE GEX heatmap capture (2026-07-25): one compact slot
+  // every 30 min, strikes within ±1.5% of spot, values in $M. Feeds the
+  // time-of-day view of the heatmap panel so walls can be watched building and
+  // decaying. First writer per slot wins (idempotent across overlapping ticks).
+  try {
+    if (gex0dte && Array.isArray(gex0dte.strikes) && gex0dte.strikes.length) {
+      const etI = toET(new Date());
+      const hI = etI.getHours(), mI = etI.getMinutes();
+      if (hI >= 9 && hI <= 15 && !(hI === 9 && mI < 30)) {
+        const slot = `${String(hI).padStart(2, '0')}:${mI < 30 ? '00' : '30'}`;
+        const dayI = isoDateET(etI);
+        const key = `gex_intraday_${dayI}`;
+        const raw = await env.SIGNAL_KV.get(key);
+        const rec = raw ? JSON.parse(raw) : { date: dayI, slots: {} };
+        if (rec.slots[slot] == null) {
+          const S0 = gex0dte.spot || 0;
+          const row = {};
+          for (const s of gex0dte.strikes) {
+            if (!S0 || Math.abs(s.strike - S0) / S0 > 0.015) continue;
+            row[s.strike] = +(s.netGex / 1e6).toFixed(1);
+          }
+          if (Object.keys(row).length) {
+            rec.slots[slot] = row;
+            rec.spot = Math.round(S0 * 100) / 100;
+            await env.SIGNAL_KV.put(key, JSON.stringify(rec), { expirationTtl: 4 * 86400 });
+          }
+        }
+      }
+    }
+  } catch (e) { console.warn('[gex-intraday]', e.message); }
 
   // Store SPX price tick for live.html chart (replaces dead live_updater.py → spx_history.json)
   try {
@@ -8422,8 +8485,21 @@ async function handleGEXUpdate(env, token, preChain = null) {
     } catch (e) { console.warn('[gex] flow series capture failed:', e.message); }
   }
 
-  // 6. Store current snapshot in KV
+  // 6. Store current snapshot in KV — but NEVER persist a degenerate one.
+  // Schwab serves the chain outside market hours with open interest stripped,
+  // so every strike computes 0 (learned 2026-07-26: a weekend force-refresh
+  // overwrote a good snapshot with all-zero GEX). Same shape protects against
+  // a mid-session chain outage. Keep the prior snapshot instead; the page's
+  // stale banner already covers "old but real". Also keep a last-known-good
+  // copy so a future recovery has something to restore from.
+  const _degenerate = !gexData.totalGex && !(gexData.walls || []).length &&
+                      !(gexData.strikes || []).some(s => s.callGex || s.putGex);
+  if (_degenerate) {
+    console.warn('[gex] degenerate snapshot (no OI — market closed / chain outage) — keeping previous');
+    return { gex: 'skipped-degenerate', regime: null, totalGex: 0, events: [] };
+  }
   await env.SIGNAL_KV.put('gex_current', JSON.stringify(gexData));
+  try { await env.SIGNAL_KV.put('gex_last_good', JSON.stringify(gexData), { expirationTtl: 14 * 86400 }); } catch (_) {}
 
   // 7. Append to history (keep last 60 snapshots for % change tracking)
   history.push({ ts: now, totalGex: gexData.totalGex, regime: gexData.regime });
@@ -13345,6 +13421,26 @@ export default {
           rank: rank != null ? Math.round(rank * 100) : null, liveFrom: GEXGATE_LIVE_FROM }, 200, pub);
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
     }
+    // ── Heatmap data (2026-07-25): term structure (strike × expiry) and
+    // intraday (strike × 30-min slot). Read-only derived market data, same
+    // public posture as /gex and /gexgate-today.
+    if (url.pathname === '/gex-heatmap' && request.method === 'GET') {
+      const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
+      try {
+        const view = url.searchParams.get('view') === 'intraday' ? 'intraday' : 'expiry';
+        if (view === 'expiry') {
+          const raw = await env.SIGNAL_KV.get('gex_current');
+          const g = raw ? JSON.parse(raw) : null;
+          return jsonResp({ view, spot: g?.spot ?? null, updatedAt: g?.updatedAt ?? null,
+                            grid: g?.expGrid ?? null }, 200, pub);
+        }
+        const qd = url.searchParams.get('date');
+        const day = (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd)) ? qd : isoDateET(toET(new Date()));
+        const raw = await env.SIGNAL_KV.get(`gex_intraday_${day}`);
+        const rec = raw ? JSON.parse(raw) : null;
+        return jsonResp({ view, date: day, spot: rec?.spot ?? null, slots: rec?.slots ?? null }, 200, pub);
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
     // ── GEX gate: public series tail for gex.html panels (gate strip histogram,
     // persistence stats). Read-only market data — same public posture as
     // /gexgate-today. Page computes ranks/streaks client-side from the tail.
@@ -13527,6 +13623,19 @@ export default {
         }
 
         let data = await env.SIGNAL_KV.get('gex_current');
+
+        // Owner-gated force refresh (?force=1&secret=…) — recompute now even
+        // outside market hours. Verification/debug affordance; Schwab returns
+        // valid OI + chain structure when closed, so the snapshot is usable.
+        const _fSec = url.searchParams.get('secret');
+        if (url.searchParams.get('force') === '1' && _fSec &&
+            (_fSec === env.SYNC_SECRET || _fSec === env.GEXM_TRIGGER_TOKEN)) {
+          try {
+            const token = await getAccessToken(env);
+            await handleGEXUpdate(env, token);
+            data = await env.SIGNAL_KV.get('gex_current');
+          } catch (e) { console.warn('[gex] force refresh failed:', e.message || e); }
+        }
 
         // Auto-refresh: if no data or stale during market hours, trigger inline update
         const etNow = toET();

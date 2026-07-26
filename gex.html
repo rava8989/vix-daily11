@@ -335,6 +335,23 @@
     </div>
   </div>
 
+  <!-- GEX heatmap — strike × expiry (term structure) or strike × time (today) -->
+  <div class="chart-section" id="gexHeatSection" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <h2 style="margin-bottom:0;"><span>GEX</span> Heatmap</h2>
+      <div class="gex-mode-toggle" id="heatViewToggle">
+        <button class="gex-mode-btn active" data-hv="expiry">By expiry</button>
+        <button class="gex-mode-btn" data-hv="intraday">Today by time</button>
+      </div>
+      <span id="gexHeatBanner" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);"></span>
+    </div>
+    <div id="gexHeatWrap" style="overflow-x:auto;"></div>
+    <div id="gexHeatNote" style="display:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);padding:24px 0;text-align:center;"></div>
+    <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
+      Net dealer gamma per strike in $M — <b>green = positive</b> (dealers dampen moves there), <b>red = negative</b> (they amplify). <b>By expiry</b> shows where gamma sits across the next 8 expirations — a bright cell is a wall the whole term structure leans on. <b>Today by time</b> shows the 0DTE book at 30-minute marks so you can watch walls build and decay. Rows are strikes; the ▸ marker is spot.
+    </div>
+  </div>
+
   <!-- GEX Gate — live skip-rule strip + trailing distribution + persistence -->
   <div class="chart-section" id="gateStripSection" style="display:none;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
@@ -1729,6 +1746,84 @@ function showMarketClosed() {
   document.getElementById('gexDataBar').style.display = 'none';
 }
 
+/* ── GEX heatmap (2026-07-25): strike × expiry, or strike × 30-min slot ──
+   Data: public /gex-heatmap. Values are net GEX in $M (signed). Colour scale is
+   symmetric around zero on the 95th-percentile magnitude so one monster wall
+   can't wash the grid out. Renders as a plain table (crisp text at any zoom,
+   no canvas scaling headaches) inside a horizontal scroller. */
+const HEAT_URL = 'https://schwab-proxy.ravamt4.workers.dev/gex-heatmap';
+let heatView = 'expiry';
+function heatColor(v, scale) {
+  if (v == null) return 'transparent';
+  const t = Math.max(-1, Math.min(1, v / (scale || 1)));
+  const a = 0.10 + 0.72 * Math.abs(t);
+  return t >= 0 ? `rgba(34,197,94,${a.toFixed(3)})` : `rgba(239,68,68,${a.toFixed(3)})`;
+}
+function fmtHeatCell(v) {
+  if (v == null) return '';
+  const a = Math.abs(v);
+  if (a >= 1000) return (v < 0 ? '-' : '') + '$' + (a / 1000).toFixed(1) + 'B';
+  if (a < 0.05) return '·';
+  return (v < 0 ? '-' : '') + '$' + (a >= 10 ? a.toFixed(0) : a.toFixed(1)) + 'M';
+}
+function renderHeat(cols, rows, spot, banner) {
+  const wrap = document.getElementById('gexHeatWrap');
+  const note = document.getElementById('gexHeatNote');
+  document.getElementById('gexHeatBanner').textContent = banner || '';
+  if (!cols.length || !rows.length) {
+    wrap.innerHTML = '';
+    note.style.display = 'block';
+    note.textContent = heatView === 'intraday'
+      ? 'capturing… today\'s 30-minute slots fill in through the session'
+      : 'no chain snapshot yet — fills on the next market-hours update';
+    document.getElementById('gexHeatSection').style.display = 'block';
+    return;
+  }
+  note.style.display = 'none';
+  const mags = rows.flatMap(r => r.v).filter(v => v != null).map(Math.abs).sort((a, b) => a - b);
+  const scale = mags.length ? (mags[Math.floor(mags.length * 0.95)] || mags[mags.length - 1] || 1) : 1;
+  const th = c => `<th style="position:sticky;top:0;background:var(--bg2);font-size:10px;font-weight:600;color:var(--text2);padding:6px 8px;white-space:nowrap;border-bottom:1px solid var(--border)">${c}</th>`;
+  let html = `<table style="border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:11px;min-width:100%">`
+    + `<thead><tr>${th('strike')}${cols.map(th).join('')}</tr></thead><tbody>`;
+  for (const r of rows) {
+    const atSpot = spot != null && Math.abs(r.k - spot) <= 2.5;
+    html += `<tr>`
+      + `<td style="position:sticky;left:0;background:var(--bg2);padding:4px 8px;font-weight:600;color:${atSpot ? 'var(--cyan)' : 'var(--text2)'};white-space:nowrap;border-right:1px solid var(--border)">`
+      + `${atSpot ? '▸ ' : ''}${r.k}</td>`;
+    for (const v of r.v) {
+      html += `<td style="padding:4px 8px;text-align:right;background:${heatColor(v, scale)};color:var(--text);white-space:nowrap">${fmtHeatCell(v)}</td>`;
+    }
+    html += `</tr>`;
+  }
+  wrap.innerHTML = html + '</tbody></table>';
+  document.getElementById('gexHeatSection').style.display = 'block';
+}
+async function loadHeat() {
+  try {
+    const j = await (await fetch(HEAT_URL + '?view=' + heatView, { cache: 'no-store' })).json();
+    if (heatView === 'expiry') {
+      const g = j.grid;
+      if (!g) return renderHeat([], [], j.spot, '');
+      const cols = g.exps.map(e => `${e.d.slice(5)}<br><span style="opacity:.6;font-weight:400">${e.dte}d</span>`);
+      renderHeat(cols, g.rows, j.spot, `next ${g.exps.length} expirations · ${j.updatedAt ? j.updatedAt.slice(11, 16) + 'Z' : ''}`);
+    } else {
+      const slots = j.slots || {};
+      const times = Object.keys(slots).sort();
+      if (!times.length) return renderHeat([], [], j.spot, '');
+      const ks = [...new Set(times.flatMap(t => Object.keys(slots[t])))].map(parseFloat).sort((a, b) => b - a);
+      const rows = ks.map(k => ({ k, v: times.map(t => slots[t][k] ?? slots[t][String(k)] ?? null) }));
+      renderHeat(times, rows, j.spot, `${j.date} · 0DTE book · ${times.length} slot${times.length > 1 ? 's' : ''}`);
+    }
+  } catch (_) { /* heatmap is best-effort */ }
+}
+document.getElementById('heatViewToggle').addEventListener('click', e => {
+  const b = e.target.closest('.gex-mode-btn');
+  if (!b || b.dataset.hv === heatView) return;
+  heatView = b.dataset.hv;
+  document.querySelectorAll('#heatViewToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.hv === heatView));
+  loadHeat();
+});
+
 /* ── GEX Gate panels: strip + histogram + persistence + cone + regime-pays ──
    Static history from gex_history_panels.json (built from the 726-day banked
    intraday GEX grid); live series tail from /gexgate-hist; today's official
@@ -1770,6 +1865,7 @@ function recordConePoint(data) {
 async function initGatePanels() {
   if (gatePanelsInited) return;
   gatePanelsInited = true;
+  loadHeat();
   let hist = null, today = null, panels = null;
   try { hist   = await (await fetch(GATE_HIST_URL)).json(); } catch (_) {}
   try { today  = await (await fetch(GATE_TODAY_URL)).json(); } catch (_) {}

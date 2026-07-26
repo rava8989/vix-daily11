@@ -342,6 +342,7 @@
       <div class="gex-mode-toggle" id="heatSymToggle" title="SPX and SPY have separate dealer books — SPY is shown for its own sake, never as an SPX proxy.">
         <button class="gex-mode-btn active" data-hs="spx">SPX</button>
         <button class="gex-mode-btn" data-hs="spy">SPY</button>
+        <button class="gex-mode-btn" data-hs="both">SPX+SPY</button>
       </div>
       <div class="gex-mode-toggle" id="heatViewToggle">
         <button class="gex-mode-btn active" data-hv="expiry">By expiry</button>
@@ -352,7 +353,7 @@
     <div id="gexHeatWrap" style="overflow-x:auto;"></div>
     <div id="gexHeatNote" style="display:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);padding:24px 0;text-align:center;"></div>
     <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      Net dealer gamma per strike in $M — <b>green = positive</b> (dealers dampen moves there), <b>red = negative</b> (they amplify). <b>By expiry</b> shows where gamma sits across the next 8 expirations — a bright cell is a wall the whole term structure leans on. <b>Today by time</b> shows the 0DTE book at 30-minute marks so you can watch walls build and decay. Rows are strikes; the ▸ marker is spot. SPX and SPY are separate books shown side by side — every Σ3 strategy and every backtest is SPX-only; SPY is never used as a proxy.
+      Net dealer gamma per strike in $M — <b>green = positive</b> (dealers dampen moves there), <b>red = negative</b> (they amplify). <b>By expiry</b> shows where gamma sits across the next 8 expirations — a bright cell is a wall the whole term structure leans on. <b>Today by time</b> shows the 0DTE book at 30-minute marks so you can watch walls build and decay. Rows are strikes; the ▸ marker is spot. <b>SPX+SPY</b> adds the two books: dollar-gamma is already in the same units (SPY's 1/10 notional cancels out in gamma×spot²), so only the strike axis is translated — SPY strikes × the <i>live</i> SPX/SPY ratio (~10.03, not 10 — dividends make the difference ≈5 SPX strikes), snapped to the 5-point grid. Both books hedge into the same futures, so the sum is the fuller picture of dealer pressure. Informational: every Σ3 strategy and backtest reads pure SPX 0DTE — the combined view has no forward validation behind it.
     </div>
   </div>
 
@@ -1791,6 +1792,7 @@ function renderHeat(cols, rows, spot, banner) {
     + `<thead><tr>${th('strike')}${cols.map(th).join('')}</tr></thead><tbody>`;
   for (const r of rows) {
     const atSpot = spot != null && Math.abs(r.k - spot) <= (heatSym === 'spy' ? 0.5 : 2.5);
+    if (heatSym === 'both' && r.v.every(v => v == null || v === 0)) continue;   // drop empty union rows
     html += `<tr>`
       + `<td style="position:sticky;left:0;background:var(--bg2);padding:4px 8px;font-weight:600;color:${atSpot ? 'var(--cyan)' : 'var(--text2)'};white-space:nowrap;border-right:1px solid var(--border)">`
       + `${atSpot ? '▸ ' : ''}${r.k}</td>`;
@@ -1809,14 +1811,18 @@ async function loadHeat() {
       const g = j.grid;
       if (!g) return renderHeat([], [], j.spot, '');
       const cols = g.exps.map(e => `${e.d.slice(5)}<br><span style="opacity:.6;font-weight:400">${e.dte}d</span>`);
-      renderHeat(cols, g.rows, j.spot, `${heatSym.toUpperCase()} · next ${g.exps.length} expirations · spot ${j.spot ?? '—'} · ${j.updatedAt ? j.updatedAt.slice(11, 16) + 'Z' : ''}`);
+      const tag = heatSym === 'both'
+        ? `SPX+SPY combined · SPY strikes ×${j.ratio ?? '—'} → SPX levels · spot ${j.spot ?? '—'}`
+        : `${heatSym.toUpperCase()} · next ${g.exps.length} expirations · spot ${j.spot ?? '—'}`;
+      renderHeat(cols, g.rows, j.spot, `${tag} · ${j.updatedAt ? j.updatedAt.slice(11, 16) + 'Z' : ''}`);
     } else {
       const slots = j.slots || {};
       const times = Object.keys(slots).sort();
       if (!times.length) return renderHeat([], [], j.spot, '');
       const ks = [...new Set(times.flatMap(t => Object.keys(slots[t])))].map(parseFloat).sort((a, b) => b - a);
       const rows = ks.map(k => ({ k, v: times.map(t => slots[t][k] ?? slots[t][String(k)] ?? null) }));
-      renderHeat(times, rows, j.spot, `${heatSym.toUpperCase()} · ${j.date} · 0DTE book · ${times.length} slot${times.length > 1 ? 's' : ''}`);
+      renderHeat(times, rows, j.spot,
+        `${heatSym === 'both' ? `SPX+SPY combined (×${j.ratio ?? '—'})` : heatSym.toUpperCase()} · ${j.date} · 0DTE book · ${times.length} slot${times.length > 1 ? 's' : ''}`);
     }
   } catch (_) { /* heatmap is best-effort */ }
 }

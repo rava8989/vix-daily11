@@ -13536,15 +13536,79 @@ export default {
       const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
       try {
         const view = url.searchParams.get('view') === 'intraday' ? 'intraday' : 'expiry';
-        const sym = url.searchParams.get('symbol') === 'spy' ? 'spy' : 'spx';
+        const qsym = url.searchParams.get('symbol');
+        const sym = qsym === 'spy' ? 'spy' : (qsym === 'both' ? 'both' : 'spx');
+        const qd = url.searchParams.get('date');
+        const day = (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd)) ? qd : isoDateET(toET(new Date()));
+
+        // ── Combined view (2026-07-26) ──────────────────────────────────────
+        // SPY dollar-gamma is already in the same units as SPX (its 1/10
+        // notional falls out of gamma×S²), so the VALUES add directly. Only the
+        // strike axis needs translating, and the ratio is NOT 10: it is
+        // spotSPX/spotSPY (≈10.03 and drifting with accrued dividends), so a
+        // naive ×10 misplaces every SPY wall by ~5 SPX strikes. Each SPY strike
+        // is mapped to k×ratio and snapped to the nearest 5-point SPX strike;
+        // collisions sum (two SPY strikes can land in one SPX bin).
+        if (sym === 'both') {
+          const snap5 = x => Math.round(x / 5) * 5;
+          const [rawX, rawY] = await Promise.all([
+            env.SIGNAL_KV.get(view === 'expiry' ? 'gex_current' : `gex_intraday_${day}`),
+            env.SIGNAL_KV.get(view === 'expiry' ? 'gex_spy' : `gex_spy_intraday_${day}`),
+          ]);
+          const X = rawX ? JSON.parse(rawX) : null, Y = rawY ? JSON.parse(rawY) : null;
+          const spotX = X?.spot ?? null, spotY = Y?.spot ?? null;
+          const ratio = (spotX && spotY) ? spotX / spotY : null;
+          if (view === 'expiry') {
+            const gx = X?.expGrid, gy = Y?.expGrid;
+            if (!gx && !gy) return jsonResp({ view, symbol: sym, spot: spotX, ratio, grid: null }, 200, pub);
+            // column union by expiry DATE (both books share the same calendar)
+            const exps = [];
+            for (const src2 of [gx, gy]) for (const e of (src2?.exps || []))
+              if (!exps.some(x => x.d === e.d)) exps.push({ d: e.d, dte: e.dte });
+            exps.sort((a, b) => a.dte - b.dte);
+            const cell = {};                        // snappedStrike -> [per-column $M]
+            const add = (k, ci, v) => {
+              if (v == null) return;
+              if (!cell[k]) cell[k] = new Array(exps.length).fill(null);
+              cell[k][ci] = (cell[k][ci] ?? 0) + v;
+            };
+            for (const r of (gx?.rows || [])) (gx.exps || []).forEach((e, i) => {
+              const ci = exps.findIndex(x => x.d === e.d); if (ci >= 0) add(r.k, ci, r.v[i]);
+            });
+            if (gy && ratio) for (const r of (gy.rows || [])) (gy.exps || []).forEach((e, i) => {
+              const ci = exps.findIndex(x => x.d === e.d); if (ci >= 0) add(snap5(r.k * ratio), ci, r.v[i]);
+            });
+            const rows = Object.keys(cell).map(Number).sort((a, b) => b - a)
+              .map(k => ({ k, v: cell[k].map(v => v == null ? null : +v.toFixed(1)) }));
+            return jsonResp({ view, symbol: sym, spot: spotX, spotSpy: spotY, ratio: ratio ? +ratio.toFixed(4) : null,
+                              updatedAt: X?.updatedAt ?? null,
+                              grid: rows.length ? { exps, rows } : null }, 200, pub);
+          }
+          // intraday: union of 30-min slots, SPY strikes translated + snapped
+          const sx = X?.slots || {}, sy = Y?.slots || {};
+          const times = [...new Set([...Object.keys(sx), ...Object.keys(sy)])].sort();
+          const merged = {};
+          for (const t of times) {
+            const row = {};
+            for (const [k, v] of Object.entries(sx[t] || {})) row[k] = (row[k] ?? 0) + v;
+            if (ratio) for (const [k, v] of Object.entries(sy[t] || {})) {
+              const kk = String(snap5(parseFloat(k) * ratio));
+              row[kk] = (row[kk] ?? 0) + v;
+            }
+            for (const k of Object.keys(row)) row[k] = +row[k].toFixed(1);
+            if (Object.keys(row).length) merged[t] = row;
+          }
+          return jsonResp({ view, symbol: sym, date: day, spot: spotX, spotSpy: spotY,
+                            ratio: ratio ? +ratio.toFixed(4) : null,
+                            slots: Object.keys(merged).length ? merged : null }, 200, pub);
+        }
+
         if (view === 'expiry') {
           const raw = await env.SIGNAL_KV.get(sym === 'spy' ? 'gex_spy' : 'gex_current');
           const g = raw ? JSON.parse(raw) : null;
           return jsonResp({ view, symbol: sym, spot: g?.spot ?? null, updatedAt: g?.updatedAt ?? null,
                             grid: g?.expGrid ?? null }, 200, pub);
         }
-        const qd = url.searchParams.get('date');
-        const day = (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd)) ? qd : isoDateET(toET(new Date()));
         const raw = await env.SIGNAL_KV.get(`${sym === 'spy' ? 'gex_spy_intraday' : 'gex_intraday'}_${day}`);
         const rec = raw ? JSON.parse(raw) : null;
         return jsonResp({ view, symbol: sym, date: day, spot: rec?.spot ?? null, slots: rec?.slots ?? null }, 200, pub);

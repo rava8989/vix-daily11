@@ -339,6 +339,10 @@
   <div class="chart-section" id="gexHeatSection" style="display:none;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
       <h2 style="margin-bottom:0;"><span>GEX</span> Heatmap</h2>
+      <div class="gex-mode-toggle" id="heatSymToggle" title="SPX and SPY have separate dealer books — SPY is shown for its own sake, never as an SPX proxy.">
+        <button class="gex-mode-btn active" data-hs="spx">SPX</button>
+        <button class="gex-mode-btn" data-hs="spy">SPY</button>
+      </div>
       <div class="gex-mode-toggle" id="heatViewToggle">
         <button class="gex-mode-btn active" data-hv="expiry">By expiry</button>
         <button class="gex-mode-btn" data-hv="intraday">Today by time</button>
@@ -348,7 +352,7 @@
     <div id="gexHeatWrap" style="overflow-x:auto;"></div>
     <div id="gexHeatNote" style="display:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);padding:24px 0;text-align:center;"></div>
     <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      Net dealer gamma per strike in $M — <b>green = positive</b> (dealers dampen moves there), <b>red = negative</b> (they amplify). <b>By expiry</b> shows where gamma sits across the next 8 expirations — a bright cell is a wall the whole term structure leans on. <b>Today by time</b> shows the 0DTE book at 30-minute marks so you can watch walls build and decay. Rows are strikes; the ▸ marker is spot.
+      Net dealer gamma per strike in $M — <b>green = positive</b> (dealers dampen moves there), <b>red = negative</b> (they amplify). <b>By expiry</b> shows where gamma sits across the next 8 expirations — a bright cell is a wall the whole term structure leans on. <b>Today by time</b> shows the 0DTE book at 30-minute marks so you can watch walls build and decay. Rows are strikes; the ▸ marker is spot. SPX and SPY are separate books shown side by side — every Σ3 strategy and every backtest is SPX-only; SPY is never used as a proxy.
     </div>
   </div>
 
@@ -1752,7 +1756,7 @@ function showMarketClosed() {
    can't wash the grid out. Renders as a plain table (crisp text at any zoom,
    no canvas scaling headaches) inside a horizontal scroller. */
 const HEAT_URL = 'https://schwab-proxy.ravamt4.workers.dev/gex-heatmap';
-let heatView = 'expiry';
+let heatView = 'expiry', heatSym = 'spx';
 function heatColor(v, scale) {
   if (v == null) return 'transparent';
   const t = Math.max(-1, Math.min(1, v / (scale || 1)));
@@ -1786,7 +1790,7 @@ function renderHeat(cols, rows, spot, banner) {
   let html = `<table style="border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:11px;min-width:100%">`
     + `<thead><tr>${th('strike')}${cols.map(th).join('')}</tr></thead><tbody>`;
   for (const r of rows) {
-    const atSpot = spot != null && Math.abs(r.k - spot) <= 2.5;
+    const atSpot = spot != null && Math.abs(r.k - spot) <= (heatSym === 'spy' ? 0.5 : 2.5);
     html += `<tr>`
       + `<td style="position:sticky;left:0;background:var(--bg2);padding:4px 8px;font-weight:600;color:${atSpot ? 'var(--cyan)' : 'var(--text2)'};white-space:nowrap;border-right:1px solid var(--border)">`
       + `${atSpot ? '▸ ' : ''}${r.k}</td>`;
@@ -1800,22 +1804,29 @@ function renderHeat(cols, rows, spot, banner) {
 }
 async function loadHeat() {
   try {
-    const j = await (await fetch(HEAT_URL + '?view=' + heatView, { cache: 'no-store' })).json();
+    const j = await (await fetch(HEAT_URL + '?view=' + heatView + '&symbol=' + heatSym, { cache: 'no-store' })).json();
     if (heatView === 'expiry') {
       const g = j.grid;
       if (!g) return renderHeat([], [], j.spot, '');
       const cols = g.exps.map(e => `${e.d.slice(5)}<br><span style="opacity:.6;font-weight:400">${e.dte}d</span>`);
-      renderHeat(cols, g.rows, j.spot, `next ${g.exps.length} expirations · ${j.updatedAt ? j.updatedAt.slice(11, 16) + 'Z' : ''}`);
+      renderHeat(cols, g.rows, j.spot, `${heatSym.toUpperCase()} · next ${g.exps.length} expirations · spot ${j.spot ?? '—'} · ${j.updatedAt ? j.updatedAt.slice(11, 16) + 'Z' : ''}`);
     } else {
       const slots = j.slots || {};
       const times = Object.keys(slots).sort();
       if (!times.length) return renderHeat([], [], j.spot, '');
       const ks = [...new Set(times.flatMap(t => Object.keys(slots[t])))].map(parseFloat).sort((a, b) => b - a);
       const rows = ks.map(k => ({ k, v: times.map(t => slots[t][k] ?? slots[t][String(k)] ?? null) }));
-      renderHeat(times, rows, j.spot, `${j.date} · 0DTE book · ${times.length} slot${times.length > 1 ? 's' : ''}`);
+      renderHeat(times, rows, j.spot, `${heatSym.toUpperCase()} · ${j.date} · 0DTE book · ${times.length} slot${times.length > 1 ? 's' : ''}`);
     }
   } catch (_) { /* heatmap is best-effort */ }
 }
+document.getElementById('heatSymToggle').addEventListener('click', e => {
+  const b = e.target.closest('.gex-mode-btn');
+  if (!b || b.dataset.hs === heatSym) return;
+  heatSym = b.dataset.hs;
+  document.querySelectorAll('#heatSymToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.hs === heatSym));
+  loadHeat();
+});
 document.getElementById('heatViewToggle').addEventListener('click', e => {
   const b = e.target.closest('.gex-mode-btn');
   if (!b || b.dataset.hv === heatView) return;

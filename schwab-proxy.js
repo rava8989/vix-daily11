@@ -6429,6 +6429,14 @@ async function handleScheduled(env) {
       gexResult = { gex: 'error', error: e.message };
       console.warn('[proxy] GEX update failed:', e.message || e);
     }
+    // SPY heatmap feed — every ~10 min (display-only; see handleSpyGexUpdate).
+    try {
+      const lastSpy = await env.SIGNAL_KV.get('gex_spy_last_ts');
+      if (!lastSpy || Date.now() - parseInt(lastSpy, 10) > 570_000) {
+        await env.SIGNAL_KV.put('gex_spy_last_ts', String(Date.now()), { expirationTtl: 86400 });
+        await handleSpyGexUpdate(env, schwabToken);
+      }
+    } catch (e) { console.warn('[gex-spy]', e.message || e); }
   }
 
   // ── COR1M + VVIX cloud capture (2026-06-09 — machine-independence) ──
@@ -8208,6 +8216,60 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
       } catch (_) { return null; }
     })(),
   };
+}
+
+// ── SPY GEX (2026-07-26, display-only) ───────────────────────────────────────
+// SPY has its own dealer book and its own daily expirations, so the heatmap is
+// worth showing for it. Reuses calculateGEX unchanged (same $ multiplier, same
+// per-expiry grid). Deliberately NOT part of any research or signal path — the
+// standing rule is SPX-only for backtests; SPY is never a proxy here.
+// Throttled to one chain fetch every ~10 min (2 Schwab calls) to stay light,
+// and captures the same 30-min intraday slots as SPX.
+async function handleSpyGexUpdate(env, token, opts = {}) {
+  const baseParams = 'symbol=SPY&strikeCount=120&includeUnderlyingQuote=true&strategy=SINGLE';
+  const [callData, putData] = await Promise.all([
+    fetchSchwabJSON(`https://api.schwabapi.com/marketdata/v1/chains?${baseParams}&contractType=CALL`, token),
+    fetchSchwabJSON(`https://api.schwabapi.com/marketdata/v1/chains?${baseParams}&contractType=PUT`, token),
+  ]);
+  const chainData = { callExpDateMap: callData.callExpDateMap || {}, putExpDateMap: putData.putExpDateMap || {} };
+  const u = callData.underlying || putData.underlying || {};
+  const spot = u.last ?? u.mark ?? u.closePrice ?? null;
+  if (!spot) return { spy: 'no-spot' };
+  const g = calculateGEX(chainData, spot, false);
+  if (!g) return { spy: 'no-expirations' };
+  delete g._flowContracts;
+  const degenerate = !g.totalGex && !(g.walls || []).length &&
+                     !(g.strikes || []).some(s => s.callGex || s.putGex);
+  const summary = { spy: degenerate ? 'skipped-degenerate' : 'updated', spot,
+                    strikes: (g.strikes || []).length, totalGex: g.totalGex,
+                    expiries: g.expGrid ? g.expGrid.exps.length : 0 };
+  if (degenerate) return summary;          // same guard as SPX: never store zeros
+  await env.SIGNAL_KV.put('gex_spy', JSON.stringify(g), { expirationTtl: 7 * 86400 });
+  // intraday 30-min slots (±1.5% band, $M) — mirrors the SPX capture
+  try {
+    const etI = toET(new Date());
+    const hI = etI.getHours(), mI = etI.getMinutes();
+    if (opts.slots !== false && hI >= 9 && hI <= 15 && !(hI === 9 && mI < 30)) {
+      const slot = `${String(hI).padStart(2, '0')}:${mI < 30 ? '00' : '30'}`;
+      const dayI = isoDateET(etI);
+      const key = `gex_spy_intraday_${dayI}`;
+      const raw = await env.SIGNAL_KV.get(key);
+      const rec = raw ? JSON.parse(raw) : { date: dayI, slots: {} };
+      if (rec.slots[slot] == null) {
+        const row = {};
+        for (const s of g.strikes) {
+          if (Math.abs(s.strike - spot) / spot > 0.015) continue;
+          row[s.strike] = +(s.netGex / 1e6).toFixed(2);
+        }
+        if (Object.keys(row).length) {
+          rec.slots[slot] = row;
+          rec.spot = Math.round(spot * 100) / 100;
+          await env.SIGNAL_KV.put(key, JSON.stringify(rec), { expirationTtl: 4 * 86400 });
+        }
+      }
+    }
+  } catch (e) { console.warn('[gex-spy-intraday]', e.message); }
+  return summary;
 }
 
 async function handleGEXUpdate(env, token, preChain = null) {
@@ -13428,17 +13490,29 @@ export default {
       const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
       try {
         const view = url.searchParams.get('view') === 'intraday' ? 'intraday' : 'expiry';
+        const sym = url.searchParams.get('symbol') === 'spy' ? 'spy' : 'spx';
         if (view === 'expiry') {
-          const raw = await env.SIGNAL_KV.get('gex_current');
+          const raw = await env.SIGNAL_KV.get(sym === 'spy' ? 'gex_spy' : 'gex_current');
           const g = raw ? JSON.parse(raw) : null;
-          return jsonResp({ view, spot: g?.spot ?? null, updatedAt: g?.updatedAt ?? null,
+          return jsonResp({ view, symbol: sym, spot: g?.spot ?? null, updatedAt: g?.updatedAt ?? null,
                             grid: g?.expGrid ?? null }, 200, pub);
         }
         const qd = url.searchParams.get('date');
         const day = (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd)) ? qd : isoDateET(toET(new Date()));
-        const raw = await env.SIGNAL_KV.get(`gex_intraday_${day}`);
+        const raw = await env.SIGNAL_KV.get(`${sym === 'spy' ? 'gex_spy_intraday' : 'gex_intraday'}_${day}`);
         const rec = raw ? JSON.parse(raw) : null;
-        return jsonResp({ view, date: day, spot: rec?.spot ?? null, slots: rec?.slots ?? null }, 200, pub);
+        return jsonResp({ view, symbol: sym, date: day, spot: rec?.spot ?? null, slots: rec?.slots ?? null }, 200, pub);
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+    // ── SPY GEX refresh (owner-gated debug/verification) ──
+    if (url.pathname === '/gex-spy-refresh' && request.method === 'GET') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      try {
+        const token = await getAccessToken(env);
+        return jsonResp(await handleSpyGexUpdate(env, token, { slots: false }), 200, {});
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
     }
     // ── GEX gate: public series tail for gex.html panels (gate strip histogram,

@@ -2902,7 +2902,13 @@ async function getAccessToken(env, forceRefresh = false) {
   return tokens.access;
 }
 
+// Per-invocation Schwab call counter (2026-07-26). Schwab throttles per app,
+// not per key, so the number that matters is calls/minute across everything the
+// tick does. Recorded per tick into `schwab_usage` and readable at
+// GET /schwab-usage — measured, not guessed.
+let _schwabCalls = 0, _schwab429 = 0;
 async function fetchSchwabJSON(url, token, env) {
+  _schwabCalls++;
   let resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   // Retry once with refreshed token on 401
   if (resp.status === 401 && env) {
@@ -2910,8 +2916,36 @@ async function fetchSchwabJSON(url, token, env) {
     const freshToken = await getAccessToken(env, true);
     resp = await fetch(url, { headers: { Authorization: `Bearer ${freshToken}` } });
   }
+  // 429 = throttled. Previously this threw and the caller silently lost the
+  // tick's data; now we honour Retry-After (capped) and retry once.
+  if (resp.status === 429) {
+    _schwab429++;
+    const ra = parseInt(resp.headers.get('Retry-After') || '2', 10);
+    const waitMs = Math.min(Math.max(isNaN(ra) ? 2 : ra, 1), 5) * 1000;
+    console.warn(`[proxy] Schwab 429 — backing off ${waitMs}ms then retrying once`);
+    await new Promise(r => setTimeout(r, waitMs));
+    _schwabCalls++;
+    resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  }
   if (!resp.ok) throw new Error(`Schwab API ${resp.status}: ${url.split('?')[0]}`);
   return resp.json();
+}
+
+// Append this tick's Schwab call count to a rolling log (last 90 ticks).
+// One KV read+write per tick — noise next to what a tick already does, and it
+// turns "are we near the limit?" into a number anyone can look up.
+async function recordSchwabUsage(env, etNow) {
+  try {
+    if (!_schwabCalls) return;
+    const raw = await env.SIGNAL_KV.get('schwab_usage');
+    const log = raw ? JSON.parse(raw) : { ticks: [], peak: 0, peakAt: null, total429: 0 };
+    const hhmm = `${String(etNow.getHours()).padStart(2, '0')}:${String(etNow.getMinutes()).padStart(2, '0')}`;
+    log.ticks.push({ t: hhmm, n: _schwabCalls, d: isoDateET(etNow) });
+    if (log.ticks.length > 90) log.ticks = log.ticks.slice(-90);
+    if (_schwabCalls > (log.peak || 0)) { log.peak = _schwabCalls; log.peakAt = `${isoDateET(etNow)} ${hhmm}`; }
+    log.total429 = (log.total429 || 0) + _schwab429;
+    await env.SIGNAL_KV.put('schwab_usage', JSON.stringify(log), { expirationTtl: 14 * 86400 });
+  } catch (_) { /* usage telemetry must never break a tick */ }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -6243,7 +6277,19 @@ async function mfAppendClosed(env, tr) {
   catch (e) { console.warn('[scalp] history write failed:', e.message); }
 }
 
+// Wrapper (2026-07-26): records this tick's Schwab call count on EVERY exit
+// path (the inner function has ~8 returns) without touching any of them.
 async function handleScheduled(env) {
+  _schwabCalls = 0; _schwab429 = 0;
+  const _t0 = toET();
+  try {
+    return await handleScheduledInner(env);
+  } finally {
+    await recordSchwabUsage(env, _t0);
+  }
+}
+
+async function handleScheduledInner(env) {
   const etNow = toET();
   const dow = etNow.getDay();
 
@@ -13503,6 +13549,22 @@ export default {
         const rec = raw ? JSON.parse(raw) : null;
         return jsonResp({ view, symbol: sym, date: day, spot: rec?.spot ?? null, slots: rec?.slots ?? null }, 200, pub);
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+    // ── Schwab API usage telemetry (owner-gated) ──
+    if (url.pathname === '/schwab-usage' && request.method === 'GET') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      const raw = await env.SIGNAL_KV.get('schwab_usage');
+      const log = raw ? JSON.parse(raw) : null;
+      if (!log) return jsonResp({ note: 'no ticks recorded yet' }, 200, {});
+      const ns = log.ticks.map(t => t.n);
+      const avg = ns.length ? +(ns.reduce((a, b) => a + b, 0) / ns.length).toFixed(1) : 0;
+      return jsonResp({ limitPerMin: 120, peak: log.peak, peakAt: log.peakAt,
+                        avgPerTick: avg, maxRecent: ns.length ? Math.max(...ns) : 0,
+                        headroomPct: log.peak ? Math.round((1 - log.peak / 120) * 100) : null,
+                        total429: log.total429 || 0, ticks: log.ticks.slice(-30) }, 200, {});
     }
     // ── SPY GEX refresh (owner-gated debug/verification) ──
     if (url.pathname === '/gex-spy-refresh' && request.method === 'GET') {

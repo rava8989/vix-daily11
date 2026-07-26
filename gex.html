@@ -506,7 +506,7 @@ function applySymbolChrome(data) {
   for (const id of SPX_ONLY_PANELS) {
     const el = document.getElementById(id);
     if (!el) continue;
-    el.style.opacity = off ? '0.42' : '';
+    el.style.opacity = '';        // badge alone marks these — never dim (owner 2026-07-26)
     let b = el.querySelector('.spxOnlyBadge');
     if (off && !b) {
       const h = el.querySelector('h2');

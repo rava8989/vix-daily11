@@ -200,6 +200,20 @@
   <!-- Stale data banner -->
   <div class="stale-banner" id="staleBanner">Market Closed -- Data may be stale. Last update: <span id="staleTime">--</span></div>
 
+  <!-- Book selector (2026-07-26): switches EVERY chain-derived panel between
+       SPX, SPY and the merged SPX+SPY book. Panels that have no SPY capture
+       (flow, charm-into-close) or are SPX-rule-specific (gate, cone, regime
+       pays) stay SPX and self-label. -->
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.06em;">BOOK</span>
+    <div class="gex-mode-toggle" id="gexSymToggle">
+      <button class="gex-mode-btn active" data-gs="spx">SPX</button>
+      <button class="gex-mode-btn" data-gs="spy">SPY</button>
+      <button class="gex-mode-btn" data-gs="both">SPX+SPY</button>
+    </div>
+    <span id="gexSymNote" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);"></span>
+  </div>
+
   <!-- Key Level Cards -->
   <div class="cards-row">
     <div class="level-card positive">
@@ -468,7 +482,43 @@ const GEX_BASE = 'https://schwab-proxy.ravamt4.workers.dev/gex';
 const TRIGGER_ENDPOINT = 'https://schwab-proxy.ravamt4.workers.dev/trigger';
 let gexMode = '0dte'; // '0dte' (default) or 'all'
 let gexBasis = 'oi';  // 'oi' (standing inventory) or 'flow' (today's signed-volume book)
-function GEX_ENDPOINT() { return gexMode === '0dte' ? GEX_BASE + '?mode=0dte' : GEX_BASE; }
+let gexSym = 'spx';   // spx | spy | both — the book every chain panel reads
+function GEX_ENDPOINT() {
+  const p = [];
+  if (gexMode === '0dte') p.push('mode=0dte');
+  if (gexSym !== 'spx') p.push('symbol=' + gexSym);
+  return GEX_BASE + (p.length ? '?' + p.join('&') : '');
+}
+// Panels with no SPY equivalent — dimmed + badged when the book isn't SPX.
+const SPX_ONLY_PANELS = ['flowSection', 'flow0dteSection', 'netPremSection',
+                         'charmTimeSection', 'gateStripSection', 'gexConeSection',
+                         'regimePaysSection'];
+function applySymbolChrome(data) {
+  const served = (data && data.gexSymbol) || gexSym;
+  const note = document.getElementById('gexSymNote');
+  if (note) {
+    note.textContent = served === 'both'
+      ? `merged · SPY strikes ×${data?.ratio ?? '—'} → SPX levels${data?.spotSpy ? ` · SPY ${data.spotSpy}` : ''}`
+      : served === 'spy' ? 'SPY book · all expirations' : '';
+  }
+  const off = served !== 'spx';
+  for (const id of SPX_ONLY_PANELS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.opacity = off ? '0.42' : '';
+    let b = el.querySelector('.spxOnlyBadge');
+    if (off && !b) {
+      const h = el.querySelector('h2');
+      if (h) {
+        b = document.createElement('span');
+        b.className = 'spxOnlyBadge';
+        b.textContent = 'SPX only';
+        b.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;color:#f59e0b;border:1px solid #f59e0b;border-radius:5px;padding:1px 6px;margin-left:8px;';
+        h.appendChild(b);
+      }
+    } else if (!off && b) b.remove();
+  }
+}
 const POLL_MS_NORMAL = 30000;
 const POLL_MS_MORNING = 5000; // 5s polling during 9:30-9:40 ET for fast VIX capture
 function isMorningWindow() {
@@ -575,6 +625,7 @@ function basisVals(data) {
 }
 
 function renderTopBar(data) {
+  applySymbolChrome(data);
   recordConePoint(data);   // cone panel: log today's 0DTE·OI reading per 30-min slot
   const bv = basisVals(data);
   const spot = data.spot != null ? data.spot : null;
@@ -1826,6 +1877,18 @@ async function loadHeat() {
     }
   } catch (_) { /* heatmap is best-effort */ }
 }
+document.getElementById('gexSymToggle').addEventListener('click', e => {
+  const b = e.target.closest('.gex-mode-btn');
+  if (!b || b.dataset.gs === gexSym) return;
+  gexSym = b.dataset.gs;
+  document.querySelectorAll('#gexSymToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.gs === gexSym));
+  // SPY is captured all-expiry only — reflect that in the mode toggle
+  if (gexSym !== 'spx' && gexMode === '0dte') {
+    gexMode = 'all';
+    document.querySelectorAll('#gexModeToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === 'all'));
+  }
+  guardedFetch();
+});
 document.getElementById('heatSymToggle').addEventListener('click', e => {
   const b = e.target.closest('.gex-mode-btn');
   if (!b || b.dataset.hs === heatSym) return;

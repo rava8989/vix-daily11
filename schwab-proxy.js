@@ -8264,6 +8264,89 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
   };
 }
 
+// ── Combined SPX+SPY snapshot (2026-07-26) ───────────────────────────────────
+// Produces a FULL gex-payload-shaped object so every chain-derived panel on the
+// page (cards, level map, profile, gamma curve, charm-by-strike, walls) can be
+// rendered for the merged book with no per-panel special-casing.
+//
+// Values add directly: dollar-GEX is gamma×OI×S²×100×0.01, and a SPY contract's
+// ~10× gamma against a ~100× smaller S² makes it exactly 1/10 of an SPX
+// contract — its true notional ratio. Only the STRIKE AXIS needs translating,
+// by the LIVE spotSPX/spotSPY ratio (~10.03, drifts with accrued dividends);
+// a naive ×10 misplaces every SPY wall by ~5 SPX strikes.
+//
+// Not merged (SPY has no capture for them): flowSeries / signed-flow and the
+// charm-into-the-close series stay SPX — the page labels those panels.
+function buildCombinedGex(X, Y) {
+  if (!X || !Y || !X.spot || !Y.spot) return null;
+  const ratio = X.spot / Y.spot;
+  const snap5 = v => Math.round(v / 5) * 5;
+  const acc = {};
+  const put = (k, s, sign = 1) => {
+    if (!acc[k]) acc[k] = { strike: k, netGex: 0, callGex: 0, putGex: 0, cex: 0, netGexVol: 0 };
+    acc[k].netGex += (s.netGex || 0) * sign;
+    acc[k].callGex += (s.callGex || 0) * sign;
+    acc[k].putGex += (s.putGex || 0) * sign;
+    acc[k].cex += (s.cex || 0) * sign;
+    acc[k].netGexVol += (s.netGexVol || 0) * sign;
+  };
+  for (const s of (X.strikes || [])) put(s.strike, s);
+  for (const s of (Y.strikes || [])) put(snap5(s.strike * ratio), s);
+  const strikes = Object.values(acc).sort((a, b) => a.strike - b.strike)
+    .map(s => ({ strike: s.strike, netGex: Math.round(s.netGex), callGex: Math.round(s.callGex),
+                 putGex: Math.round(s.putGex), cex: Math.round(s.cex), netGexVol: Math.round(s.netGexVol) }));
+  // walls = top 10 by |netGex|, same convention as the single-book payload
+  const walls = [...strikes].filter(s => s.netGex)
+    .sort((a, b) => Math.abs(b.netGex) - Math.abs(a.netGex)).slice(0, 10)
+    .map(s => ({ strike: s.strike, callGex: s.callGex, putGex: s.putGex, netGex: s.netGex,
+                 callOI: null, putOI: null, direction: s.netGex >= 0 ? 'stabilizing' : 'amplifying' }));
+  // flip = first strike where the running cumulative crosses zero
+  let cum = 0, flipStrike = null, prevK = null, prevCum = 0;
+  for (const s of strikes) {
+    cum += s.netGex;
+    if (prevK != null && ((prevCum <= 0 && cum > 0) || (prevCum >= 0 && cum < 0))) { flipStrike = s.strike; break; }
+    prevK = s.strike; prevCum = cum;
+  }
+  const pos = strikes.filter(s => s.netGex > 0), neg = strikes.filter(s => s.netGex < 0);
+  const maxPos = pos.length ? pos.reduce((a, b) => b.netGex > a.netGex ? b : a) : null;
+  const maxNeg = neg.length ? neg.reduce((a, b) => b.netGex < a.netGex ? b : a) : null;
+  // gamma curve: both are "total $ gamma at simulated spot"; translate SPY's
+  // shift axis into SPX points and add via linear interpolation onto X's grid.
+  let gammaCurve = X.gammaCurve || [];
+  if (Array.isArray(Y.gammaCurve) && Y.gammaCurve.length > 1 && gammaCurve.length) {
+    const ys = Y.gammaCurve.map(p => ({ x: p.shift * ratio, y: p.gamma }));
+    const interp = x => {
+      if (x <= ys[0].x || x >= ys[ys.length - 1].x) return 0;
+      for (let i = 1; i < ys.length; i++) {
+        if (x <= ys[i].x) {
+          const a = ys[i - 1], b = ys[i];
+          const t = (x - a.x) / ((b.x - a.x) || 1);
+          return a.y + t * (b.y - a.y);
+        }
+      }
+      return 0;
+    };
+    gammaCurve = gammaCurve.map(p => ({ shift: p.shift, gamma: Math.round(p.gamma + interp(p.shift)) }));
+  }
+  const totalGex = (X.totalGex || 0) + (Y.totalGex || 0);
+  return {
+    ...X,                              // inherit timestamps, coverage, dte, etc.
+    symbol: 'both', ratio: +ratio.toFixed(4), spotSpy: Y.spot,
+    spot: X.spot, strikes, walls, gammaCurve,
+    flipStrike, maxPosStrike: maxPos?.strike ?? null, maxPosGex: maxPos?.netGex ?? null,
+    maxNegStrike: maxNeg?.strike ?? null, maxNegGex: maxNeg?.netGex ?? null,
+    totalGex, totalCallGex: (X.totalCallGex || 0) + (Y.totalCallGex || 0),
+    totalPutGex: (X.totalPutGex || 0) + (Y.totalPutGex || 0),
+    totalGexVol: (X.totalGexVol || 0) + (Y.totalGexVol || 0),
+    vanna: (X.vanna || 0) + (Y.vanna || 0), charm: (X.charm || 0) + (Y.charm || 0),
+    regime: totalGex > 0 ? 'PIN' : 'BREAKOUT',
+    callVol: (X.callVol || 0) + (Y.callVol || 0), putVol: (X.putVol || 0) + (Y.putVol || 0),
+    pctChange1m: null, pctChange5m: null,
+    flowSeries: X.flowSeries || [],     // SPX-only capture (page labels it)
+    combinedNote: 'SPY strikes translated by live SPX/SPY ratio; flow + charm-time panels remain SPX-only',
+  };
+}
+
 // ── SPY GEX (2026-07-26, display-only) ───────────────────────────────────────
 // SPY has its own dealer book and its own daily expirations, so the heatmap is
 // worth showing for it. Reuses calculateGEX unchanged (same $ multiplier, same
@@ -13931,12 +14014,32 @@ export default {
           // else: falls back to all-expiry data, actualMode stays 'all'
         }
 
+        // Symbol switch (2026-07-26): ?symbol=spy serves SPY's own book,
+        // ?symbol=both serves the merged SPX+SPY snapshot (see buildCombinedGex).
+        // SPY is captured all-expiry only, so 0DTE mode falls back to all for it.
+        const qSym = url.searchParams.get('symbol');
+        let actualSym = 'spx';
+        if (qSym === 'spy' || qSym === 'both') {
+          const spyRaw = await env.SIGNAL_KV.get('gex_spy');
+          if (spyRaw) {
+            if (qSym === 'spy') { data = spyRaw; actualSym = 'spy'; }
+            else {
+              try {
+                const merged = buildCombinedGex(JSON.parse(data), JSON.parse(spyRaw));
+                if (merged) { data = JSON.stringify(merged); actualSym = 'both'; }
+              } catch (e) { console.warn('[gex] combine failed:', e.message); }
+            }
+          }
+          // no SPY snapshot yet → silently stays SPX (actualSym reports the truth)
+        }
+
         // Inject full daily event + commentary logs so all devices see complete history
         try {
           const etNow2 = toET();
           const todayISO2 = `${etNow2.getFullYear()}-${String(etNow2.getMonth()+1).padStart(2,'0')}-${String(etNow2.getDate()).padStart(2,'0')}`;
           const parsed = JSON.parse(data);
           parsed.gexMode = actualMode; // tells frontend which mode is actually served
+          parsed.gexSymbol = actualSym; // ...and which book (spx | spy | both)
           const logRaw = await env.SIGNAL_KV.get(`gex_events_${todayISO2}`);
           if (logRaw) parsed.eventLog = JSON.parse(logRaw);
           // Intraday call-vs-put flow series for the "Call vs Put Flow — Today" chart

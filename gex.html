@@ -490,16 +490,17 @@ function GEX_ENDPOINT() {
   return GEX_BASE + (p.length ? '?' + p.join('&') : '');
 }
 // Panels with no SPY equivalent — dimmed + badged when the book isn't SPX.
-const SPX_ONLY_PANELS = ['flowSection', 'flow0dteSection', 'netPremSection',
-                         'charmTimeSection', 'gateStripSection', 'gexConeSection',
-                         'regimePaysSection'];
+// Only the panels that are SPX-RULE or SPX-HISTORY specific stay locked. The
+// flow + charm-into-close panels now have a real SPY capture behind them
+// (gex_spy_flow_<date>), so they follow the book like everything else.
+const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection'];
 function applySymbolChrome(data) {
   const served = (data && data.gexSymbol) || gexSym;
   const note = document.getElementById('gexSymNote');
   if (note) {
     note.textContent = served === 'both'
       ? `merged · SPY strikes ×${data?.ratio ?? '—'} → SPX levels${data?.spotSpy ? ` · SPY ${data.spotSpy}` : ''}`
-      : served === 'spy' ? 'SPY book · all expirations' : '';
+      : served === 'spy' ? 'SPY book · all expirations · own flow capture' : '';
   }
   const off = served !== 'spx';
   for (const id of SPX_ONLY_PANELS) {

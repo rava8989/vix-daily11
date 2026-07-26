@@ -6477,8 +6477,11 @@ async function handleScheduledInner(env) {
     }
     // SPY heatmap feed — every ~10 min (display-only; see handleSpyGexUpdate).
     try {
+      // 2-minute cadence (raised from 10 min on 2026-07-26): the flow panels
+      // classify volume DELTAS per bar, so coarse bars would mean coarse flow.
+      // Cost is ~1 extra Schwab call/min — measured usage stays ~7-10 of 120.
       const lastSpy = await env.SIGNAL_KV.get('gex_spy_last_ts');
-      if (!lastSpy || Date.now() - parseInt(lastSpy, 10) > 570_000) {
+      if (!lastSpy || Date.now() - parseInt(lastSpy, 10) > 110_000) {
         await env.SIGNAL_KV.put('gex_spy_last_ts', String(Date.now()), { expirationTtl: 86400 });
         await handleSpyGexUpdate(env, schwabToken);
       }
@@ -8342,9 +8345,39 @@ function buildCombinedGex(X, Y) {
     regime: totalGex > 0 ? 'PIN' : 'BREAKOUT',
     callVol: (X.callVol || 0) + (Y.callVol || 0), putVol: (X.putVol || 0) + (Y.putVol || 0),
     pctChange1m: null, pctChange5m: null,
-    flowSeries: X.flowSeries || [],     // SPX-only capture (page labels it)
-    combinedNote: 'SPY strikes translated by live SPX/SPY ratio; flow + charm-time panels remain SPX-only',
+    flowSeries: mergeFlowSeries(X.flowSeries || [], Y.flowSeries || [], ratio),
+    combinedNote: 'SPY strikes translated by live SPX/SPY ratio; SPY contract counts converted to SPX-equivalent (÷ratio) before summing, premium and charm summed directly',
   };
+}
+
+// Merge two intraday flow series onto a common 1-minute time grid.
+// Premium ($) and charm ($) are already comparable and add directly. Contract
+// COUNTS are not: a SPY contract is ~1/ratio of an SPX contract's notional, so
+// SPY counts are converted to SPX-equivalent before summing — otherwise SPY's
+// much larger contract volume would dwarf SPX in a "contracts" chart while
+// representing a tenth of the money.
+function mergeFlowSeries(A, B, ratio) {
+  if (!A.length) return B.length ? B : [];
+  if (!B.length) return A;
+  const bucket = ts => Math.floor(ts / 60) * 60;
+  const out = new Map();
+  const addRow = (r, scale) => {
+    const k = bucket(r.ts);
+    const cur = out.get(k) || { ts: k, cv: 0, pv: 0, ch: 0, cb: 0, cs: 0, pb: 0, ps: 0, cn: 0, pn: 0,
+                                cbP: 0, csP: 0, pbP: 0, psP: 0, spot: null };
+    for (const f of ['cv', 'pv', 'cb', 'cs', 'pb', 'ps', 'cn', 'pn']) cur[f] += (r[f] || 0) / scale;
+    for (const f of ['ch', 'cbP', 'csP', 'pbP', 'psP']) cur[f] += (r[f] || 0);
+    if (cur.spot == null && scale === 1) cur.spot = r.spot;      // price line stays SPX
+    out.set(k, cur);
+  };
+  for (const r of A) addRow(r, 1);
+  for (const r of B) addRow(r, ratio || 10);
+  return [...out.values()].sort((a, b) => a.ts - b.ts).map(r => ({
+    ...r,
+    cv: Math.round(r.cv), pv: Math.round(r.pv), ch: Math.round(r.ch),
+    cb: Math.round(r.cb), cs: Math.round(r.cs), pb: Math.round(r.pb), ps: Math.round(r.ps),
+    cn: Math.round(r.cn), pn: Math.round(r.pn),
+  }));
 }
 
 // ── SPY GEX (2026-07-26, display-only) ───────────────────────────────────────
@@ -8366,7 +8399,10 @@ async function handleSpyGexUpdate(env, token, opts = {}) {
   if (!spot) return { spy: 'no-spot' };
   const g = calculateGEX(chainData, spot, false);
   if (!g) return { spy: 'no-expirations' };
+  const g0 = calculateGEX(chainData, spot, true);        // 0DTE-only — for per-day charm
+  const flowContracts = Array.isArray(g._flowContracts) ? g._flowContracts : [];
   delete g._flowContracts;
+  if (g0) delete g0._flowContracts;
   const degenerate = !g.totalGex && !(g.walls || []).length &&
                      !(g.strikes || []).some(s => s.callGex || s.putGex);
   const summary = { spy: degenerate ? 'skipped-degenerate' : 'updated', spot,
@@ -8374,6 +8410,55 @@ async function handleSpyGexUpdate(env, token, opts = {}) {
                     expiries: g.expGrid ? g.expGrid.exps.length : 0 };
   if (degenerate) return summary;          // same guard as SPX: never store zeros
   await env.SIGNAL_KV.put('gex_spy', JSON.stringify(g), { expirationTtl: 7 * 86400 });
+
+  // SPY signed-flow + charm series (2026-07-26) — identical snapshot-proxy method
+  // to the SPX capture (volume delta since last bar, sided by last vs bid/ask),
+  // so the Net Flow / 0DTE Flow / Net Premium / Charm-into-close panels work for
+  // SPY too. Same `flowSeries` field shape the page already reads.
+  try {
+    if (opts.flow !== false && flowContracts.length) {
+      const etF = toET(new Date());
+      const dayF = isoDateET(etF);
+      const snapKey = `gex_spy_volsnap_${dayF}`;
+      const prevRaw = await env.SIGNAL_KV.get(snapKey);
+      const prevSnap = prevRaw ? JSON.parse(prevRaw) : null;
+      const hadPrev = !!prevSnap;
+      const newSnap = {};
+      let cb = 0, cs = 0, cn = 0, pb = 0, ps = 0, pn = 0, cbP = 0, csP = 0, pbP = 0, psP = 0;
+      for (const ct of flowContracts) {
+        const v = Math.max(ct.v || 0, 0);
+        newSnap[ct.k] = v;
+        const dV = (hadPrev && (ct.k in prevSnap)) ? (v - prevSnap[ct.k]) : 0;
+        if (dV <= 0) continue;
+        const b = (typeof ct.b === 'number') ? ct.b : null;
+        const a = (typeof ct.a === 'number') ? ct.a : null;
+        const l = (typeof ct.l === 'number') ? ct.l : null;
+        const mid = (b != null && a != null && a >= b) ? (b + a) / 2 : null;
+        let side;
+        if (l != null && a != null && a > 0 && l >= a) side = 'buy';
+        else if (l != null && b != null && b > 0 && l <= b) side = 'sell';
+        else if (l != null && mid != null && l > mid) side = 'buy';
+        else if (l != null && mid != null && l < mid) side = 'sell';
+        else side = 'neutral';
+        const px = (l != null && l > 0) ? l : (mid != null && mid > 0 ? mid : 0);
+        const prem = dV * px * 100;
+        if (ct.k.endsWith('|C')) { if (side === 'buy') { cb += dV; cbP += prem; } else if (side === 'sell') { cs += dV; csP += prem; } else cn += dV; }
+        else                     { if (side === 'buy') { pb += dV; pbP += prem; } else if (side === 'sell') { ps += dV; psP += prem; } else pn += dV; }
+      }
+      await env.SIGNAL_KV.put(snapKey, JSON.stringify(newSnap), { expirationTtl: 172800 });
+      const flowKey = `gex_spy_flow_${dayF}`;
+      const fRaw = await env.SIGNAL_KV.get(flowKey);
+      let flow = fRaw ? JSON.parse(fRaw) : [];
+      const ch0 = (g0 && typeof g0.charm === 'number' && g0.tYears > 0)
+        ? Math.round(g0.charm / g0.tYears / 365) : null;
+      flow.push({ ts: Math.floor(Date.now() / 1000), cv: g.callVol, pv: g.putVol, ch: ch0,
+                  cb, cs, pb, ps, cn, pn,
+                  cbP: Math.round(cbP), csP: Math.round(csP),
+                  pbP: Math.round(pbP), psP: Math.round(psP), spot });
+      if (flow.length > 500) flow = flow.slice(-500);
+      await env.SIGNAL_KV.put(flowKey, JSON.stringify(flow), { expirationTtl: 172800 });
+    }
+  } catch (e) { console.warn('[gex-spy-flow]', e.message); }
   // intraday 30-min slots (±1.5% band, $M) — mirrors the SPX capture
   try {
     const etI = toET(new Date());
@@ -14043,8 +14128,20 @@ export default {
           const logRaw = await env.SIGNAL_KV.get(`gex_events_${todayISO2}`);
           if (logRaw) parsed.eventLog = JSON.parse(logRaw);
           // Intraday call-vs-put flow series for the "Call vs Put Flow — Today" chart
-          const flowRaw = await env.SIGNAL_KV.get(`gex_flow_${todayISO2}`);
-          parsed.flowSeries = flowRaw ? JSON.parse(flowRaw) : [];
+          if (actualSym === 'spy') {
+            const fSpy = await env.SIGNAL_KV.get(`gex_spy_flow_${todayISO2}`);
+            parsed.flowSeries = fSpy ? JSON.parse(fSpy) : [];
+          } else if (actualSym === 'both') {
+            const [fx, fy] = await Promise.all([
+              env.SIGNAL_KV.get(`gex_flow_${todayISO2}`),
+              env.SIGNAL_KV.get(`gex_spy_flow_${todayISO2}`),
+            ]);
+            parsed.flowSeries = mergeFlowSeries(fx ? JSON.parse(fx) : [], fy ? JSON.parse(fy) : [],
+                                                parsed.ratio || 10);
+          } else {
+            const flowRaw = await env.SIGNAL_KV.get(`gex_flow_${todayISO2}`);
+            parsed.flowSeries = flowRaw ? JSON.parse(flowRaw) : [];
+          }
           data = JSON.stringify(parsed);
         } catch (e) { /* serve without full logs if parse fails */ }
 

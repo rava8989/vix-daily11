@@ -1910,6 +1910,11 @@ document.getElementById('heatViewToggle').addEventListener('click', e => {
    intraday GEX grid); live series tail from /gexgate-hist; today's official
    verdict from /gexgate-today. Independent of the live GEX fetch — renders on
    closed days too. */
+// Anchor Filter threshold — MUST match ANCHOR_THRESHOLD in schwab-proxy.js.
+// (2026-07-26: was hardcoded 0.20 in three places here while the worker moved
+// to 0.17, so the preview card and the histogram's shaded zone disagreed with
+// the live verdict. One constant now.)
+const ANCHOR_THR = 0.17;
 const GATE_HIST_URL  = 'https://schwab-proxy.ravamt4.workers.dev/gexgate-hist';
 const GATE_TODAY_URL = 'https://schwab-proxy.ravamt4.workers.dev/gexgate-today';
 const PANELS_URL     = 'gex_history_panels.json';
@@ -1962,7 +1967,7 @@ async function initGatePanels() {
     for (let i = 120; i < n; i++) {
       const win = vals.slice(i-120, i);
       const rank = win.filter(x => x <= vals[i]).length / win.length;
-      thin[i] = rank < 0.20;
+      thin[i] = rank < ANCHOR_THR;
     }
     // persistence: P(thin | prev thin) and current thin streak
     let both = 0, prevThin = 0;
@@ -1990,8 +1995,8 @@ async function initGatePanels() {
     const win = vals.slice(n-121, n-1);
     const rank = Math.round(win.filter(x => x <= latest).length / win.length * 100);
     const nEl = document.getElementById('gateTomorrowVerdict');
-    nEl.textContent = rank < 20 ? 'NO M8BF 🚫' : 'M8BF GO ✅';
-    nEl.style.color = rank < 20 ? '#ef4444' : '#22c55e';
+    nEl.textContent = rank < ANCHOR_THR * 100 ? 'NO M8BF 🚫' : 'M8BF GO ✅';
+    nEl.style.color = rank < ANCHOR_THR * 100 ? '#ef4444' : '#22c55e';
     document.getElementById('gateTomorrowDesc').textContent =
       `${latestDate} 10:30 = ${fmtGex(latest)} → p${rank} of trailing 120d (locked 5:05 PM ET)`;
     document.getElementById('gateStripBanner').textContent =
@@ -1999,7 +2004,7 @@ async function initGatePanels() {
     // histogram of the trailing 120 window + marker at the latest reading
     const histWin = vals.slice(n-121, n-1).map(v => v/1e9);
     const latB = latest/1e9;
-    const cutoff = [...histWin].sort((a,b) => a-b)[Math.floor(histWin.length*0.20)];
+    const cutoff = [...histWin].sort((a,b) => a-b)[Math.floor(histWin.length*ANCHOR_THR)];
     const lo = Math.min(...histWin, latB), hi = Math.max(...histWin, latB);
     const NB = 24, bw = (hi-lo)/NB || 1;
     const bins = new Array(NB).fill(0);

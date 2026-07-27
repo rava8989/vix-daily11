@@ -71,7 +71,7 @@
         <li>Prior-day WR ≥ 90% forces it through a block; WR = 0% forces a Straddle next day instead</li>
       </ul></div>
       <div><h3>BLOCKED WHEN</h3><ul>
-        <li><b>Thin-gamma day (GEX gate):</b> previous session's 10:30 ET 0DTE total gamma exposure in the bottom 20% of the trailing 120 days — without dealer gamma the pin doesn't hold. Verdict is set the evening before. Concept credit: the thin-gamma skip rule originated with jb-trader; this is our own implementation.</li>
+        <li><b>Unanchored day (Anchor Filter):</b> the previous session's 10:30 ET dealer-anchor reading in the bottom 17% of the trailing 120 days — when the anchor is weak, price drifts through levels instead of holding them. Verdict is set the evening before.</li>
         <li><b>Fat-gamma tier (info only):</b> when that same reading ranks p60–90, the signal carries a 🟢 note — historically the strongest M8BF regime (72% win rate vs 66% otherwise). Context, not a signal change</li>
         <li>EOM &amp; EOM-1 (last two days of month)</li>
         <li>Day before OPEX</li>

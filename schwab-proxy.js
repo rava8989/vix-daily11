@@ -2247,7 +2247,7 @@ async function postSignalsChannel(env, message) {
 // request 2026-07-07). `-#` renders as small subtext in Discord (channel + DM).
 const FANOUT_DISCLAIMER = '\n-# ⚠️ Not financial advice — for educational purposes only. Trade at your own risk.';
 
-// ── M8BF GEX gate (2026-07-23): verdict for the NEXT session from the durable
+// ── M8BF Anchor Filter (2026-07-23, renamed 07-26): verdict for the NEXT session from the durable
 // 10:30 0DTE GEX series. rank = percentile of TODAY's value among up to 120
 // entries strictly before today (causal); SKIP when rank < 0.20 with >= 20 obs.
 async function computeGexGateVerdict(env) {
@@ -2260,7 +2260,7 @@ async function computeGexGateVerdict(env) {
   const prior = Object.keys(ser).filter(d => d < todayISO).sort().slice(-120).map(d => ser[d]);
   if (prior.length < 20) return { verdict: null, reason: `warmup ${prior.length}/20` };
   const rank = prior.filter(x => x <= gex).length / prior.length;
-  return { verdict: rank < 0.20 ? 'SKIP' : 'GO', gex, rank, n: prior.length, date: todayISO };
+  return { verdict: rank < ANCHOR_THRESHOLD ? 'SKIP' : 'GO', gex, rank, n: prior.length, date: todayISO };
 }
 
 // Gate verdict FOR a given session date: ref = last series entry strictly
@@ -2268,6 +2268,13 @@ async function computeGexGateVerdict(env) {
 // guarded to the go-live date so recovery/backfill paths can never retro-gate
 // history recorded under the old rules.
 const GEXGATE_LIVE_FROM = '2026-07-24';
+// Anchor Filter threshold (2026-07-26): skip when the previous session's 10:30
+// reading ranks below this percentile of its trailing 120. Swept 6-35% and
+// picked on TRAIN (2024-25) by t-stat and return/drawdown, then graded blind on
+// 2026: 17% carries the same $/day as the old 20% with 15% (train) / 24% (test)
+// LESS drawdown. 12-20% is a plateau — 17% is the best of an indistinguishable
+// band, chosen for the smoother equity curve, not a higher return.
+const ANCHOR_THRESHOLD = 0.17;
 // Full gate evaluation for a session date: {skip, rank}. rank is the prev-day
 // reading's percentile (0..1) of its trailing 120 — null when the guard/staleness
 // rules fail open. skip = rank < 0.20 (never true when rank is null).
@@ -2291,7 +2298,7 @@ async function gexGateEval(env, dateISO) {
     const ref = ser[refDate];
     const base = prior.slice(0, -1).slice(-120).map(d => ser[d]);
     const rank = base.filter(x => x <= ref).length / base.length;
-    return { skip: rank < 0.20, rank };
+    return { skip: rank < ANCHOR_THRESHOLD, rank };
   } catch (e) { console.warn('[gexgate-eval]', e.message); return { skip: false, rank: null }; }
 }
 async function gexGateSkipFor(env, dateISO) { return (await gexGateEval(env, dateISO)).skip; }
@@ -2313,15 +2320,15 @@ function applyGexGateToSignal(signal, skip, rank) {
   // /link-notify M8BF relay footer. Never touches theme/rec/trading.
   if (!skip) { const p = gexFatTierP(rank); if (p != null) signal.gexFatP = p; return signal; }
   signal.gexGateSkip = true;                 // explicit flag: EOD/no-trade accounting
-  const GATE_TXT = 'No M8BF (GEX gate — thin dealer gamma)';
+  const GATE_TXT = 'No M8BF (Anchor Filter — unanchored)';
   if (!/^No\s/i.test(String(signal.m8bfText || '').trim())) signal.m8bfText = GATE_TXT;
   if (signal.theme === 'm8bf') {
     signal.theme = 'block';
     signal.rec = GATE_TXT;
     signal.badge = 'NO TRADE';
     signal.entryT = '';
-    signal.blockT = 'gexgate';
-    signal.blockD = 'prev-day 10:30 0DTE GEX in bottom 20% of trailing 120d';
+    signal.blockT = 'anchor';
+    signal.blockD = 'prev-session 10:30 anchor below p17 of trailing 120d';
     signal.crossed = true;
     signal.strikeInfo = null;
   }
@@ -3537,7 +3544,7 @@ async function handleEOD(env, etNow) {
           // applies, M8BF fires even on a calendar-banned day.
           const gxbfTookPrecedence = (sig.theme === 'gxbf');
           const ninetyOverrideFires = (prevWR_s2 != null && prevWR_s2 >= 90 && !sig.cpiDay && !gxbfTookPrecedence);
-          // GEX gate is absolute — a regime filter, never overridden by the 90% rule.
+          // Anchor Filter is absolute — a regime filter, never overridden by the 90% rule.
           const m8bfWouldNotFire = sig.gexGateSkip || ((sig.m8bfBanned || sig.cpiDay) && !ninetyOverrideFires);
           if (m8bfWouldNotFire) {
             m8bfBlockedByLive = true;
@@ -3556,11 +3563,11 @@ async function handleEOD(env, etNow) {
     } catch (e) { console.warn('[eod] live signal check:', e.message); }
   }
 
-  // GEX gate — unconditional (audit [9]): the nested STEP-2 check is skipped
+  // Anchor Filter — unconditional (audit [9]): the nested STEP-2 check is skipped
   // when vixOpen is missing; this one cannot be.
   if (!m8bfBlockedByLive && await gexGateSkipFor(env, todayISO)) {
     m8bfBlockedByLive = true;
-    console.log('[eod] M8BF blocked by GEX gate (unconditional)');
+    console.log('[eod] M8BF blocked by Anchor Filter (unconditional)');
   }
   // Compute m8bfPL from first qualifying signal in window (same logic as backfillMissingPL)
   if (m8bfBlockedByLive) {
@@ -6341,7 +6348,7 @@ async function handleScheduledInner(env) {
             const dc0 = dcRaw0 ? JSON.parse(dcRaw0) : null;
             if (dc0?.channelId) {
               await sendDiscordDM(env, dc0.channelId,
-                `⚠️ **M8BF GEX gate — no verdict for next session** (${v?.reason || 'series unavailable'}). ` +
+                `⚠️ **M8BF Anchor Filter — no verdict for next session** (${v?.reason || 'series unavailable'}). ` +
                 `10:30 GEX capture may have failed — check /gexgate-status. Card will treat the day as GO.`,
                 dc0.proxyUrl);
             }
@@ -6351,8 +6358,8 @@ async function handleScheduledInner(env) {
             if (dc?.channelId) {
               const bn = (x) => `${(x / 1e9).toFixed(2)}B`;
               const msg = v.verdict === 'SKIP'
-                ? `🚪 **M8BF GEX gate — next session: SKIP** 🚫\nToday's 10:30 0DTE GEX ${bn(v.gex)} = p${Math.round(v.rank * 100)} of trailing ${v.n} — bottom 20% = thin gamma, wild-day risk.`
-                : `🚪 **M8BF GEX gate — next session: GO** ✅\nToday's 10:30 0DTE GEX ${bn(v.gex)} = p${Math.round(v.rank * 100)} of trailing ${v.n} (skip only < p20).`;
+                ? `🚪 **M8BF Anchor Filter — next session: SKIP** 🚫\nToday's 10:30 anchor reads p${Math.round(v.rank * 100)} of trailing ${v.n} (${bn(v.gex)}) — below the p17 line = unanchored, wild-day risk.`
+                : `🚪 **M8BF Anchor Filter — next session: GO** ✅\nToday's 10:30 anchor reads p${Math.round(v.rank * 100)} of trailing ${v.n} (${bn(v.gex)}) — above the p17 line.`;
               await sendDiscordDM(env, dc.channelId, msg, dc.proxyUrl);
             }
           }
@@ -9686,9 +9693,9 @@ function getM8BFWindow(dow, dateISO) {
 // 2026-05-28: bug bit when EOM-1 + prevWR=99% — /trade said banned, Discord
 // said fire. Both now agree via the same override path.
 async function m8bfBannedReason(env, etNow) {
-  // GEX gate first — absolute, never overridden (audit 2026-07-24 [37]):
+  // Anchor Filter first — absolute, never overridden (audit 2026-07-24 [37]):
   // this single chokepoint gates /trade, refreshM8bfLiveQuotes and the bot relay.
-  if (await gexGateSkipFor(env, isoDateET(etNow))) return 'GEX gate — thin dealer gamma';
+  if (await gexGateSkipFor(env, isoDateET(etNow))) return 'Anchor Filter — unanchored';
   const eomDay = isLastTradeMo(etNow);
   const eom1   = isEomN(1, etNow);
   const opex1  = opexSch.some(ds => isTodayBefore(ds, etNow));
@@ -13693,7 +13700,7 @@ export default {
             }
           }
         }
-        return jsonResp({ forDate, skip: rank != null && rank < 0.20,
+        return jsonResp({ forDate, skip: rank != null && rank < ANCHOR_THRESHOLD,
           rank: rank != null ? Math.round(rank * 100) : null, liveFrom: GEXGATE_LIVE_FROM }, 200, pub);
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
     }

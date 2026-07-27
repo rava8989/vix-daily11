@@ -371,10 +371,10 @@
     </div>
   </div>
 
-  <!-- GEX Gate — live skip-rule strip + trailing distribution + persistence -->
+  <!-- Anchor Filter — live skip-rule strip + trailing distribution + persistence -->
   <div class="chart-section" id="gateStripSection" style="display:none;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-      <h2 style="margin-bottom:0;"><span>GEX</span> Gate — M8BF thin-gamma skip rule</h2>
+      <h2 style="margin-bottom:0;"><span>Anchor</span> Filter — M8BF level-strength rule</h2>
       <span id="gateStripBanner" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);"></span>
     </div>
     <div class="cards-row" style="margin-bottom:12px;">
@@ -399,7 +399,7 @@
       <canvas id="gateHistoChart"></canvas>
     </div>
     <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      The rule: when the previous session's 10:30 ET 0DTE total GEX ranks in the bottom 20% of the trailing 120 days, M8BF skips the day — the fly is not posted and the day books as a no-trade. Applies to M8BF only; Straddle, GXBF, BOBF and the Tail hedge are unaffected. Histogram = the current 120-day window; the marker is the latest 10:30 reading, the shaded zone is skip territory. Concept credit: the thin-gamma skip rule originated with jb-trader; this is our own implementation.
+      The rule: when the previous session's 10:30 ET dealer-anchor reading ranks in the bottom 17% of the trailing 120 days, M8BF skips the day — the fly is not posted and the day books as a no-trade. Applies to M8BF only; Straddle, GXBF, BOBF and the Tail hedge are unaffected. Histogram = the current 120-day window; the marker is the latest reading, the shaded zone is unanchored territory.
     </div>
   </div>
 
@@ -414,7 +414,7 @@
       <canvas id="gexConeChart"></canvas>
     </div>
     <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      Band = middle 60% (p20–p80) of total 0DTE GEX by time of day over the last 250 sessions; line = median. Dots = today's path (10:30 anchor + live readings while the page is open, 0DTE·OI basis). Below the band all day = the thin-gamma regime the gate is built to catch.
+      Band = middle 60% (p20–p80) of total 0DTE GEX by time of day over the last 250 sessions; line = median. Dots = today's path (10:30 anchor + live readings while the page is open, 0DTE·OI basis). Below the band all day = the unanchored regime the Anchor Filter is built to catch.
     </div>
   </div>
 
@@ -1905,7 +1905,7 @@ document.getElementById('heatViewToggle').addEventListener('click', e => {
   loadHeat();
 });
 
-/* ── GEX Gate panels: strip + histogram + persistence + cone + regime-pays ──
+/* ── Anchor Filter panels: strip + histogram + persistence + cone + regime-pays ──
    Static history from gex_history_panels.json (built from the 726-day banked
    intraday GEX grid); live series tail from /gexgate-hist; today's official
    verdict from /gexgate-today. Independent of the live GEX fetch — renders on
@@ -2082,7 +2082,7 @@ async function initGatePanels() {
                   y: { title: { display: true, text: 'M8BF avg $/traded day' }, grid: { color: 'rgba(148,163,184,0.12)' } } } }
     });
     document.getElementById('regimePaysBanner').textContent =
-      'red zone = what the gate skips · Aug 2024 – Jul 2026';
+      'red zone = what the filter skips · Aug 2024 – Jul 2026';
     document.getElementById('regimePaysSection').style.display = 'block';
   }
 }

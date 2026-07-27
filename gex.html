@@ -428,7 +428,7 @@
       <canvas id="regimePaysChart"></canvas>
     </div>
     <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      Average M8BF result per traded day, bucketed by where the previous session's 10:30 GEX ranked in its trailing 120 days (Aug 2024 – Jul 2026, includes strike-ban reconstruction). The bottom-20% zone is what the gate now skips.
+      Average M8BF result per traded day, bucketed by where the previous session's 10:30 anchor reading ranked in its trailing 120 days (Aug 2024 – Jul 2026, includes strike-ban reconstruction). Buckets are cut at the p17 line, so no bar straddles it — the two red buckets are exactly what the Anchor Filter skips.
     </div>
   </div>
 
@@ -2087,7 +2087,7 @@ async function initGatePanels() {
       data: { labels: r.map(x => 'p' + x.bucket), datasets: [{
         data: r.map(x => x.avg),
         backgroundColor: r.map(x => {
-          const gated = x.bucket === '0-10' || x.bucket === '10-20';
+          const gated = x.skipped === true;
           return gated ? 'rgba(239,68,68,0.6)' : (x.avg >= 0 ? 'rgba(34,197,94,0.55)' : 'rgba(239,68,68,0.6)');
         }),
         borderWidth: 0,
@@ -2096,13 +2096,13 @@ async function initGatePanels() {
         plugins: { legend: { display: false },
           tooltip: { callbacks: { label: it => {
             const row = r[it.dataIndex];
-            return `$${row.avg}/day · WR ${row.wr}% · n=${row.n}` + ((row.bucket==='0-10'||row.bucket==='10-20') ? ' · GATED NOW' : '');
+            return `$${row.avg}/day · WR ${row.wr}% · n=${row.n}` + (row.skipped ? ' · SKIPPED BY THE FILTER' : '');
           } } } },
-        scales: { x: { title: { display: true, text: 'prev-day 10:30 GEX percentile (trailing 120d)' }, grid: { display: false } },
+        scales: { x: { title: { display: true, text: 'prev-session 10:30 anchor percentile (trailing 120d)' }, grid: { display: false } },
                   y: { title: { display: true, text: 'M8BF avg $/traded day' }, grid: { color: 'rgba(148,163,184,0.12)' } } } }
     });
     document.getElementById('regimePaysBanner').textContent =
-      'red zone = what the filter skips · Aug 2024 – Jul 2026';
+      `red = skipped (below p${panels.threshold ?? 17}) · Aug 2024 – Jul 2026`;
     document.getElementById('regimePaysSection').style.display = 'block';
   }
 }

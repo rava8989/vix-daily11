@@ -392,7 +392,7 @@
         <div class="lc-title">Regime persistence</div>
         <div class="lc-strike" id="gateStreak">--</div>
         <div class="lc-value" id="gatePersist">--</div>
-        <div class="lc-desc">thin days cluster — why yesterday's reading gates today</div>
+        <div class="lc-desc">unanchored days cluster — why yesterday's reading sets today</div>
       </div>
     </div>
     <div class="chart-wrap" style="height:240px;">
@@ -1962,25 +1962,25 @@ async function initGatePanels() {
     const tail = hist.tail;                                   // [[date, gex], ...] ascending
     const vals = tail.map(t => t[1]);
     const n = tail.length;
-    // thin flag per reading: rank among the previous 120 readings
-    const thin = new Array(n).fill(null);
+    // unanchored flag per reading: rank among the previous 120 readings
+    const unanch = new Array(n).fill(null);
     for (let i = 120; i < n; i++) {
       const win = vals.slice(i-120, i);
       const rank = win.filter(x => x <= vals[i]).length / win.length;
-      thin[i] = rank < ANCHOR_THR;
+      unanch[i] = rank < ANCHOR_THR;
     }
-    // persistence: P(thin | prev thin) and current thin streak
-    let both = 0, prevThin = 0;
+    // persistence: P(unanchored | prev unanchored) and current unanchored streak
+    let both = 0, prevUn = 0;
     for (let i = 121; i < n; i++) {
-      if (thin[i-1]) { prevThin++; if (thin[i]) both++; }
+      if (unanch[i-1]) { prevUn++; if (unanch[i]) both++; }
     }
     let streak = 0;
-    for (let i = n-1; i >= 120 && thin[i]; i--) streak++;
-    const pPersist = prevThin ? Math.round(both/prevThin*100) : null;
-    const baseRate = Math.round(thin.filter(x => x === true).length / thin.filter(x => x !== null).length * 100);
-    document.getElementById('gateStreak').textContent  = streak + (streak === 1 ? ' thin day' : ' thin days in a row');
+    for (let i = n-1; i >= 120 && unanch[i]; i--) streak++;
+    const pPersist = prevUn ? Math.round(both/prevUn*100) : null;
+    const baseRate = Math.round(unanch.filter(x => x === true).length / unanch.filter(x => x !== null).length * 100);
+    document.getElementById('gateStreak').textContent  = streak + (streak === 1 ? ' unanchored day' : ' unanchored days in a row');
     document.getElementById('gatePersist').textContent = pPersist != null
-      ? `P(thin tomorrow | thin today) ${pPersist}% vs ${baseRate}% base` : '--';
+      ? `P(unanchored tomorrow | unanchored today) ${pPersist}% vs ${baseRate}% base` : '--';
     // today's official verdict
     const tEl = document.getElementById('gateTodayVerdict');
     if (today && today.skip != null) {

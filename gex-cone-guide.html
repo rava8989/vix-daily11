@@ -57,8 +57,8 @@
   </div>
 
   <div class="card">
-    <div class="tag red">2 · Orange far below blue — thin gamma → NO M8BF</div>
-    <div class="why">Without dealer gamma, hedging flows amplify moves instead of pinning them. This is the regime the GEX gate skips: the fly is not posted and the day books as a no-trade. (M8BF only — Straddle, GXBF, BOBF and the Tail hedge run their own rules.)</div>
+    <div class="tag red">2 · Orange far below blue — unanchored → NO M8BF</div>
+    <div class="why">Without dealer support, hedging flows amplify moves instead of holding price at levels. This is the regime the Anchor Filter skips: the fly is not posted and the day books as a no-trade. (M8BF only — Straddle, GXBF, BOBF and the Tail hedge run their own rules.)</div>
     <div class="chart"><canvas id="cn2"></canvas></div>
   </div>
 
@@ -75,7 +75,7 @@
     <div class="stat"><div class="k">Above the band</div><div class="v green">62.6% WR</div><div class="d">avg +$158/trade · best fly conditions</div></div>
   </div>
 
-  <p class="note">The gate reads one point of this picture — the previous session's 10:30 reading ranked against its trailing 120 days — and locks tomorrow's GO / SKIP verdict the evening before. The cone is the full movie: the gate decides, the cone explains. Orange dots fill in each half-hour while the GEX page is open (0DTE · OI basis). Band and stats rebuilt from a 726-day intraday GEX history.</p>
+  <p class="note">The Anchor Filter reads one point of this picture — the previous session's 10:30 reading ranked against its trailing 120 days — and locks tomorrow's GO / SKIP verdict the evening before. The cone is the full movie: the filter decides, the cone explains. Orange dots fill in each half-hour while the GEX page is open (0DTE · OI basis). Band and stats rebuilt from a 726-day intraday GEX history.</p>
 </div>
 <script>
 const T=['10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30'];

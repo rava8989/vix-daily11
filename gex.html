@@ -1995,10 +1995,21 @@ async function initGatePanels() {
     const win = vals.slice(n-121, n-1);
     const rank = Math.round(win.filter(x => x <= latest).length / win.length * 100);
     const nEl = document.getElementById('gateTomorrowVerdict');
-    nEl.textContent = rank < ANCHOR_THR * 100 ? 'NO M8BF 🚫' : 'M8BF GO ✅';
-    nEl.style.color = rank < ANCHOR_THR * 100 ? '#ef4444' : '#22c55e';
-    document.getElementById('gateTomorrowDesc').textContent =
-      `${latestDate} 10:30 = ${fmtGex(latest)} → p${rank} of trailing 120d (locked 5:05 PM ET)`;
+    // The newest series entry drives the NEXT session only once today's own
+    // 10:30 capture has landed. Before that it is the reading that already
+    // decided TODAY — showing it here duplicated the left-hand card and read as
+    // a forecast (spotted 2026-07-27 pre-open). Say "waiting" instead.
+    if (latestDate < etISODate()) {
+      nEl.textContent = 'waiting';
+      nEl.style.color = 'var(--text2)';
+      document.getElementById('gateTomorrowDesc').textContent =
+        `today's 10:30 reading not captured yet — verdict locks 5:05 PM ET`;
+    } else {
+      nEl.textContent = rank < ANCHOR_THR * 100 ? 'NO M8BF 🚫' : 'M8BF GO ✅';
+      nEl.style.color = rank < ANCHOR_THR * 100 ? '#ef4444' : '#22c55e';
+      document.getElementById('gateTomorrowDesc').textContent =
+        `${latestDate} 10:30 = ${fmtGex(latest)} → p${rank} of trailing 120d (locked 5:05 PM ET)`;
+    }
     document.getElementById('gateStripBanner').textContent =
       `series: ${hist.tail[0][0]} → ${latestDate}`;
     // histogram of the trailing 120 window + marker at the latest reading
@@ -2014,7 +2025,7 @@ async function initGatePanels() {
       type: 'bar',
       data: { labels: centers.map(c => c.toFixed(1)), datasets: [{
         data: bins,
-        backgroundColor: centers.map(c => c <= cutoff ? 'rgba(239,68,68,0.55)' : 'rgba(59,130,246,0.45)'),
+        backgroundColor: centers.map(c => (c + bw / 2) <= cutoff ? 'rgba(239,68,68,0.55)' : 'rgba(59,130,246,0.45)'),
         borderWidth: 0, barPercentage: 1, categoryPercentage: 0.92,
       }]},
       options: { responsive: true, maintainAspectRatio: false,
@@ -2025,6 +2036,10 @@ async function initGatePanels() {
               borderColor: '#f59e0b', borderWidth: 2,
               label: { display: true, content: 'latest ' + latB.toFixed(1) + 'B', position: 'start',
                        backgroundColor: 'rgba(245,158,11,0.85)', color: '#000', font: { size: 10 } } },
+            cut: { type: 'line', xMin: (cutoff-lo)/bw - 0.5, xMax: (cutoff-lo)/bw - 0.5,
+              borderColor: '#ef4444', borderWidth: 1.5, borderDash: [5, 4],
+              label: { display: true, content: `p${Math.round(ANCHOR_THR*100)} line ${cutoff.toFixed(1)}B`,
+                       position: 'end', backgroundColor: 'rgba(239,68,68,0.85)', color: '#fff', font: { size: 10 } } },
           }}},
         scales: { x: { title: { display: true, text: 'total 0DTE GEX ($B) — trailing 120 sessions' },
                        ticks: { maxTicksLimit: 9 }, grid: { display: false } },

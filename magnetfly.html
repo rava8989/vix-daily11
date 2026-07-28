@@ -65,6 +65,7 @@
 
   <div class="card" id="todayCard">
     <div class="banner wait" id="banner"><span class="dot"></span><b id="bannerText">Loading today's signal…</b><span class="note" id="bannerSub"></span></div>
+    <div id="mfLiveRow" style="display:none;margin:8px 0 0;padding:8px 12px;background:#161b22;border:1px solid #30363d;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b949e;"></div>
     <div class="kpis" id="todayKpis" style="display:none"></div>
   </div>
 
@@ -176,6 +177,22 @@ async function refresh(){
     if (t.kpis) {
       k.style.display = '';
       k.innerHTML = t.kpis.map(x => `<div class="kpi"><div class="l">${x[0]}</div><div class="v">${x[1]}</div></div>`).join('');
+    }
+    // Live tracker row — updates every minute open→close. Display only:
+    // the magnet snaps at 10:30 and the trade verdict locks at noon.
+    const lr = document.getElementById('mfLiveRow'), lv = t.live;
+    if (lr) {
+      if (lv && (lv.magnet != null || lv.center != null)) {
+        lr.style.display = '';
+        const aligned = lv.dist != null && lv.dist === 5;
+        const distTxt = lv.dist == null ? '—'
+          : `<span style="color:${aligned ? '#3fb950' : '#8b949e'}">${lv.dist} pts${aligned ? ' · ALIGNED' : ''}</span>`;
+        const phase = lv.magnetSrc === 'pre-snap preview' ? ' <span style="color:#d29922">(magnet = live preview, snaps 10:30)</span>'
+                    : (lv.t >= '12:00' ? ' <span style="color:#8b949e">(noon verdict locked)</span>' : '');
+        lr.innerHTML = `<b style="color:#e6edf3">LIVE ${lv.t}</b> · magnet ${lv.magnet ?? '—'} · ` +
+          `M8BF center ${lv.center ?? 'no signal yet'}${lv.sigTime ? ' @' + lv.sigTime : ''} · dist ${distTxt}` +
+          `${lv.entry != null ? ` · 30w debit $${lv.entry.toFixed(2)}` : ''}${phase}`;
+      } else lr.style.display = 'none';
     }
   } catch(e) {
     document.getElementById('bannerText').textContent = 'worker unreachable';

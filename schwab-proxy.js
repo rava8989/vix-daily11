@@ -6675,6 +6675,27 @@ async function handleScheduledInner(env) {
     // no page-poll needed) and refresh its intraday P&L every tick.
     try { await freezeTailOpenIfDue(env, etNow, null, true); } catch (e) { console.warn('[tail-freeze]', e.message); }
     try { await refreshTailLiveQuotes(env, etNow, masterChain); } catch (e) { console.warn('[tail-refresh]', e.message); }
+    // PNBF live strip (2026-07-28, display-only): magnet vs latest M8BF center,
+    // refreshed every tick 9:30–16:00. The noon verdict stays the decision —
+    // this only feeds the page's live row. Before the 10:30 snap the magnet is
+    // mfReadInputs' live-fallback preview and is labeled as such.
+    try {
+      const hL = etNow.getHours(), mL = etNow.getMinutes(), dowL = etNow.getDay();
+      if (dowL >= 1 && dowL <= 5 && !isHol(etNow) && hL < 16 &&
+          (hL > 9 || (hL === 9 && mL >= 30)) && schwabToken) {
+        const cutL = `${String(hL).padStart(2, '0')}:${String(mL).padStart(2, '0')}`;
+        const li = await mfReadInputs(env, schwabToken, etNow, masterChain, cutL);
+        const snapped = !!(await env.SIGNAL_KV.get(`mf_magnet_${isoDateET(etNow)}`));
+        const live = {
+          ts: Math.floor(Date.now() / 1000), t: cutL,
+          magnet: li.magnet ?? null, magnetSrc: snapped ? '10:30 snap' : 'pre-snap preview',
+          center: li.center ?? null, sigTime: li.sigTime ?? null,
+          dist: (li.magnet != null && li.center != null) ? Math.abs(li.center - li.magnet) : null,
+          entry: li.entry ?? null,
+        };
+        await env.SIGNAL_KV.put('mf_live', JSON.stringify(live), { expirationTtl: 900 });
+      }
+    } catch (e) { console.warn('[mf-live]', e.message); }
     // Research capture: Diagonal 12:30 put chain + GXBF 9:35 call chain
     // (with these all three bt datasets grow Schwab-only — ThetaData optional)
     try { await captureDiagChainSnap(env, etNow, masterChain); } catch (e) { console.warn('[diag-snap]', e.message); }
@@ -12123,6 +12144,8 @@ export default {
         const todayRaw = await env.SIGNAL_KV.get(`mf_today_${todayM}`);
         const openRaw = await env.SIGNAL_KV.get('mf_open_trade');
         const open = openRaw ? JSON.parse(openRaw) : null;
+        const liveRaw = await env.SIGNAL_KV.get('mf_live');
+        const live = liveRaw ? JSON.parse(liveRaw) : null;
         let out = todayRaw ? JSON.parse(todayRaw) : {
           date: todayM, status: 'WAIT',
           headline: (etNowM.getDay() === 0 || etNowM.getDay() === 6 || isHol(etNowM))
@@ -12138,6 +12161,9 @@ export default {
             out.headline = `${open.exit === 'TP' ? 'TP hit +$300' : open.exit === 'SL' ? 'stopped −$500' : 'settled ' + open.pnl} @ ${open.exitTime} ET`;
           }
         }
+        // Live tracker row (2026-07-28): fresh within 5 min only — a stale
+        // tracker (worker hiccup, after-hours) must vanish, not mislead.
+        if (live && (Date.now() / 1000 - (live.ts || 0)) < 300) out.live = live;
         return jsonResp(out, 200, publicCors);
       } catch (e) {
         return jsonResp({ error: e.message }, 500, publicCors);

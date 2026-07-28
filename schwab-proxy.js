@@ -2501,8 +2501,15 @@ async function getTailHedgeStatusLine(env = null) {
         const stRaw = await env.SIGNAL_KV.get('tail_trigger_state');
         if (stRaw) {
           const st = JSON.parse(stRaw);
+          // Compare the cloud episode against the bundle's last ANALYSED episode,
+          // not its last DATA day (2026-07-27 bug): extending the bundle's daily
+          // rows without re-running preset_results pushed bundleLastDay past the
+          // live cloud trigger (data to 07-23 vs trigger 07-21), so a running
+          // campaign silently disarmed and the tail skipped a day. Data recency
+          // says nothing about whether the bundle knows about this episode; the
+          // trigger list does. When the bundle DOES know, bundleTriggered covers it.
           cloudTriggered = st.state === 'TRIGGERED'
-            && (!bundleLastDay || st.since > bundleLastDay);
+            && (!bundleLastTriggerDate || st.since > bundleLastTriggerDate);
           // The worker's RESOLVED is authoritative for the CURRENT trigger episode.
           // Compare resolvedOn to the bundle's last TRIGGER-START (NOT bundleLastDay,
           // the data clock): if the worker resolved on/after the bundle's latest
@@ -6647,6 +6654,21 @@ async function handleScheduledInner(env) {
           if (filled > 1) { try { await logEvent(env, 'info', 'gexgate', `series self-heal: backfilled ${filled - 1} hole(s) beyond today`, {}); } catch (_) {} }
           try { await mirrorGexSeriesToGitHub(env, trimmed); } catch (e) { console.warn('[gexgate-mirror]', e.message); }
         }
+        // Dealer-liquidity daily series (2026-07-28, informational): one row/day
+        // [medC, fly30] from today's 10:30 slot (10:00 fallback). No TTL — small.
+        try {
+          const lraw = await env.SIGNAL_KV.get(`gex_liq_${dG}`);
+          const lslots = lraw ? (JSON.parse(lraw).slots || {}) : {};
+          const l = lslots['10:30'] || lslots['10:00'];
+          if (l && l.medC != null) {
+            const lsRaw = await env.SIGNAL_KV.get('liq_series_v1');
+            const ls = lsRaw ? JSON.parse(lsRaw) : {};
+            if (ls[dG] == null) {
+              ls[dG] = [l.medC, l.fly30];
+              await env.SIGNAL_KV.put('liq_series_v1', JSON.stringify(ls));
+            }
+          }
+        } catch (e) { console.warn('[liq-series]', e.message); }
       }
     } catch (e) { console.warn('[gexgate-series]', e.message); }
     // Tail Hedge live-trade parity: freeze today's open at/after 9:45 (robust —
@@ -7895,6 +7917,46 @@ async function handleScheduledInner(env) {
 // GEX (GAMMA EXPOSURE) CALCULATION
 // ════════════════════════════════════════════════════════════════════
 
+// ── Dealer-liquidity metric (2026-07-28): how wide the 0DTE book is quoting ──
+// Rides the SAME chain snapshot as GEX — zero extra API calls. Nearest expiry
+// only, strikes within ±60 pts of spot. medC/medP = median ask−bid in points;
+// fly30 = half-spread round-trip (points) of a 30-wide 1/−2/1 call fly at the
+// ATM strike: (s_lo + 2·s_ctr + s_hi)/2 — what crossing half the spread on all
+// 4 contracts costs vs a pure mid fill. ×100 = $/lot.
+function computeLiquidity(chainData, spot) {
+  const nearest = m => Object.keys(m || {}).sort()[0];
+  const grab = (map) => {
+    const out = {};
+    const strikes = (map || {})[nearest(map)] || {};
+    for (const ks of Object.keys(strikes)) {
+      const k = parseFloat(ks);
+      const c = Array.isArray(strikes[ks]) ? strikes[ks][0] : null;
+      if (!c || !spot || Math.abs(k - spot) > 60) continue;
+      const b = c.bid, a = c.ask;
+      if (typeof b === 'number' && typeof a === 'number' && a > 0 && a >= b && b >= 0)
+        out[k] = +(a - b).toFixed(2);
+    }
+    return out;
+  };
+  const cs = grab(chainData.callExpDateMap);
+  const ps = grab(chainData.putExpDateMap);
+  const med = o => { const v = Object.values(o).sort((x, y) => x - y); return v.length ? v[(v.length - 1) >> 1] : null; };
+  const ck = Object.keys(cs).map(Number).sort((a, b) => Math.abs(a - spot) - Math.abs(b - spot));
+  const atmK = ck.length ? ck[0] : null;
+  let fly30 = null;
+  if (atmK != null) {
+    const near = t => {
+      let best = null;
+      for (const k of ck) if (best == null || Math.abs(k - t) < Math.abs(best - t)) best = k;
+      return (best != null && Math.abs(best - t) <= 10) ? cs[best] : null;
+    };
+    const sl = near(atmK - 30), sc = cs[atmK], sh = near(atmK + 30);
+    if (sl != null && sc != null && sh != null) fly30 = +(((sl + 2 * sc + sh) / 2).toFixed(2));
+  }
+  return { medC: med(cs), medP: med(ps), atmC: atmK != null ? cs[atmK] : null, fly30,
+           n: Object.keys(cs).length + Object.keys(ps).length };
+}
+
 function calculateGEX(chainData, spot, onlyNearest = false) {
   const R = 0.043, Q = 0.013, MULT = 100;
 
@@ -8542,6 +8604,9 @@ async function handleGEXUpdate(env, token, preChain = null) {
   const gex0dte = calculateGEX(chainData, spot, true);      // 0DTE only
   if (!gexData) throw new Error('GEX calculation returned null (no expirations)');
 
+  // Dealer-liquidity snapshot (2026-07-28) — same chain pull, SPX book only.
+  try { gexData.liq = computeLiquidity(chainData, spot); } catch (_) { gexData.liq = null; }
+
   // Pull the internal per-contract snapshot off before gexData is persisted / sent /
   // committed. Used only by the trade-side flow classifier (step 5c). 0DTE-ONLY —
   // same-day flow is the edge (0DTE OI is born + dies today → today's tape = the book);
@@ -8582,6 +8647,17 @@ async function handleGEXUpdate(env, token, preChain = null) {
             rec.slots[slot] = row;
             rec.spot = Math.round(S0 * 100) / 100;
             await env.SIGNAL_KV.put(key, JSON.stringify(rec), { expirationTtl: 4 * 86400 });
+          }
+        }
+        // Liquidity slot capture (2026-07-28): tiny parallel record, 30d TTL —
+        // feeds the future fill-quality validation series. First writer wins.
+        if (gexData.liq && gexData.liq.medC != null) {
+          const lkey = `gex_liq_${dayI}`;
+          const lraw = await env.SIGNAL_KV.get(lkey);
+          const lrec = lraw ? JSON.parse(lraw) : { date: dayI, slots: {} };
+          if (lrec.slots[slot] == null) {
+            lrec.slots[slot] = { medC: gexData.liq.medC, fly30: gexData.liq.fly30 };
+            await env.SIGNAL_KV.put(lkey, JSON.stringify(lrec), { expirationTtl: 30 * 86400 });
           }
         }
       }
@@ -13787,6 +13863,24 @@ export default {
         const raw = await env.SIGNAL_KV.get(`${sym === 'spy' ? 'gex_spy_intraday' : 'gex_intraday'}_${day}`);
         const rec = raw ? JSON.parse(raw) : null;
         return jsonResp({ view, symbol: sym, date: day, spot: rec?.spot ?? null, slots: rec?.slots ?? null }, 200, pub);
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+    // ── Resend today's morning card (owner-gated) ──
+    // Clears the morning 'sent' marker so the normal morning path rebuilds and
+    // re-posts the card from LIVE state (used 2026-07-27 after a mid-session
+    // tail-arming fix made the posted card stale). The claim gate still guards
+    // against duplicates of the resend itself.
+    if (url.pathname === '/resend-morning' && request.method === 'GET') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      try {
+        const today = isoDateET(toET(new Date()));
+        await env.SIGNAL_KV.delete(`morning_signal_${today}`);
+        globalThis.__morningSentDay = null;
+        const r = await handleScheduled(env);
+        return jsonResp({ ok: true, cleared: `morning_signal_${today}`, result: r }, 200, {});
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
     }
     // ── Schwab API usage telemetry (owner-gated) ──

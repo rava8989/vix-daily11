@@ -432,6 +432,34 @@
     </div>
   </div>
 
+  <!-- Dealer liquidity — how wide the 0DTE book is quoting -->
+  <div class="chart-section" id="liqSection" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <h2 style="margin-bottom:0;"><span>Dealer</span> liquidity — 0DTE quote width</h2>
+      <span id="liqBanner" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Median spread (±60 pts)</div>
+        <div id="liqMedC" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;">—</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px;">calls · ask−bid per contract</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">ATM spread</div>
+        <div id="liqAtm" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;">—</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px;">the at-the-money call</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">30-wide fly round-trip</div>
+        <div id="liqFly" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;">—</div>
+        <div id="liqFlyNote" style="font-size:12px;color:var(--text2);margin-top:4px;">crossing half the spread, all 4 legs</div>
+      </div>
+    </div>
+    <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
+      How wide dealers are quoting the 0DTE SPX book right now (nearest expiry, strikes within ±60 of spot, same snapshot as the GEX). The fly number is the practical one: entering + exiting a 30-wide M8BF-style fly costs about this much vs perfect mid fills. Wide book = fills degrade, debit caps get missed, stop exits cost more. Banked daily at 10:30 to validate fill assumptions against live results.
+    </div>
+  </div>
+
   <!-- GEX Walls Table -->
   <div class="table-section">
     <h2><span>GEX</span> Walls -- Top 10 Strikes</h2>
@@ -493,7 +521,7 @@ function GEX_ENDPOINT() {
 // Only the panels that are SPX-RULE or SPX-HISTORY specific stay locked. The
 // flow + charm-into-close panels now have a real SPY capture behind them
 // (gex_spy_flow_<date>), so they follow the book like everything else.
-const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection'];
+const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection'];
 function applySymbolChrome(data) {
   const served = (data && data.gexSymbol) || gexSym;
   const note = document.getElementById('gexSymNote');
@@ -667,6 +695,27 @@ function renderTopBar(data) {
     'PIN+','PIN-',
     'Charm +: long-gamma decays toward expiry — pin tends to firm into the close.',
     'Charm -: short-gamma builds toward expiry — instability into the close.');
+
+  // Dealer liquidity card (SPX book only — hidden when no liq in payload)
+  try {
+    const lq = data.liq;
+    const sec = document.getElementById('liqSection');
+    if (sec) {
+      if (lq && lq.medC != null) {
+        sec.style.display = 'block';
+        document.getElementById('liqMedC').textContent = '$' + lq.medC.toFixed(2);
+        document.getElementById('liqAtm').textContent = lq.atmC != null ? '$' + lq.atmC.toFixed(2) : '—';
+        const flyEl = document.getElementById('liqFly');
+        if (lq.fly30 != null) {
+          flyEl.textContent = '≈ $' + Math.round(lq.fly30 * 100) + '/lot';
+          document.getElementById('liqFlyNote').textContent =
+            (lq.fly30 * 100 <= 30 ? 'tight book — fills near mid are realistic' :
+             lq.fly30 * 100 <= 60 ? 'normal book' : 'wide book — expect slippage on fly fills');
+        } else flyEl.textContent = '—';
+        document.getElementById('liqBanner').textContent = lq.n ? `${lq.n} quotes · nearest expiry` : '';
+      } else sec.style.display = 'none';
+    }
+  } catch (_) {}
 
   // % changes
   const pct1m = document.getElementById('pctChange1m');

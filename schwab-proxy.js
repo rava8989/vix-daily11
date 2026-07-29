@@ -6058,13 +6058,16 @@ async function mfReadInputs(env, token, etNow, preChain, cut) {
   // tick) — the 10-page Discord re-scrape made this the slowest handler in
   // the worker and got noon ticks killed mid-fanout (P27 dupes). Scrape only
   // as a fallback when the poller has nothing for today.
-  let center = null, sigTime = null;
+  let center = null, sigTime = null, t1 = null;
   try {
     const stRaw = await env.SIGNAL_KV.get('signals_today');
     const st = stRaw ? JSON.parse(stRaw) : null;
     if (st && st.date === todayISO && Array.isArray(st.signals)) {
       for (const sg of st.signals) {
-        if (sg.time && sg.time <= cut && Number.isFinite(sg.center)) { center = sg.center; sigTime = sg.time; }
+        if (sg.time && sg.time <= cut && Number.isFinite(sg.center)) {
+          center = sg.center; sigTime = sg.time;
+          t1 = Number.isFinite(sg.t1) ? sg.t1 : null;
+        }
       }
     }
   } catch (_) {}
@@ -6074,14 +6077,15 @@ async function mfReadInputs(env, token, etNow, preChain, cut) {
       const c = line.split(',');
       if (c.length < 25 || !c[2] || c[2] > cut) continue;
       const bc = parseFloat(c[24]);
-      if (Number.isFinite(bc)) { center = bc; sigTime = c[2]; }
+      // c[15] = "Target 1" — the M8BF wall the trigger compares to (2026-07-29)
+      if (Number.isFinite(bc)) { center = bc; sigTime = c[2]; t1 = parseFloat(c[15]) || null; }
     }
   }
   if (center == null) return { magnet, magnetSrc, center: null };
   const chain = preChain || await fetchMasterSpxChain(token, env);
   const q = mfFlyQuote(chain, todayISO, magnet);
   const entry = q ? Math.round((q.mid + q.slip) * 100) / 100 : null;
-  return { magnet, magnetSrc, center, sigTime, entry };
+  return { magnet, magnetSrc, center, sigTime, t1, entry };
 }
 
 // Morning status (~9:40 ET) — "possible today or not", from the calendar
@@ -6127,36 +6131,37 @@ async function handleMagnetFlyPreAlert(env, token, etNow, preChain) {
   if (inp.error) return { error: inp.error };
   const preKey = `mf_prealert_${todayISO}`;
   const markPre = () => env.SIGNAL_KV.put(preKey, 'sent', { expirationTtl: 86400 });
-  const { magnet, center, entry } = inp;
-  if (center == null) {
+  const { magnet, center, t1, entry } = inp;
+  if (center == null || t1 == null) {
     await markPre();                                    // decision made: no heads-up today
     await mfSetToday(env, todayISO, { status: 'POSSIBLE', pre: true,
       headline: 'Heads-up — no M8BF signal yet at 11:30', detail: 'watching for the noon check' });
     return { pre: 'PEND' };
   }
-  const dist = Math.abs(center - magnet);
+  // T1-vs-magnet basis (owner 2026-07-29), ≤5 = aligned — mirrors the noon check.
+  const dist = Math.abs(t1 - magnet);
   let lean, headline, emoji;
-  if (dist === 5 && entry != null && entry <= 15.5) {
+  if (dist <= 5 && entry != null && entry <= 15.5) {
     lean = 'LIKELY GO'; emoji = '🟢';
     headline = `Likely GO at noon — aligned, 30w ~$${entry.toFixed(2)}`;
-  } else if (dist === 5 && entry != null && entry <= 17) {
+  } else if (dist <= 5 && entry != null && entry <= 17) {
     lean = 'LIKELY GO (borderline price)'; emoji = '🟡';
     headline = `Leaning GO — aligned but 30w ~$${entry.toFixed(2)}, near the $17 cap`;
-  } else if (dist === 5) {
+  } else if (dist <= 5) {
     lean = 'LEANING NO (too pricey)'; emoji = '🟠';
     headline = `Aligned but 30w ~$${entry != null ? entry.toFixed(2) : '?'} > $17 — leaning NO, watch for it to cheapen`;
   } else if (dist <= 15) {
     lean = 'ON THE FENCE'; emoji = '🟡';
-    headline = `On the fence — M8BF center ${center} is ${dist} off magnet ${magnet}; could snap on by noon`;
+    headline = `On the fence — M8BF T1 ${t1} is ${dist} off magnet ${magnet}; could snap on by noon`;
   } else {
     lean = 'LIKELY NO'; emoji = '⚪';
-    headline = `Likely no trade — center ${center} is ${dist} pts off magnet ${magnet}`;
+    headline = `Likely no trade — T1 ${t1} is ${dist} pts off magnet ${magnet}`;
   }
   await markPre();                                    // marker BEFORE the post (P27)
   await mfSetToday(env, todayISO, {
     status: (lean.startsWith('LIKELY GO')) ? 'POSSIBLE' : 'PRE-NO', pre: true, headline,
     detail: `11:30 heads-up · noon check is final · ~88% of early calls hold`,
-    kpis: [['magnet', magnet], ['M8BF center', center], ['distance', dist + ' pts'],
+    kpis: [['magnet', magnet], ['M8BF T1', t1], ['distance', dist + ' pts'],
            ['30w debit', entry != null ? '$' + entry.toFixed(2) : 'n/a']] });
   await postMagnetFly(env, `🧲 **PNBF** ${todayISO} — **${emoji} 11:30 heads-up: ${lean}**\n` +
     `${headline}\n_magnet ${magnet} · center ${center} · noon check is final (~88% of early calls hold)_`);
@@ -6182,18 +6187,22 @@ async function handleMagnetFlyNoon(env, token, etNow, preChain) {
   }
   const inp = await mfReadInputs(env, token, etNow, preChain, '12:00');
   if (inp.error) return { error: inp.error };
-  const { magnet, magnetSrc, center, sigTime, entry } = inp;
+  const { magnet, magnetSrc, center, sigTime, t1, entry } = inp;
   if (center == null) return { error: 'no M8BF signal rows yet' };
+  if (t1 == null) return { error: 'M8BF signal has no T1 — cannot run trigger' };
 
-  const dist = Math.abs(center - magnet);
-  if (dist !== 5) {
+  // Trigger basis = T1 vs magnet, ≤5 pts (owner 2026-07-29; was |center−magnet|==5).
+  // Backtest: n=69 WR 86% +$184/lot t 5.43, every year green — vs center rule's
+  // 76/+$195 whose 9 extra days were T1-elsewhere coincidences.
+  const dist = Math.abs(t1 - magnet);
+  if (dist > 5) {
     await mark();                                        // marker BEFORE post
     await mfSetToday(env, todayISO, { status: 'NO',
-      headline: `No PNBF — T1 ≠ magnet (center ${center} vs magnet ${magnet}, dist ${dist})`,
+      headline: `No PNBF — T1 ≠ magnet (T1 ${t1} vs magnet ${magnet}, dist ${dist})`,
       detail: `magnet ${magnetSrc} · M8BF signal @${sigTime}`,
-      kpis: [['magnet', magnet], ['M8BF center', center], ['distance', dist + ' pts']] });
-    await postMagnetFly(env, `🧲 **PNBF** ${todayISO} — **NO TRADE** · T1≠magnet (center ${center}, magnet ${magnet}, dist ${dist})`);
-    return { skipped: 'no alignment', center, magnet };
+      kpis: [['magnet', magnet], ['M8BF T1', t1], ['distance', dist + ' pts']] });
+    await postMagnetFly(env, `🧲 **PNBF** ${todayISO} — **NO TRADE** · T1≠magnet (T1 ${t1}, magnet ${magnet}, dist ${dist})`);
+    return { skipped: 'no alignment', t1, magnet };
   }
 
   if (entry == null) return { error: `fly legs missing at K=${magnet}` };
@@ -6689,8 +6698,8 @@ async function handleScheduledInner(env) {
         const live = {
           ts: Math.floor(Date.now() / 1000), t: cutL,
           magnet: li.magnet ?? null, magnetSrc: snapped ? '10:30 snap' : 'pre-snap preview',
-          center: li.center ?? null, sigTime: li.sigTime ?? null,
-          dist: (li.magnet != null && li.center != null) ? Math.abs(li.center - li.magnet) : null,
+          center: li.center ?? null, t1: li.t1 ?? null, sigTime: li.sigTime ?? null,
+          dist: (li.magnet != null && li.t1 != null) ? Math.abs(li.t1 - li.magnet) : null,
           entry: li.entry ?? null,
         };
         await env.SIGNAL_KV.put('mf_live', JSON.stringify(live), { expirationTtl: 900 });

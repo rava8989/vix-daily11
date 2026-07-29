@@ -81,10 +81,10 @@
 
   <h2>The rules (all must hold at 12:00 ET)</h2>
   <div class="card rules">
-    1. <b>Alignment:</b> the M8BF fly center sits exactly <span class="mono">5 pts</span> from the day's magnet — i.e. the service's T1 <i>is</i> the magnet. (T1 is always center ±5; verified on all 4,309 archived signals.)<br>
+    1. <b>Alignment:</b> the M8BF signal's <b>T1 is within <span class="mono">5 pts</span> of the day's magnet</b> (in practice the same strike — T1 and magnet never landed 5 apart in 2 years of data). Trigger reads T1 directly since 2026-07-29; before that it used the equivalent center-distance check.<br>
     2. <b>Calendar clear:</b> not EOM, not CPI day, not FED day, not Mon–Thu of monthly OPEX week. <span class="mono">OPEX Friday itself is traded</span> (7 of 8 won).<br>
     3. <b>Price:</b> the 30-wide CALL fly at the magnet (K−30 / K / K+30) costs <span class="mono">≤ $17.00</span> — typical fill ~$12.30. Costlier day = skip.<br>
-    4. <b>Exit:</b> OCO bracket — take profit <span class="mono">+3.0 pts (+$300/lot)</span>, stop <span class="mono">−5.0 pts (−$500/lot)</span>, hold to 4:15 settle if neither fills (never happened in 87 backtest trades).<br><br>
+    4. <b>Exit:</b> OCO bracket — take profit <span class="mono">+3.0 pts (+$300/lot)</span>, stop <span class="mono">−5.0 pts (−$500/lot)</span>, hold to 4:15 settle if neither fills (never happened in the backtest).<br><br>
     <span class="pill">tested & rejected: VIX level</span><span class="pill">overnight VIX</span><span class="pill">gamma sign</span><span class="pill">magnet dominance</span><span class="pill">2nd-node distance</span><span class="pill">Mag-7 earnings</span><span class="pill">per-weekday times</span><span class="pill">widths 10–25, 35–50</span><span class="pill">hold-to-settle</span><span class="pill">tiny TP without stop</span>
   </div>
 
@@ -94,20 +94,18 @@
     <br><br>Full research trail (rounds 1 → 3h, incl. every dead end): <span class="mono">tasks/MAGNET_FLY_RESEARCH.md</span> (private).
   </div>
 
-  <h2>Backtest — 87 trades, Sep 2024 → Jun 2026 <span class="tag">real NBBO, slippage included, per 1 lot</span></h2>
+  <h2>Backtest — T1-basis trigger, 69 trades, Sep 2024 → Jul 2026 <span class="tag">real NBBO, slippage included, per 1 lot</span></h2>
   <div class="card">
     <div class="kpis">
-      <div class="kpi"><div class="l">win rate</div><div class="v g">83.9%</div></div>
-      <div class="kpi"><div class="l">total</div><div class="v g">+$14,900</div></div>
-      <div class="kpi"><div class="l">avg / trade</div><div class="v">+$171</div></div>
-      <div class="kpi"><div class="l">t-stat</div><div class="v">5.40</div></div>
-      <div class="kpi"><div class="l">profit factor</div><div class="v">3.13</div></div>
-      <div class="kpi"><div class="l">max drawdown</div><div class="v">$1,000</div></div>
-      <div class="kpi"><div class="l">worst streak</div><div class="v">2</div></div>
-      <div class="kpi"><div class="l">months green</div><div class="v">19 / 22</div></div>
+      <div class="kpi"><div class="l">win rate</div><div class="v g">86%</div></div>
+      <div class="kpi"><div class="l">total</div><div class="v g">+$12,700</div></div>
+      <div class="kpi"><div class="l">avg / trade</div><div class="v">+$184</div></div>
+      <div class="kpi"><div class="l">t-stat</div><div class="v">5.43</div></div>
+      <div class="kpi"><div class="l">yearly</div><div class="v">all green</div></div>
+      <div class="kpi"><div class="l">stop-outs</div><div class="v">10 / 69</div></div>
     </div>
     <canvas id="eq" style="margin-top:14px"></canvas>
-    <div class="note" style="margin-top:4px">equity curve, $ per lot · halves: H1 +$140/trade (t 2.9) · H2 +$205/trade (t 5.1) · yearly +$800 / +$9,100 / +$5,000</div>
+    <div class="note" style="margin-top:4px">equity curve, $ per lot · yearly +$200 / +$7,600 / +$4,900 · trigger re-based to T1 2026-07-29 (was the equivalent center-distance rule: 76 trades +$195/lot — the 9 dropped days were T1-elsewhere coincidences that happened to win)</div>
   </div>
 
   <div class="card">
@@ -184,13 +182,13 @@ async function refresh(){
     if (lr) {
       if (lv && (lv.magnet != null || lv.center != null)) {
         lr.style.display = '';
-        const aligned = lv.dist != null && lv.dist === 5;
+        const aligned = lv.dist != null && lv.dist <= 5;
         const distTxt = lv.dist == null ? '—'
           : `<span style="color:${aligned ? '#3fb950' : '#8b949e'}">${lv.dist} pts${aligned ? ' · ALIGNED' : ''}</span>`;
         const phase = lv.magnetSrc === 'pre-snap preview' ? ' <span style="color:#d29922">(magnet = live preview, snaps 10:30)</span>'
                     : (lv.t >= '12:00' ? ' <span style="color:#8b949e">(noon verdict locked)</span>' : '');
         lr.innerHTML = `<b style="color:#e6edf3">LIVE ${lv.t}</b> · magnet ${lv.magnet ?? '—'} · ` +
-          `M8BF center ${lv.center ?? 'no signal yet'}${lv.sigTime ? ' @' + lv.sigTime : ''} · dist ${distTxt}` +
+          `M8BF T1 ${lv.t1 ?? '—'}${lv.sigTime ? ' @' + lv.sigTime : ''} · dist ${distTxt}` +
           `${lv.entry != null ? ` · 30w debit $${lv.entry.toFixed(2)}` : ''}${phase}`;
       } else lr.style.display = 'none';
     }

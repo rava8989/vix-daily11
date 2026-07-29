@@ -11839,6 +11839,32 @@ export default {
     // ── GET /gexm-status ── GEXMAGNET chain-collector status. Auth-required
     // (SYNC_SECRET or the scoped GEXM_TRIGGER_TOKEN — the latter exists so
     // local tooling can hit these two endpoints without the dashboard secret).
+    // ── GET /cor1m-series ── owner-gated dump of the KV intraday COR1M
+    // samples (7d TTL) for the Tail Hedge bundle refresh — the ThetaData
+    // index sub lapsed 2026-07-23, so the local refresh now feeds from the
+    // worker's own Schwab capture (2026-07-29).
+    if (url.pathname === '/cor1m-series' && request.method === 'GET') {
+      const secret = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!secret || (secret !== env.SYNC_SECRET && secret !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, { 'Access-Control-Allow-Origin': '*' });
+      }
+      const from = url.searchParams.get('from'), to = url.searchParams.get('to');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '')) {
+        return jsonResp({ error: 'from/to required (YYYY-MM-DD)' }, 400, {});
+      }
+      const out = {};
+      const d = new Date(from + 'T12:00:00Z'), end = new Date(to + 'T12:00:00Z');
+      while (d <= end) {
+        const iso = d.toISOString().slice(0, 10);
+        try {
+          const raw = await env.SIGNAL_KV.get(`cor1m_series_${iso}`);
+          if (raw) out[iso] = JSON.parse(raw);
+        } catch (_) {}
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      return jsonResp({ from, to, days: out }, 200, { 'Access-Control-Allow-Origin': '*' });
+    }
+
     if (url.pathname === '/gexm-status' && request.method === 'GET') {
       const secret = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
       if (!secret || (secret !== env.SYNC_SECRET && secret !== env.GEXM_TRIGGER_TOKEN)) {

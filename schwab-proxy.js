@@ -1591,6 +1591,30 @@ async function persistResearchArtifacts(env, etNow) {
     results.push({ label: 'vixeq daily', error: e.message });
     console.warn('[research-persist] vixeq failed:', e.message);
   }
+  // VIX term-structure daily self-feed (2026-07-29): closes for the whole
+  // complex, Schwab quotes at the 16:25 tick. Replaces the dead ThetaData
+  // index feed (sub lapsed 7/23) — the Tail Hedge bundle reads this file.
+  try {
+    const syms = ['$VIX9D', '$VIX', '$VIX3M', '$VIX6M', '$VVIX', '$COR1M'];
+    const tk = await getAccessToken(env);
+    const q = await fetchSchwabJSON(
+      `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(syms.join(','))}&fields=quote`, tk, env);
+    const row = {};
+    let got = 0;
+    for (const s of syms) {
+      const lp = q?.[s]?.quote?.lastPrice;
+      if (lp != null && lp > 0) { row[s.slice(1).toLowerCase()] = parseFloat(lp.toFixed(2)); got++; }
+    }
+    if (got >= 4) {
+      await githubUpsertResearchFile(env, 'data/vix_term_daily.json',
+        cur => { cur[todayISO] = row; return cur; },
+        `auto: vix term ${todayISO}`);
+      results.push({ label: 'vix term daily', ok: true });
+    } else results.push({ label: 'vix term daily', skipped: `only ${got} quotes` });
+  } catch (e) {
+    results.push({ label: 'vix term daily', error: e.message });
+    console.warn('[research-persist] vix term failed:', e.message);
+  }
   return results;
 }
 

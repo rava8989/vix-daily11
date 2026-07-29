@@ -11805,7 +11805,14 @@ export default {
       let b = null;
       const samp = (url.searchParams.get('sample') || '').toUpperCase();
       const dq = url.searchParams.get('date');
-      if (samp && SAMPLES[samp]) b = SAMPLES[samp];
+      // live=1 (2026-07-29): build a FRESH board and render it — no KV write,
+      // no send. Lets the owner preview exactly what the next card looks like.
+      if (url.searchParams.get('live') === '1') {
+        const tokenL = await getAccessToken(env);
+        b = await earnBuildBoard(env, tokenL, isoDateET(toET()), { withIntraday: true });
+        b.final = true;
+      }
+      else if (samp && SAMPLES[samp]) b = SAMPLES[samp];
       else if (dq && /^\d{4}-\d{2}-\d{2}$/.test(dq)) {
         const raw = await env.SIGNAL_KV.get(`earn_board_${dq}`);
         b = raw ? JSON.parse(raw) : null;

@@ -1090,6 +1090,69 @@ async function earnMorningJob(env, etNow, token) {
   }
 }
 
+// ── Resolve yesterday's LONGs into the nightly result log (2026-07-29) ──
+// The seed log froze at its build date (2026-06-30) and nothing appended live
+// outcomes — track-record data loss every LONG night. Runs 9:35–9:55 ET:
+// entry = prior session close, exit = today's open (Schwab daily candles),
+// appended newest-first to data/earnings_play_today.json. Idempotent.
+async function earnResolveJob(env, etNow, token) {
+  const h = etNow.getHours(), m = etNow.getMinutes();
+  if (!(h === 9 && m >= 35 && m <= 55)) return;
+  const iso = isoDateET(etNow);
+  const key = `earn_resolve_${iso}`;
+  if (await env.SIGNAL_KV.get(key)) return;
+  // previous trading day (skip weekends/holidays, up to a week back)
+  let prev = null;
+  for (let back = 1; back <= 7 && !prev; back++) {
+    const d = toET(new Date(Date.now() - back * 86400000));
+    if (d.getDay() === 0 || d.getDay() === 6 || isHol(d)) continue;
+    prev = isoDateET(d);
+  }
+  if (!prev) return;
+  const raw = await env.SIGNAL_KV.get(`earn_board_${prev}`);
+  if (!raw) { await env.SIGNAL_KV.put(key, 'no-board', { expirationTtl: 86400 }); return; }
+  const b = JSON.parse(raw);
+  const longs = (b.board || []).filter(r => r.verdict === 'LONG');
+  if (!longs.length) { await env.SIGNAL_KV.put(key, 'no-longs', { expirationTtl: 86400 }); return; }
+  await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
+  try {
+    const rows = [];
+    for (const r of longs) {
+      try {
+        const end = Date.now();
+        const start = end - 6 * 86400000;
+        const j = await fetchSchwabJSON(
+          `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(r.ticker)}` +
+          `&periodType=month&period=1&frequencyType=daily&frequency=1&startDate=${start}&endDate=${end}`, token, env);
+        const cs = (j?.candles || []).map(c => ({ d: isoDateET(toET(new Date(c.datetime))), o: c.open, c: c.close }));
+        const eC = cs.find(c => c.d === prev)?.c;
+        const xO = cs.find(c => c.d === iso)?.o;
+        if (eC > 0 && xO > 0) {
+          rows.push({ date: prev, ticker: r.ticker, pw_ratio: r.pw_ratio ?? null,
+                      deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
+                      base_rate: r.base_rate ?? null, verdict: 'LONG',
+                      move_24h: +((xO / eC - 1).toFixed(4)), pl_r: null, live: true });
+        }
+      } catch (e) { console.warn('[earn-resolve]', r.ticker, e.message); }
+    }
+    if (rows.length) {
+      await githubUpsertResearchFile(env, 'data/earnings_play_today.json',
+        cur => {
+          cur.log = cur.log || [];
+          for (const row of rows) {
+            if (!cur.log.some(x => x.date === row.date && x.ticker === row.ticker)) cur.log.unshift(row);
+          }
+          return cur;
+        }, `auto: earnings results ${prev}`);
+      await logEvent(env, 'info', 'earnings', `resolved ${rows.length} LONG(s) from ${prev}`, {});
+    }
+    await env.SIGNAL_KV.put(key, 'done', { expirationTtl: 86400 });
+  } catch (e) {
+    await env.SIGNAL_KV.delete(key);
+    console.warn('[earn-resolve] failed:', e.message);
+  }
+}
+
 async function earnRescoreJob(env, etNow, token) {
   const iso = isoDateET(etNow);
   const m = etNow.getMinutes(), h = etNow.getHours();
@@ -6496,6 +6559,7 @@ async function handleScheduledInner(env) {
       if (!earnToken) { try { earnToken = await getAccessToken(env); } catch (_) {} }
       if (earnToken) {
         try { await earnMorningJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-morning]', e.message); }
+        try { await earnResolveJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-resolve]', e.message); }
         try { await earnExitJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-exit]', e.message); }
         try { await earnRescoreJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-rescore]', e.message); }
         try { await earnFinalJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-final]', e.message); }

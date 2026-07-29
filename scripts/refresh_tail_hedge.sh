@@ -51,11 +51,13 @@ for HOL in $ALL_HOLIDAYS; do
   fi
 done
 
-# ── 1. ThetaData reachable? ─────────────────────────────────────────────────
-if ! curl -s -m 3 "$THETA/index/history/ohlc?symbol=VIX&start_date=$TODAY_NODASH&end_date=$TODAY_NODASH&interval=1h&format=csv" | head -1 | grep -q timestamp; then
-  log "ThetaData unreachable at $THETA. Make sure ThetaTerminal is running. Skipping."
+# ── 1. Worker reachable? (Schwab-only since 2026-07-29 — ThetaData index sub
+#       lapsed 7/23; all data now flows from the cloud worker's own captures) ──
+if ! curl -s -m 6 "https://schwab-proxy.ravamt4.workers.dev/gexgate-today" | grep -qE '[0-9]'; then
+  log "Worker unreachable — skipping (will retry next run)."
   exit 0
 fi
+GEXM_TOKEN=$(cat "$HOME/.gexm_trigger_token" 2>/dev/null)
 
 # ── 2. Pull latest from git first (avoid conflicts with auto: commits) ──────
 log "git pull --rebase"
@@ -64,68 +66,85 @@ if ! git pull --rebase --autostash >> "$LOG" 2>&1; then
   exit 2
 fi
 
-# ── 3. Refresh COR1M (year-to-date append) ──────────────────────────────────
-log "Refreshing COR1M..."
-START_YEAR_NODASH="${TODAY:0:4}0101"
-COR1M_OUT=data/cor1m/raw_${TODAY:0:4}_$(date -j -v+1y +%Y).csv
-# Pull last 365 days max
-curl -s "$THETA/index/history/ohlc?symbol=COR1M&start_date=$START_YEAR_NODASH&end_date=$TODAY_NODASH&interval=1h&format=csv" > "$COR1M_OUT.tmp"
-if head -1 "$COR1M_OUT.tmp" | grep -q timestamp && [ "$(wc -l < "$COR1M_OUT.tmp")" -gt 10 ]; then
-  mv "$COR1M_OUT.tmp" "$COR1M_OUT"
-  log "  COR1M: $(wc -l < "$COR1M_OUT") rows in $COR1M_OUT"
-else
-  log "  COR1M fetch failed, keeping existing file"
-  rm -f "$COR1M_OUT.tmp"
-fi
+# ── 3. Refresh COR1M (worker KV series last 7d + history daily for older) ──
+log "Refreshing COR1M from worker..."
+python3 - <<PYEOF3 >> "$LOG" 2>&1
+import json, datetime, urllib.request
+TOKEN = open('$HOME/.gexm_trigger_token').read().strip()
+W = 'https://schwab-proxy.ravamt4.workers.dev'
+today = datetime.date.today()
+frm = (today - datetime.timedelta(days=8)).isoformat()
+req = urllib.request.Request(f'{W}/cor1m-series?from={frm}&to={today.isoformat()}', headers={'X-Sync-Secret': TOKEN, 'User-Agent': 'tail-refresh/1.0'})
+kv = json.load(urllib.request.urlopen(req, timeout=60))['days']
+hist = json.load(open('history_data.json'))
+daily = {h['date']: h['cor1m'] for h in hist if isinstance(h, dict) and h.get('cor1m') is not None}
+path = f'data/cor1m/raw_{today.year}_{today.year+1}.csv'
+lines = [l for l in open(path).read().splitlines() if l]
+hdr = lines[0]
+FROZEN = '2026-06-10'   # last ThetaData-sourced row; everything after is rebuilt each run
+rows = [l for l in lines[1:] if l[:10] <= FROZEN]
+def bar(ts, o, h, l, c): return f'{ts},{o},{h},{l},{c},0,0,0.00'
+d = datetime.date(2026, 6, 11)
+while d <= today:
+    iso = d.isoformat()
+    if d.weekday() < 5:
+        if iso in kv and len(kv[iso]) >= 3:
+            by_h = {}
+            for t, v in kv[iso]: by_h.setdefault(t[:2], []).append(float(v))
+            for hh in sorted(by_h):
+                vs = by_h[hh]
+                rows.append(bar(f'{iso}T{hh}:30:00.000', vs[0], max(vs), min(vs), vs[-1]))
+        elif iso in daily:
+            v = daily[iso]
+            rows.append(bar(f'{iso}T09:30:00.000', v, v, v, v))
+    d += datetime.timedelta(days=1)
+open(path, 'w').write(hdr + '\n' + '\n'.join(rows) + '\n')
+print(f'  COR1M: rebuilt post-{FROZEN} tail, last row {rows[-1][:16]}')
+PYEOF3
 
-# ── 4. Refresh VIX term structure (auto-chunks, idempotent) ────────────────
-log "Refreshing VIX term structure..."
-python3 fetch_thetadata_vix_term.py >> "$LOG" 2>&1
+# ── 4. VIX term structure from worker daily feed (data/vix_term_daily.json,
+#       Schwab closes appended at the 16:25 cloud tick; open cols carry close
+#       values for post-2026-06-10 rows — the bundle uses closes) ───────────
+log "Extending VIX term daily.csv from worker feed..."
+python3 - <<PYEOF4 >> "$LOG" 2>&1
+import json, csv
+feed = json.load(open('data/vix_term_daily.json'))
+path = 'data/vix_term/daily.csv'
+rows = list(csv.reader(open(path)))
+hdr, have = rows[0], {r[0] for r in rows[1:] if r}
+added = 0
+for d in sorted(feed):
+    if d in have: continue
+    v = feed[d]
+    if not all(k in v for k in ('vix9d','vix','vix3m','vix6m','vvix')): continue
+    r3 = v['vix']/v['vix3m'] if v['vix3m'] else ''
+    r9 = v['vix9d']/v['vix'] if v['vix'] else ''
+    rows.append([d, v['vix9d'], v['vix9d'], v['vix'], v['vix'], v['vix3m'], v['vix3m'],
+                 v['vix6m'], v['vix6m'], v['vvix'], v['vvix'],
+                 round(r3,4), round(r3,4), round(r9,4), round(r9,4)])
+    added += 1
+if added:
+    rows = [rows[0]] + sorted(rows[1:], key=lambda r: r[0])
+    with open(path, 'w', newline='') as f: csv.writer(f).writerows(rows)
+print(f'  VIX term: +{added} day(s), last = {rows[-1][0]}')
+PYEOF4
 log "  VIX term done: last day = $(tail -1 data/vix_term/daily.csv | cut -d, -f1)"
 
-# ── 5. SPX & VIX 1-min bars for today ──────────────────────────────────────
-log "Fetching today's SPX + VIX 1-min bars..."
-python3 - <<PYEOF >> "$LOG" 2>&1
-import csv, requests
-from pathlib import Path
-THETA = 'http://localhost:25503/v3'
-TODAY = '$TODAY'
-TODAY_NODASH = '$TODAY_NODASH'
-
-def fetch_and_save(symbol, dest_dir, prefix):
-    out = Path(dest_dir) / f'{prefix}_{TODAY_NODASH}.csv'
-    if out.exists() and out.stat().st_size > 1000:
-        print(f'  {symbol}: {out.name} exists, skipping')
-        return
-    r = requests.get(f'{THETA}/index/history/ohlc', params={
-        'symbol': symbol, 'start_date': TODAY_NODASH, 'end_date': TODAY_NODASH,
-        'interval': '1m', 'format': 'csv'
-    }, timeout=60)
-    lines = r.text.strip().split('\n')
-    if not lines or len(lines) < 5 or lines[0].startswith(('Invalid', '<')):
-        print(f'  {symbol}: no data for today')
-        return
-    rows = []
-    for ln in lines[1:]:
-        cols = ln.split(',')
-        if len(cols) < 5: continue
-        ts = cols[0].replace('T', ' ').split('.')[0]
-        rows.append([ts, cols[1], cols[2], cols[3], cols[4]])
-    if not rows:
-        print(f'  {symbol}: empty')
-        return
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, 'w', newline='') as f:
-        w = csv.writer(f); w.writerow(['timestamp','open','high','low','close']); w.writerows(rows)
-    print(f'  {symbol}: wrote {len(rows)} rows → {out.name}')
-
-fetch_and_save('SPX', 'data/spx', 'SPX')
-fetch_and_save('VIX', 'data/vix', 'VIX')
-PYEOF
+# ── 5. SPX & VIX 1-min bars via Schwab (complete days only) ────────────────
+log "Fetching SPX + VIX 1-min bars from Schwab..."
+if [ "$(TZ=America/New_York date +%H%M)" -ge 1615 ] || [ "$(TZ=America/New_York date +%u)" -ge 6 ]; then
+  python3 backfill_schwab_spx.py >> "$LOG" 2>&1
+else
+  log "  before 16:15 ET — skipping 1-min backfill (avoid partial-day files)"
+fi
 
 # ── 6. SPX 9:35 put snapshot for today ─────────────────────────────────────
 log "Fetching today's 9:35 SPX put snapshot..."
-python3 fetch_thetadata_diagonal.py --time 09:35 --date "$TODAY" >> "$LOG" 2>&1
+if curl -s -m 3 "$THETA/option/history/quote?symbol=SPXW&expiration=$TODAY&date=$TODAY&interval=5m&format=csv" | head -c 30 | grep -q symbol; then
+  python3 fetch_thetadata_diagonal.py --time 09:35 --date "$TODAY" >> "$LOG" 2>&1
+else
+  log "  ThetaData options unavailable (sub ends 2026-08-02) — worker's diag_chains capture covers this"
+fi
 
 # ── 7. Rebuild bundle ──────────────────────────────────────────────────────
 log "Rebuilding cor1m_contango_bundle.json..."

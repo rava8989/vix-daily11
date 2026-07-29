@@ -11736,6 +11736,11 @@ export default {
       if (step === 'board') {
         const b = await earnBuildBoard(env, token, dateISO,
           { withIntraday: url.searchParams.get('intraday') === '1' });
+        // store=1 (owner 2026-07-29): persist the rebuilt board so the page
+        // shows the current full-universe list, not a stale pre-fix snapshot.
+        if (url.searchParams.get('store') === '1') {
+          await env.SIGNAL_KV.put(`earn_board_${dateISO}`, JSON.stringify(b), { expirationTtl: 3 * 86400 });
+        }
         if (url.searchParams.get('send') === '1') {
           const mode = (await env.SIGNAL_KV.get('earnings_mode')) || 'paper';
           await earnSend(env, earnBoardMsg(b, mode,

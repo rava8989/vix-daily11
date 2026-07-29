@@ -405,7 +405,7 @@ function renderLiveBoard(b) {
     `<td>${r.base_rate ?? '—'}${r.base_n ? ' (' + r.base_n + 'q)' : ''}</td>` +
     `<td>${g(r.g1)}</td><td>${g(r.g2)}</td><td>${g(r.g3)}</td>` +
     `<td class="${vcls(r.verdict)}">${r.verdict}</td></tr>`).join('')
-    : `<tr><td colspan="11" class="note" style="padding:14px">no in-universe reporters in this window</td></tr>`) +;
+    : `<tr><td colspan="11" class="note" style="padding:14px">no in-universe reporters in this window</td></tr>`);
   document.getElementById('boardDate').textContent =
     `${b.date} · live${b.final ? ' · FINAL' : ''} · VIX ${b.vix && b.vix.ratio != null ? b.vix.ratio : '—'}×`;
   _liveBoardPainted = true;
@@ -490,7 +490,7 @@ function render(d) {
       `<td>${r.base_rate == null ? '—' : (r.base_rate*100).toFixed(0) + '% (' + r.base_n + 'q)'}</td>` +
       `<td>${g(r.g1)}</td><td>${g(r.g2)}</td><td>${g(r.g3)}</td>` +
       `<td class="${vcls(r.verdict)}">${r.verdict}</td></tr>`).join('') ||
-      '<tr><td colspan="11" class="note">no in-universe reporters in this window</td></tr>') +;
+      '<tr><td colspan="11" class="note">no in-universe reporters in this window</td></tr>');
   }
 
   if (d.log_summary) {

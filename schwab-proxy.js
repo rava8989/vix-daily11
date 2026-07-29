@@ -1112,7 +1112,13 @@ async function earnResolveJob(env, etNow, token) {
   const raw = await env.SIGNAL_KV.get(`earn_board_${prev}`);
   if (!raw) { await env.SIGNAL_KV.put(key, 'no-board', { expirationTtl: 86400 }); return; }
   const b = JSON.parse(raw);
-  const longs = (b.board || []).filter(r => r.verdict === 'LONG');
+  let longs = (b.board || []).filter(r => r.verdict === 'LONG');
+  // Override: earn_actual_longs_<date> pins what the 3:31 FINAL actually
+  // signaled — protects the log when a board is later rebuilt/restored.
+  try {
+    const ovRaw = await env.SIGNAL_KV.get(`earn_actual_longs_${prev}`);
+    if (ovRaw) { const ov = JSON.parse(ovRaw); longs = longs.filter(r => ov.includes(r.ticker)); }
+  } catch (_) {}
   if (!longs.length) { await env.SIGNAL_KV.put(key, 'no-longs', { expirationTtl: 86400 }); return; }
   await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
   try {
@@ -11828,6 +11834,11 @@ export default {
         // shows the current full-universe list, not a stale pre-fix snapshot.
         if (url.searchParams.get('store') === '1') {
           await env.SIGNAL_KV.put(`earn_board_${dateISO}`, JSON.stringify(b), { expirationTtl: 3 * 86400 });
+        }
+        const setl = url.searchParams.get('setlongs');
+        if (setl != null) {
+          await env.SIGNAL_KV.put(`earn_actual_longs_${dateISO}`,
+            JSON.stringify(setl ? setl.split(',').map(s => s.trim().toUpperCase()) : []), { expirationTtl: 3 * 86400 });
         }
         if (url.searchParams.get('send') === '1') {
           const mode = (await env.SIGNAL_KV.get('earnings_mode')) || 'paper';

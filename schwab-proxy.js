@@ -960,18 +960,26 @@ async function earnBuildBoard(env, token, boardISO, opts = {}) {
   } catch (e) { console.warn('[earn] extra parse:', e.message); }
   for (const ev of cal.events) {
     if (seen.has(ev.ticker)) continue;
+    // Universe-only board (owner 2026-07-29): outside-universe names are never
+    // scored, never listed, never mentioned — they can't qualify, so they are
+    // pure noise. This also retires the old 40-row cap that let a heavy AMC
+    // night push tomorrow's BMO universe names off the board entirely
+    // (2026-07-29: BUD/BMY/RACE cut while REIT filler held slots).
+    if (!uniset.has(ev.ticker)) continue;
     const isTonight = ev.report_date === boardISO && ev.when !== 'BMO';
     const isTomorrowAM = ev.report_date === nextISO && ev.when === 'BMO';
     if (!isTonight && !isTomorrowAM) continue;
     seen.add(ev.ticker);
     cands.push({ ticker: ev.ticker, when: ev.when === 'UNKNOWN' ? 'AMC?' : ev.when,
-                 report_date: ev.report_date, inUniverse: uniset.has(ev.ticker) });
+                 report_date: ev.report_date, inUniverse: true });
   }
   const vix = await earnVixOK(env, token);
   let park=null; try{ park=await earnParkingSleeve(env, token); }catch(e){ console.warn('[earn] parking:',e.message); }
   const seed = uniRaw;
   const board = [];
-  for (const cd of cands.slice(0, 40)) {                 // subrequest guard
+  // All cands are in-universe now; 100 is a pure safety ceiling (subrequest
+  // budget ~1000) that no real earnings night approaches — never a silent cut.
+  for (const cd of cands.slice(0, 100)) {
     const row = { ticker: cd.ticker, when: cd.when, g1: null, g2: null, g3: null, g4: vix.ok,
                   pw_ratio: null, deep_itm_usd: 0, runup_2w: null, ath_dist: null,
                   base_rate: null, base_n: 0, verdict: 'PASS', notes: [] };
@@ -10418,10 +10426,11 @@ function buildEarningsCardSvg(b) {
   }
 
   // STATES A/B/C — a board. LONGs first, then the rest; cap the visible rows.
+  // Full list, always (owner 2026-07-29): the card grows as tall as the night
+  // needs — no '+N more', every universe reporter visible.
   const ordered = [...scored].sort((a, b2) => (a.verdict === 'LONG' ? 0 : 1) - (b2.verdict === 'LONG' ? 0 : 1));
-  const MAX = 7;
-  const shown = ordered.slice(0, MAX);
-  const overflow = ordered.length - shown.length;
+  const shown = ordered;
+  const overflow = 0;
   const w = longs.length ? Math.round(100 / longs.length) : 0;
   const rowH = 46, step = 52, y0 = 54;
   let s = '';
@@ -10445,10 +10454,7 @@ function buildEarningsCardSvg(b) {
       s += `<circle cx="${cx}" cy="${top + 34}" r="4" fill="${_earnDotColor(g)}"/>`;
     });
   });
-  let footY = y0 + shown.length * step + (overflow > 0 ? 16 : 4);
-  if (overflow > 0) {
-    s += `<text x="${W / 2}" y="${y0 + shown.length * step + 12}" text-anchor="middle" font-family="${F}" font-size="11" fill="${C.mute}">+${overflow} more on the page</text>`;
-  }
+  let footY = y0 + shown.length * step + 4;
   let footBg, footTxt, msg;
   if (longs.length) {
     footBg = C.footGood; footTxt = C.footGoodTxt;

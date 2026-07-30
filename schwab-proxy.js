@@ -5500,7 +5500,7 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
           `⚪ **GXBF** — no trade today. 9:35 gamma gate: 0DTE book NEGATIVE (${bn}B). ` +
           `Historically these mornings ran −$369/day at 59% WR vs +$999/day on positive books. No order placed.`, dc.proxyUrl);
       } catch (_) {}
-      try { await fanoutSubscribers(env, `⚪ **GXBF** — no trade today (gamma gate: negative 0DTE book at 9:35, ${bn}B).`); } catch (_) {}
+      // (owner 2026-07-30: subscribers get YES signals only — no skip fanout)
       await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B`, { expirationTtl: 86400 });
       return { ...out, status: 'gamma-gate', totalGex: g0.totalGex };
     }
@@ -10686,7 +10686,16 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
     return d.trim();
   };
   const rows = [];
-  rows.push({ n: 'GXBF', det: strip(signal.gxbfText, 'GXBF') || '—', yes: !isNo(signal.gxbfText) });
+  {
+    // GXBF (owner 2026-07-30): a calendar-affirmative morning is POSSIBLE, not
+    // YES — the 9:35 gamma gate has the final word (negative 0DTE book = skip).
+    // Same P23 amber convention as BOBF/PNBF: affirmative-but-not-final.
+    const gxYes = !isNo(signal.gxbfText);
+    const gxDet = strip(signal.gxbfText, 'GXBF') || '—';
+    rows.push(gxYes
+      ? { n: 'GXBF', det: `${gxDet} · gamma gate decides 9:35`, yes: true, state: 'possible' }
+      : { n: 'GXBF', det: gxDet, yes: false });
+  }
   {
     const m8Active = !isNo(signal.m8bfText) && /^M8BF/i.test(String(signal.m8bfText || '').trim());
     let det;

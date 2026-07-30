@@ -5482,6 +5482,30 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
     }
   }
 
+  // ── 9:35 gamma-sign gate (owner order 2026-07-31): a NEGATIVE same-day
+  // 0DTE book at signal time = skip GXBF. Backtest (73 traded days): negative
+  // 9:35 book −$369/d 59% WR (lost 2024+2025) vs positive +$999/d 70%.
+  // FAIL-OPEN: a missing/stale snapshot must never eat a valid trade — gate
+  // only acts on a fresh reading. Interim rule; all-expiry decision pending.
+  try {
+    const g0Raw = await env.SIGNAL_KV.get('gex_current_0dte');
+    const g0 = g0Raw ? JSON.parse(g0Raw) : null;
+    const fresh = g0 && g0.timestamp && (Date.now() / 1000 - g0.timestamp) < 600;
+    if (fresh && typeof g0.totalGex === 'number' && g0.totalGex <= 0) {
+      const bn = (g0.totalGex / 1e9).toFixed(1);
+      try {
+        const dcRaw = await env.SIGNAL_KV.get('discord_config');
+        const dc = dcRaw ? JSON.parse(dcRaw) : null;
+        if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
+          `⚪ **GXBF** — no trade today. 9:35 gamma gate: 0DTE book NEGATIVE (${bn}B). ` +
+          `Historically these mornings ran −$369/day at 59% WR vs +$999/day on positive books. No order placed.`, dc.proxyUrl);
+      } catch (_) {}
+      try { await fanoutSubscribers(env, `⚪ **GXBF** — no trade today (gamma gate: negative 0DTE book at 9:35, ${bn}B).`); } catch (_) {}
+      await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B`, { expirationTtl: 86400 });
+      return { ...out, status: 'gamma-gate', totalGex: g0.totalGex };
+    }
+  } catch (e) { console.warn('[gxbf] gamma gate check failed (fail-open):', e.message); }
+
   if (gxbfPastWindow(etNow)) {
     // If a center was never computable all window, the live SPX chain was likely
     // unavailable (Schwab down → greeks/volume-less fallback) and GXBF can't build a
@@ -9551,6 +9575,30 @@ async function fetchAllDiscordSignalsForDate(token, channelId, dateISO) {
 // ── Scrape raw Discord signal CSV rows for ONE ET date ──
 // Shared by appendScrapedSignals (daily) and backfillScrapedSignals (recovery)
 // so the 38-column parsing lives in exactly one place.
+// Raw message texts from a channel for one date (12:00–22:00 UTC window).
+async function scrapeRawEarnMsgs(token, channelId, dateISO, withAttachments = false) {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const discordEpoch = 1420070400000n;
+  let after = ((BigInt(Date.UTC(y, m - 1, d, 12, 0, 0)) - discordEpoch) << 22n).toString();
+  const before = ((BigInt(Date.UTC(y, m - 1, d, 23, 0, 0)) - discordEpoch) << 22n).toString();
+  const out = [];
+  for (let page = 0; page < 5; page++) {
+    const resp = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages?limit=100&after=${after}&before=${before}`,
+      { headers: { 'Authorization': token, 'User-Agent': 'Mozilla/5.0' } });
+    if (!resp.ok) break;
+    const batch = await resp.json();
+    if (!Array.isArray(batch) || !batch.length) break;
+    batch.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+    for (const msg of batch) {
+      if (withAttachments) out.push({ t: String(msg.content || '').slice(0, 120), att: (msg.attachments || []).map(a => a.url) });
+      else out.push(String(msg.content || ''));
+    }
+    after = batch[batch.length - 1].id;
+    if (batch.length < 100) break;
+  }
+  return out;
+}
+
 async function scrapeRawRowsForDate(token, channelId, dateISO) {
   const [y, m, d] = dateISO.split('-').map(Number);
   const startMs = Date.UTC(y, m - 1, d, 12, 0, 0);
@@ -11848,6 +11896,68 @@ export default {
         return jsonResp(b);
       }
       const etNow = toET();
+            if (step === 'backfill-log') {
+        // One-off (2026-07-29): reconstruct July LONG results from the FINAL
+        // messages in the owner DM channel (boards expired from KV after 3d).
+        const from = url.searchParams.get('from'), to = url.searchParams.get('to');
+        const dc = JSON.parse(await env.SIGNAL_KV.get('discord_config') || '{}');
+        if (!dc.channelId || !env.DISCORD_USER_TOKEN) return jsonResp({ error: 'no discord config' }, 500, {});
+        const found = [], added = [];
+        const d0 = new Date(from + 'T12:00:00Z'), d1 = new Date(to + 'T12:00:00Z');
+        for (let d = new Date(d0); d <= d1; d.setUTCDate(d.getUTCDate() + 1)) {
+          const iso = d.toISOString().slice(0, 10);
+          const dow = d.getUTCDay();
+          if (dow === 0 || dow === 6) continue;
+          let msgs = [];
+          try { msgs = await scrapeRawEarnMsgs(env.DISCORD_USER_TOKEN, dc.channelId, iso, url.searchParams.get('raw') === '1'); } catch (_) {}
+          if (url.searchParams.get('raw') === '1') { found.push({ date: iso, msgs }); continue; }
+          for (const c of msgs) {
+            if (!c.includes('[EARNINGS] FINAL BOARD')) continue;
+            const act = c.match(/ACTION: buy at 3:45[^\n]*?—([^\n]*)/) || c.match(/ACTION: buy at 3:45[^\n]*?-([^\n]*)/);
+            const tks = act ? [...act[1].matchAll(/([A-Z]{1,5}) [0-9.]+%/g)].map(x => x[1]) : [];
+            found.push({ date: iso, longs: tks });
+          }
+        }
+        // manual override: &manual=YYYY-MM-DD:TICK|TICK,YYYY-MM-DD:TICK
+        const man = url.searchParams.get('manual');
+        if (man) {
+          found.length = 0;
+          for (const part of man.split(',')) {
+            const [dd, tks] = part.split(':');
+            found.push({ date: dd, longs: (tks || '').split('|').filter(Boolean) });
+          }
+        }
+        // price + append
+        const rows = [];
+        for (const f of found) {
+          for (const tk of f.longs) {
+            try {
+              const entryD = new Date(f.date + 'T12:00:00Z');
+              const j = await fetchSchwabJSON(
+                `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(tk)}` +
+                `&periodType=month&period=1&frequencyType=daily&frequency=1&startDate=${entryD.getTime() - 3 * 86400000}&endDate=${entryD.getTime() + 6 * 86400000}`, token, env);
+              const cs = (j?.candles || []).map(c => ({ d: isoDateET(toET(new Date(c.datetime))), o: c.open, c: c.close }));
+              const i = cs.findIndex(c => c.d === f.date);
+              if (i >= 0 && cs[i + 1]) {
+                rows.push({ date: f.date, ticker: tk, pw_ratio: null, deep_itm_usd: 0, runup_2w: null,
+                            base_rate: null, verdict: 'LONG', move_24h: +((cs[i + 1].o / cs[i].c - 1).toFixed(4)), pl_r: null, live: true });
+              }
+            } catch (e) { console.warn('[earn-backfill]', tk, e.message); }
+          }
+        }
+        if (rows.length) {
+          await githubUpsertResearchFile(env, 'data/earnings_play_today.json',
+            cur => {
+              cur.log = cur.log || [];
+              for (const row of rows) {
+                if (!cur.log.some(x => x.date === row.date && x.ticker === row.ticker)) { cur.log.unshift(row); added.push(`${row.date}:${row.ticker}`); }
+              }
+              cur.log.sort((a, b) => a.date < b.date ? 1 : -1);
+              return cur;
+            }, `auto: earnings live-log backfill ${from}..${to}`);
+        }
+        return jsonResp({ finals: found, priced: rows, added });
+      }
       if (step === 'morning') { await earnMorningJob(env, etNow, token); }
       else if (step === 'rescore') { await earnRescoreJob(env, etNow, token); }
       else if (step === 'final') { await earnFinalJob(env, etNow, token); }

@@ -1117,7 +1117,15 @@ async function earnResolveJob(env, etNow, token) {
   // signaled — protects the log when a board is later rebuilt/restored.
   try {
     const ovRaw = await env.SIGNAL_KV.get(`earn_actual_longs_${prev}`);
-    if (ovRaw) { const ov = JSON.parse(ovRaw); longs = longs.filter(r => ov.includes(r.ticker)); }
+    // The override is authoritative, not a filter: a seeded ticker must be
+    // resolved even when the stored board was rebuilt with a different verdict
+    // (FTAI 2026-07-29 was lost to the old intersect-only behavior).
+    if (ovRaw) {
+      const ov = JSON.parse(ovRaw);
+      longs = ov.map(t => longs.find(r => r.ticker === t) ||
+                          (b.board || []).find(r => r.ticker === t) ||
+                          { ticker: t, pw_ratio: null, deep_itm_usd: 0, runup_2w: null, base_rate: null });
+    }
   } catch (_) {}
   if (!longs.length) { await env.SIGNAL_KV.put(key, 'no-longs', { expirationTtl: 86400 }); return; }
   await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });

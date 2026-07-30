@@ -5513,16 +5513,64 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
     const fresh = g0 && g0.timestamp && (Date.now() / 1000 - g0.timestamp) < 600;
     if (fresh && typeof g0.totalGex === 'number' && g0.totalGex <= 0) {
       const bn = (g0.totalGex / 1e9).toFixed(1);
-      try {
-        const dcRaw = await env.SIGNAL_KV.get('discord_config');
-        const dc = dcRaw ? JSON.parse(dcRaw) : null;
-        if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
-          `⚪ **GXBF** — no trade today. 9:35 gamma gate: 0DTE book NEGATIVE (${bn}B). ` +
-          `Historically these mornings ran −$369/day at 59% WR vs +$999/day on positive books. No order placed.`, dc.proxyUrl);
-      } catch (_) {}
-      // (owner 2026-07-30: subscribers get YES signals only — no skip fanout)
+      // GXBF itself stands down (unchanged since the gate shipped 2026-07-30 AM).
       await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B`, { expirationTtl: 86400 });
-      return { ...out, status: 'gamma-gate', totalGex: g0.totalGex };
+
+      // ── GATED-DAY STRADDLE (owner ship order 2026-07-30 PM) ──
+      // A gated day converts to the standard open-strike straddle: strike =
+      // snap5(SPX open), limit ≤ $32, work until 13:30, hold to settlement.
+      // Once the trade is in straddle_open_trade KV the normal Straddle
+      // lifecycle (refresh → fill/expire → EOD stradPL) runs it untouched.
+      // Basis (12 historical gated days): straddle +$11,711, 5/7 fills,
+      // +$3,058 ex-crash-days, 2026 +$2,104 — the only tested expression
+      // positive without a crash. No day-of-week ban (tested recipe had none;
+      // the regular-Wednesday straddle rule applies to the DAILY signal only).
+      // `gated: true` exempts it from the /straddle-today phantom-#c cleaner
+      // (which otherwise deletes straddles opened on a non-strad-theme day).
+      let gatedStraddle = null;
+      try {
+        const exRaw = await env.SIGNAL_KV.get('straddle_open_trade');
+        const ex = exRaw ? JSON.parse(exRaw) : null;
+        if (ex && ex.openDate === todayISO) {
+          gatedStraddle = 'straddle-already-open';
+        } else {
+          const tok = await getAccessToken(env);
+          const gs = await openStraddleTrade(env, tok, etNow, { badge: 'GATED STRADDLE' }, preChain);
+          gs.gated = true;
+          await env.SIGNAL_KV.put('straddle_open_trade', JSON.stringify(gs));
+          await logEvent(env, 'info', 'gated-strad', `opened ${gs.status}`, {
+            strike: gs.strike, entryDebit: gs.entryDebit, maxDebit: gs.maxDebit, gate: `${bn}B` });
+          const _MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+          const tosD = `${+todayISO.slice(8, 10)} ${_MON[+todayISO.slice(5, 7) - 1]} ${todayISO.slice(2, 4)}`;
+          const lmt = (gs.status === 'filled' ? gs.entryDebit : gs.maxDebit).toFixed(2);
+          const msg = `**GATED STRADDLE**\n` +
+            `BUY +1 STRADDLE SPX 100 (Weeklys) ${tosD} ${gs.strike} CALL/PUT @${lmt} LMT\n` +
+            (gs.status === 'filled'
+              ? `Fillable now (mid $${gs.entryDebit.toFixed(2)}).`
+              : `Working limit $${gs.maxDebit.toFixed(2)} — cancel 13:30 ET if unfilled.`) +
+            ` Hold to settlement — no TP/SL.\n` +
+            `-# GXBF stood down: 9:35 0DTE gamma ${bn}B (negative book) — gated days trade the straddle instead.`;
+          try {
+            const dcRaw = await env.SIGNAL_KV.get('discord_config');
+            const dc = dcRaw ? JSON.parse(dcRaw) : null;
+            if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId, msg, dc.proxyUrl);
+          } catch (_) {}
+          try { await fanoutSubscribers(env, msg); } catch (_) {}
+          gatedStraddle = `${gs.status}:K${gs.strike}@${gs.entryDebit}`;
+        }
+      } catch (se) {
+        console.warn('[gxbf] gated straddle open failed:', se.message);
+        try { await logEvent(env, 'error', 'gated-strad', 'open failed', { msg: se.message, stack: (se.stack || '').slice(0, 300) }); } catch (_) {}
+        try {
+          const dcRaw = await env.SIGNAL_KV.get('discord_config');
+          const dc = dcRaw ? JSON.parse(dcRaw) : null;
+          if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
+            `⚠️ **GATED STRADDLE failed to open** (${se.message}) — GXBF gamma-gated at ${bn}B. ` +
+            `POST /straddle-recovery or place manually: open-strike straddle, limit $32, cancel 13:30.`, dc.proxyUrl);
+        } catch (_) {}
+        gatedStraddle = 'open-FAILED';
+      }
+      return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle };
     }
   } catch (e) { console.warn('[gxbf] gamma gate check failed (fail-open):', e.message); }
 
@@ -10720,7 +10768,7 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
     const gxYes = !isNo(signal.gxbfText);
     const gxDet = strip(signal.gxbfText, 'GXBF') || '—';
     rows.push(gxYes
-      ? { n: 'GXBF', det: `${gxDet} · gamma gate decides 9:35`, yes: true, state: 'possible' }
+      ? { n: 'GXBF', det: `${gxDet} · 9:35 gamma gate: pos = GXBF · neg = straddle`, yes: true, state: 'possible' }
       : { n: 'GXBF', det: gxDet, yes: false });
   }
   {
@@ -10986,7 +11034,7 @@ function computeM8bfContextNotes(history, etNow, todayVixOpen) {
 const SAMPLE_MORNING_CARD = {
   title: 'Σ3 — Today’s Plan', date: 'Mon · Jun 22 2026 · OPEX+1', vix: '16.67', vixSub: 'VIX up 0.27', vixSubUp: true, vixPrior: 'prev 16.40 cls · 16.32 opn',
   rows: [
-    { n: 'GXBF', det: 'fires 9:36 AM · gamma gate decides 9:35', yes: true, state: 'possible' }, { n: 'M8BF', det: 'window 11:00–11:30', yes: true },
+    { n: 'GXBF', det: 'fires 9:36 AM · 9:35 gamma gate: pos = GXBF · neg = straddle', yes: true, state: 'possible' }, { n: 'M8BF', det: 'window 11:00–11:30', yes: true },
     { n: 'Straddle', det: 'overnight VIX drop > 0.65', yes: false }, { n: 'BOBF', det: 'OPEX', yes: false },
     { n: 'Diagonal', det: 'COR1M 6.79 < 10', yes: false }, { n: 'Tail Hedge', det: '9:45 · 0DTE put Δ-0.10', yes: true },
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },
@@ -12681,7 +12729,9 @@ export default {
             const morningDataRaw = await env.SIGNAL_KV.get(`morning_signal_data_${todaySt}`);
             if (morningDataRaw) {
               const morningData = JSON.parse(morningDataRaw);
-              if (morningData.theme && morningData.theme !== 'strad') {
+              // A GATED STRADDLE (gated: true) legitimately opens on a
+              // theme==='gxbf' day — the 9:35 gamma gate converts the day.
+              if (morningData.theme && morningData.theme !== 'strad' && !open.gated) {
                 console.warn(`[strad-today] phantom #c: off-strategy open (morning theme=${morningData.theme}) — clearing`);
                 await env.SIGNAL_KV.delete('straddle_open_trade');
                 await logEvent(env, 'error', 'strad-phantom', `phantom #c cleared: off-strategy open`, { openTheme: 'strad', morningTheme: morningData.theme });

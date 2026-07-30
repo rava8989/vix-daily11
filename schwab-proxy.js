@@ -10959,7 +10959,7 @@ function computeM8bfContextNotes(history, etNow, todayVixOpen) {
 const SAMPLE_MORNING_CARD = {
   title: 'Σ3 — Today’s Plan', date: 'Mon · Jun 22 2026 · OPEX+1', vix: '16.67', vixSub: 'VIX up 0.27', vixSubUp: true, vixPrior: 'prev 16.40 cls · 16.32 opn',
   rows: [
-    { n: 'GXBF', det: 'fires 9:36 AM', yes: true }, { n: 'M8BF', det: 'window 11:00–11:30', yes: true },
+    { n: 'GXBF', det: 'fires 9:36 AM · gamma gate decides 9:35', yes: true, state: 'possible' }, { n: 'M8BF', det: 'window 11:00–11:30', yes: true },
     { n: 'Straddle', det: 'overnight VIX drop > 0.65', yes: false }, { n: 'BOBF', det: 'OPEX', yes: false },
     { n: 'Diagonal', det: 'COR1M 6.79 < 10', yes: false }, { n: 'Tail Hedge', det: '9:45 · 0DTE put Δ-0.10', yes: true },
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },

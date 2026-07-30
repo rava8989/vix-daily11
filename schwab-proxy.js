@@ -9610,10 +9610,16 @@ async function scrapeRawEarnMsgs(token, channelId, dateISO, withAttachments = fa
     const batch = await resp.json();
     if (!Array.isArray(batch) || !batch.length) break;
     batch.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+    // Discord ignores `before` when `after` is present (they're mutually
+    // exclusive), so enforce the day's end bound here or every scan reads
+    // forward across days and misattributes messages.
+    let past = false;
     for (const msg of batch) {
-      if (withAttachments) out.push({ t: String(msg.content || '').slice(0, 120), att: (msg.attachments || []).map(a => a.url) });
+      if (BigInt(msg.id) >= BigInt(before)) { past = true; break; }
+      if (withAttachments) out.push({ t: String(msg.content || '').slice(0, 300), att: (msg.attachments || []).map(a => a.url) });
       else out.push(String(msg.content || ''));
     }
+    if (past) break;
     after = batch[batch.length - 1].id;
     if (batch.length < 100) break;
   }
@@ -11994,7 +12000,7 @@ export default {
               return cur;
             }, `auto: earnings live-log backfill ${from}..${to}`);
         }
-        return jsonResp({ finals: found, priced: rows, added });
+        return jsonResp({ finals: found, priced: rows, added, scanChannel, viaWebhook: scanChannel !== dc.channelId });
       }
       if (step === 'morning') { await earnMorningJob(env, etNow, token); }
       else if (step === 'rescore') { await earnRescoreJob(env, etNow, token); }

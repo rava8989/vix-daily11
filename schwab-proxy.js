@@ -8452,6 +8452,7 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
       putGex: Math.round(s.putGex),
       cex: Math.round(s.netCex),   // per-strike charm exposure (time-decay hedging pressure)
       netGexVol: Math.round(s.netGexVol),   // per-strike flow GEX (signed volume — today's book)
+      oiC: s.callOI, oiP: s.putOI, // raw contracts — the stable positioning map (2026-07-30)
     })),
     events: [],
     updatedAt: new Date().toISOString(),

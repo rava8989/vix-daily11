@@ -267,6 +267,20 @@
     </div>
   </div>
 
+  <!-- Positions by Strike — net contracts (stable positioning map) -->
+  <div class="chart-section" id="posSection" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <h2 style="margin-bottom:0;"><span>Positions</span> by Strike — net contracts</h2>
+      <span id="posBanner" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);"></span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="posChart"></canvas>
+    </div>
+    <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
+      Net open interest per strike (calls − puts, raw contracts) — the stable positioning map. Unlike dollar GEX it does not breathe with spot: it moves only when someone actually trades a strike. Green = net call inventory, red = net put inventory. Use the $-GEX profile above for hedging <i>force</i>, this one for <i>who is parked where</i>.
+    </div>
+  </div>
+
   <!-- Spot-shifted Gamma Curve -->
   <div class="chart-section" id="gammaCurveSection" style="display:none;">
     <h2><span>Gamma</span> Curve — Dealer Gamma vs Simulated Spot</h2>
@@ -521,7 +535,7 @@ function GEX_ENDPOINT() {
 // Only the panels that are SPX-RULE or SPX-HISTORY specific stay locked. The
 // flow + charm-into-close panels now have a real SPY capture behind them
 // (gex_spy_flow_<date>), so they follow the book like everything else.
-const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection'];
+const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection'];
 function applySymbolChrome(data) {
   const served = (data && data.gexSymbol) || gexSym;
   const note = document.getElementById('gexSymNote');
@@ -1464,6 +1478,41 @@ function renderCharmTimeChart(data) {
 }
 
 // ── Gamma Level Map (vertical price ladder — pure inline SVG, clear+redraw each refresh, never throws) ──
+let posChartObj = null;
+function renderPositionsChart(data) {
+  const sec = document.getElementById('posSection');
+  if (!sec) return;
+  const strikes = (data.strikes || []).filter(s => s.oiC != null || s.oiP != null);
+  if (!strikes.length) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  const rows = strikes.map(s => ({ k: s.strike, v: (s.oiC || 0) - (s.oiP || 0) }));
+  document.getElementById('posBanner').textContent =
+    `net ${rows.reduce((a, r) => a + r.v, 0).toLocaleString()} contracts across ${rows.length} strikes`;
+  const ctx = document.getElementById('posChart').getContext('2d');
+  const labels = rows.map(r => r.k.toFixed(0));
+  const values = rows.map(r => r.v);
+  const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.75)');
+  const spxIdx = labels.findIndex(l => parseFloat(l) >= data.spot);
+  const annotations = {};
+  if (spxIdx >= 0) {
+    annotations.spxLine = { type: 'line', xMin: spxIdx - 0.5, xMax: spxIdx - 0.5,
+      borderColor: '#22d3ee', borderWidth: 2,
+      label: { display: true, content: 'SPX', position: 'start', backgroundColor: '#22d3ee',
+               color: '#0f172a', font: { size: 10, weight: 'bold' } } };
+  }
+  if (posChartObj) posChartObj.destroy();
+  posChartObj = new Chart(ctx, { type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, annotation: { annotations },
+        tooltip: { callbacks: { label: c => `net ${(+c.raw).toLocaleString()} contracts` } } },
+      scales: { x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9 },
+                     maxRotation: 0, autoSkip: true, maxTicksLimit: 18 } },
+                y: { ticks: { color: '#64748b', font: { size: 10 },
+                     callback: v => (v / 1000).toFixed(0) + 'k' },
+                     grid: { color: 'rgba(148,163,184,0.10)' } } } } });
+}
+
 function renderGammaLevelMap(data) {
   const section = document.getElementById('gammaLevelMapSection');
   const wrap = document.getElementById('gammaLevelMapWrap');
@@ -2169,7 +2218,7 @@ async function tryLoadCached() {
     renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
     renderCharmStrikeChart(data);
     renderCharmTimeChart(data);
-    renderGammaLevelMap(data);
+    renderGammaLevelMap(data); renderPositionsChart(data);
     renderTable(data);
     renderEvents(data);
     document.getElementById('mainContent').style.display = 'block';
@@ -2212,7 +2261,7 @@ async function fetchAndRender() {
                   renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
                   renderCharmStrikeChart(data);
                   renderCharmTimeChart(data);
-                  renderGammaLevelMap(data);
+                  renderGammaLevelMap(data); renderPositionsChart(data);
                   renderTable(data); renderEvents(data);
                   document.getElementById('mainContent').style.display = 'block';
     initGatePanels();
@@ -2271,7 +2320,7 @@ async function fetchAndRender() {
     renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
     renderCharmStrikeChart(data);
     renderCharmTimeChart(data);
-    renderGammaLevelMap(data);
+    renderGammaLevelMap(data); renderPositionsChart(data);
     renderTable(data);
     renderEvents(data);
 

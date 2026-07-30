@@ -1578,17 +1578,29 @@ async function githubUpsertResearchFile(env, path, mutate, message) {
     'User-Agent': 'schwab-proxy-worker/1.0',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+  // base64 must be UTF-8-safe both ways: files first written by Python carry
+  // \uXXXX escapes that parse to real unicode, and naive btoa() throws on it
+  // (this silently killed every worker write to earnings_play_today.json).
+  const b64encodeUtf8 = (s) => {
+    const u8 = new TextEncoder().encode(s);
+    let bin = '';
+    for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
   const getResp = await fetch(apiUrl, { headers: ghHeaders });
   let sha = null, cur = {};
   if (getResp.ok) {
     const meta = await getResp.json();
     sha = meta.sha;
-    try { cur = JSON.parse(atob((meta.content || '').replace(/\n/g, ''))); } catch (_) { cur = {}; }
+    try {
+      const bytes = Uint8Array.from(atob((meta.content || '').replace(/\n/g, '')), ch => ch.charCodeAt(0));
+      cur = JSON.parse(new TextDecoder().decode(bytes));
+    } catch (_) { cur = {}; }
   } else if (getResp.status !== 404) {
     throw new Error(`GH GET ${path} ${getResp.status}`);
   }
   const next = mutate(cur) || cur;
-  const body = { message: message || `auto: update ${path}`, content: btoa(JSON.stringify(next, null, 0)) };
+  const body = { message: message || `auto: update ${path}`, content: b64encodeUtf8(JSON.stringify(next, null, 0)) };
   if (sha) body.sha = sha;
   const putResp = await fetch(apiUrl, {
     method: 'PUT', headers: { ...ghHeaders, 'Content-Type': 'application/json' },
@@ -11948,7 +11960,7 @@ export default {
         // price + append
         const rows = [];
         for (const f of found) {
-          for (const tk of f.longs) {
+          for (const tk of (f.longs || [])) {   // raw=1 entries carry msgs, not longs
             try {
               const entryD = new Date(f.date + 'T12:00:00Z');
               const j = await fetchSchwabJSON(

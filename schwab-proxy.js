@@ -11932,6 +11932,14 @@ export default {
         const from = url.searchParams.get('from'), to = url.searchParams.get('to');
         const dc = JSON.parse(await env.SIGNAL_KV.get('discord_config') || '{}');
         if (!dc.channelId || !env.DISCORD_USER_TOKEN) return jsonResp({ error: 'no discord config' }, 500, {});
+        // FINALs reach subscribers via the earnings webhook — its channel is the
+        // one the user token can actually read (dc.channelId is the bot-DM, which
+        // the scrape can't see; that made every July probe come back empty).
+        let scanChannel = dc.channelId;
+        try {
+          const wh = await env.SIGNAL_KV.get('earnings_webhook_url');
+          if (wh) { const wj = await (await fetch(wh)).json(); if (wj && wj.channel_id) scanChannel = wj.channel_id; }
+        } catch (_) {}
         const found = [], added = [];
         const d0 = new Date(from + 'T12:00:00Z'), d1 = new Date(to + 'T12:00:00Z');
         for (let d = new Date(d0); d <= d1; d.setUTCDate(d.getUTCDate() + 1)) {
@@ -11939,7 +11947,7 @@ export default {
           const dow = d.getUTCDay();
           if (dow === 0 || dow === 6) continue;
           let msgs = [];
-          try { msgs = await scrapeRawEarnMsgs(env.DISCORD_USER_TOKEN, dc.channelId, iso, url.searchParams.get('raw') === '1'); } catch (_) {}
+          try { msgs = await scrapeRawEarnMsgs(env.DISCORD_USER_TOKEN, scanChannel, iso, url.searchParams.get('raw') === '1'); } catch (_) {}
           if (url.searchParams.get('raw') === '1') { found.push({ date: iso, msgs }); continue; }
           for (const c of msgs) {
             if (!c.includes('[EARNINGS] FINAL BOARD')) continue;

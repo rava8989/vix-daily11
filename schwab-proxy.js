@@ -10784,7 +10784,18 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
     } else { det = strip(signal.m8bfText, 'M8BF') || '—'; }
     rows.push({ n: 'M8BF', det, yes: m8Active });
   }
-  rows.push({ n: 'Straddle', det: strip(signal.stradText, 'Straddle') || '—', yes: !isNo(signal.stradText) });
+  {
+    // A GXBF-possible morning is a Straddle-possible morning too (owner
+    // 2026-07-30): the 9:35 gamma gate converts a gated day to the GATED
+    // STRADDLE, so the row can't read NO while that path is open.
+    const stradYes = !isNo(signal.stradText);
+    const gxPossible = rows.some(r => r.n === 'GXBF' && r.state === 'possible');
+    if (!stradYes && gxPossible) {
+      rows.push({ n: 'Straddle', det: 'if GXBF gamma-gates at 9:35', yes: true, state: 'possible' });
+    } else {
+      rows.push({ n: 'Straddle', det: strip(signal.stradText, 'Straddle') || '—', yes: stradYes });
+    }
+  }
   {
     // Owner rule (2026-07-15, re-broken 07-20): BOBF is never YES on the morning
     // card — its own later decision is final. Affirmative renders amber POSSIBLE.
@@ -11035,7 +11046,7 @@ const SAMPLE_MORNING_CARD = {
   title: 'Σ3 — Today’s Plan', date: 'Mon · Jun 22 2026 · OPEX+1', vix: '16.67', vixSub: 'VIX up 0.27', vixSubUp: true, vixPrior: 'prev 16.40 cls · 16.32 opn',
   rows: [
     { n: 'GXBF', det: 'fires 9:36 AM · gate: pos fly / neg strad', yes: true, state: 'possible' }, { n: 'M8BF', det: 'window 11:00–11:30', yes: true },
-    { n: 'Straddle', det: 'overnight VIX drop > 0.65', yes: false }, { n: 'BOBF', det: 'OPEX', yes: false },
+    { n: 'Straddle', det: 'if GXBF gamma-gates at 9:35', yes: true, state: 'possible' }, { n: 'BOBF', det: 'OPEX', yes: false },
     { n: 'Diagonal', det: 'COR1M 6.79 < 10', yes: false }, { n: 'Tail Hedge', det: '9:45 · 0DTE put Δ-0.10', yes: true },
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },
   ],

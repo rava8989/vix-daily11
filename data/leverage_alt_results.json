@@ -1,0 +1,34 @@
+{
+  "spy": {
+    "cagr": 1.1294,
+    "max_dd": -0.3039,
+    "dollars_10k": 1886377,
+    "worst_year": -0.0335,
+    "vol": 0.3869,
+    "years": 6.9,
+    "terminal_mult": 188.6
+  },
+  "sso": {
+    "cagr": 1.5111,
+    "max_dd": -0.3093,
+    "dollars_10k": 5916596,
+    "worst_year": -0.0003,
+    "vol": 0.4328,
+    "years": 6.9,
+    "terminal_mult": 591.7
+  },
+  "qld": {
+    "cagr": 1.8138,
+    "max_dd": -0.3293,
+    "dollars_10k": 13022490,
+    "worst_year": 0.0296,
+    "vol": 0.4845,
+    "years": 6.9,
+    "terminal_mult": 1302.2
+  },
+  "meta": {
+    "window": "2019-07-18 \u2192 2026-06-30",
+    "long_nights": 180,
+    "note": "reconstruction of the shipped 4-regime model; sleeve swap only affects parking days"
+  }
+}

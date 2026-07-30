@@ -5535,7 +5535,7 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
           gatedStraddle = 'straddle-already-open';
         } else {
           const tok = await getAccessToken(env);
-          const gs = await openStraddleTrade(env, tok, etNow, { badge: 'GATED STRADDLE' }, preChain);
+          const gs = await openStraddleTrade(env, tok, etNow, { badge: 'GAMMA STRADDLE' }, preChain);
           gs.gated = true;
           await env.SIGNAL_KV.put('straddle_open_trade', JSON.stringify(gs));
           await logEvent(env, 'info', 'gated-strad', `opened ${gs.status}`, {
@@ -5543,13 +5543,13 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
           const _MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
           const tosD = `${+todayISO.slice(8, 10)} ${_MON[+todayISO.slice(5, 7) - 1]} ${todayISO.slice(2, 4)}`;
           const lmt = (gs.status === 'filled' ? gs.entryDebit : gs.maxDebit).toFixed(2);
-          const msg = `**GATED STRADDLE**\n` +
+          const msg = `**GAMMA STRADDLE**\n` +
             `BUY +1 STRADDLE SPX 100 (Weeklys) ${tosD} ${gs.strike} CALL/PUT @${lmt} LMT\n` +
             (gs.status === 'filled'
               ? `Fillable now (mid $${gs.entryDebit.toFixed(2)}).`
               : `Working limit $${gs.maxDebit.toFixed(2)} — cancel 13:30 ET if unfilled.`) +
             ` Hold to settlement — no TP/SL.\n` +
-            `-# GXBF stood down: 9:35 0DTE gamma ${bn}B (negative book) — gated days trade the straddle instead.`;
+            `-# GXBF stood down: 9:35 0DTE gamma ${bn}B (negative book) — negative-gamma days trade the straddle instead.`;
           try {
             const dcRaw = await env.SIGNAL_KV.get('discord_config');
             const dc = dcRaw ? JSON.parse(dcRaw) : null;
@@ -5565,7 +5565,7 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
           const dcRaw = await env.SIGNAL_KV.get('discord_config');
           const dc = dcRaw ? JSON.parse(dcRaw) : null;
           if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
-            `⚠️ **GATED STRADDLE failed to open** (${se.message}) — GXBF gamma-gated at ${bn}B. ` +
+            `⚠️ **GAMMA STRADDLE failed to open** (${se.message}) — GXBF gamma-gated at ${bn}B. ` +
             `POST /straddle-recovery or place manually: open-strike straddle, limit $32, cancel 13:30.`, dc.proxyUrl);
         } catch (_) {}
         gatedStraddle = 'open-FAILED';
@@ -10786,7 +10786,7 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
   }
   {
     // A GXBF-possible morning is a Straddle-possible morning too (owner
-    // 2026-07-30): the 9:35 gamma gate converts a gated day to the GATED
+    // 2026-07-30): the 9:35 gamma gate converts the day to the GAMMA
     // STRADDLE, so the row can't read NO while that path is open.
     const stradYes = !isNo(signal.stradText);
     const gxPossible = rows.some(r => r.n === 'GXBF' && r.state === 'possible');
@@ -12740,7 +12740,7 @@ export default {
             const morningDataRaw = await env.SIGNAL_KV.get(`morning_signal_data_${todaySt}`);
             if (morningDataRaw) {
               const morningData = JSON.parse(morningDataRaw);
-              // A GATED STRADDLE (gated: true) legitimately opens on a
+              // A GAMMA STRADDLE (gated: true flag) legitimately opens on a
               // theme==='gxbf' day — the 9:35 gamma gate converts the day.
               if (morningData.theme && morningData.theme !== 'strad' && !open.gated) {
                 console.warn(`[strad-today] phantom #c: off-strategy open (morning theme=${morningData.theme}) — clearing`);

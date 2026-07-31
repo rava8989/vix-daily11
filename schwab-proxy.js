@@ -6755,14 +6755,15 @@ async function handleScheduledInner(env) {
               const msg = gr.totalGex > 0
                 ? `🟢 **Gamma regime: POSITIVE** — 0DTE book +${bn}B at ${tLbl}. Dealer hedging dampens moves — pin-friendly tape.`
                 : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at ${tLbl}. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
-              const dcRawG = await env.SIGNAL_KV.get('discord_config');
-              const dcG = dcRawG ? JSON.parse(dcRawG) : null;
+              // Σ3 SIGNALS CHANNEL (owner: same room as the trade signals,
+              // channel post only — no subscriber DMs). Disclaimer appended
+              // like every other public post.
               let grOk = false;
-              if (dcG && dcG.channelId) grOk = (await sendDiscordDM(env, dcG.channelId, msg, dcG.proxyUrl)).ok;
+              try { const grRes = await postSignalsChannel(env, msg + FANOUT_DISCLAIMER); grOk = !!(grRes && grRes.ok); } catch (e) { console.warn('[gamma-regime] channel post:', e.message); }
               // only terminal-mark on CONFIRMED delivery — a failed send leaves
               // the claim to expire (300s) so the next tick retries.
               if (grOk) await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
-              else console.warn('[gamma-regime] Discord send not ok — will retry');
+              else console.warn('[gamma-regime] channel send not ok — will retry');
             }
           }
         } catch (e) { console.warn('[gamma-regime]', e.message); }

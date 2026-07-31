@@ -1716,9 +1716,10 @@ function runBacktestBS(data, params) {
   const GATED_STRAD_PL = {
     '2024-11-01': -2765, '2024-12-19': 1632, '2025-01-03': 2087, '2025-02-27': 8653,
     '2026-01-21': 3442, '2026-03-11': -1610, '2026-06-08': 272,
-    // owner 2026-07-31: by-the-book restatement — borderline + OPEX+1 gated days
-    '2024-09-09': -60, '2024-12-23': 247, '2025-02-24': 1040,
-    '2025-06-20': 96, '2025-06-23': 2497, '2026-05-18': -2005 };
+    // owner 2026-07-31 by-the-book: borderline days + the one OPEX+1 gated day
+    // with overnight VIX down. VIX-up gated mornings take NO trade (no entry
+    // here): the conversion requires oNight > 0 — checked in the loop too.
+    '2024-09-09': -60, '2025-02-24': 1040, '2025-06-20': 96 };
   const gatedStrads = [];
 
   // `data` is the raw chronological array. Build a parallel ISO-date list +
@@ -1783,7 +1784,9 @@ function runBacktestBS(data, params) {
       // against all 12 live-known gated days). Missing g935 fails open.
       if (params.g935Gate && rec.g935 != null && rec.g935 <= 0) {
         skipped.gammaGated++;
-        if (GATED_STRAD_PL[rec.date] != null)
+        // Conversion needs overnight VIX DOWN (owner 2026-07-31): trigger days
+        // always qualify; VIX-up OPEX+1 gated mornings take no trade.
+        if (drop != null && drop > 0 && GATED_STRAD_PL[rec.date] != null)
           gatedStrads.push({ date: rec.date, pl: GATED_STRAD_PL[rec.date] });
         continue;
       }

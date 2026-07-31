@@ -150,7 +150,7 @@
         <li>Last trading day of month (EOM)</li>
         <li>OPEX+1 where VIX gapped up ≥ 2% overnight</li>
         <li>No &gt;0.65 VIX drop and not OPEX+1 (trigger just never fires)</li>
-        <li><b>Gamma-gated day → GATED STRADDLE instead</b> (since 2026-07-30): when the 9:35 book is negative, the fly stands down and the day trades an open-strike straddle — limit ≤ $32, working until 1:30 PM (cancel if unfilled), held to settlement, no TP/SL. Basis: 12 historical gated days, +$11,711, 5/7 fills, positive ex-crash-days and in 2026</li>
+        <li><b>Gamma-gated day → GATED STRADDLE instead</b> (since 2026-07-30): when the 9:35 book is negative, the fly stands down and — <b>if overnight VIX is down</b> — the day trades an open-strike straddle: limit ≤ $32, working until 1:30 PM (cancel if unfilled), held to settlement, no TP/SL. A VIX-up gated morning (possible only on OPEX+1) takes <b>no trade at all</b> (owner 2026-07-31). Basis: 12 historical gated trigger days, +$11,711, 5/7 fills, positive ex-crash-days and in 2026</li>
       </ul></div>
     </div>
     <div class="bet"><h3>THE BET</h3><p>SPX drifts toward and pins the dealer-gamma strike K by the close → max payoff at exactly K. A clean trend day away from the pin (closes outside K ± W) → you lose the net debit. Risk capped at ≤ W/2 per contract (~$5,000 max).</p></div>

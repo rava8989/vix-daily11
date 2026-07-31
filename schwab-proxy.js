@@ -5527,6 +5527,28 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
       // the regular-Wednesday straddle rule applies to the DAILY signal only).
       // `gated: true` exempts it from the /straddle-today phantom-#c cleaner
       // (which otherwise deletes straddles opened on a non-strad-theme day).
+      // Direction check (owner 2026-07-31): the straddle conversion requires
+      // overnight VIX DOWN. Trigger days qualify by definition (drop > 0.65 IS
+      // the trigger); a pure OPEX+1 gated morning with VIX flat/up takes NO
+      // trade — regular logic, and the regular straddle needs a drop too.
+      let oNight = (signal && typeof signal.oNight === 'number' && isFinite(signal.oNight)) ? signal.oNight : null;
+      if (oNight == null) {
+        try {
+          const msdRawG = await env.SIGNAL_KV.get(`morning_signal_data_${todayISO}`);
+          const msdG = msdRawG ? JSON.parse(msdRawG) : null;
+          if (msdG && typeof msdG.oNight === 'number' && isFinite(msdG.oNight)) oNight = msdG.oNight;
+        } catch (_) {}
+      }
+      if (!(oNight != null && oNight > 0)) {
+        const why = oNight == null ? 'no VIX reading' : `VIX ${oNight < 0 ? 'up' : 'flat'} overnight (${(-oNight).toFixed(2)})`;
+        try {
+          const dcRaw = await env.SIGNAL_KV.get('discord_config');
+          const dc = dcRaw ? JSON.parse(dcRaw) : null;
+          if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
+            `⚪ **GXBF** — gamma-gated (${bn}B) on a ${why} morning. No straddle conversion (regular logic: overnight VIX must be down). No trade today.`, dc.proxyUrl);
+        } catch (_) {}
+        return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle: `no-conversion:${why}` };
+      }
       let gatedStraddle = null;
       try {
         const exRaw = await env.SIGNAL_KV.get('straddle_open_trade');

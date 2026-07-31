@@ -37,6 +37,13 @@
     .gex-data{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
     .total-gex{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--text);}
     .total-gex .label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);display:block;}
+    /* Headline Total GEX (owner 2026-07-31): centered between the price and
+       the stat tiles via flex auto-margins, big, green/red by sign — this
+       exact number is what the 9:35 gate reads. */
+    #totalGex{margin-left:auto;margin-right:auto;font-size:28px;line-height:1.05;text-align:center;}
+    #totalGex .label{text-align:center;}
+    #totalGex.pos{color:var(--green);}
+    #totalGex.neg{color:var(--red);}
     .stat-tile.pos > .val{color:var(--green);}
     .stat-tile.neg > .val{color:var(--red);}
     .stat-tile.neutral > .val{color:var(--text2);}
@@ -142,6 +149,7 @@
       .gex-table th,.gex-table td{padding:6px 6px;}
       .gex-data{gap:8px;}
       .total-gex{font-size:12px;}
+      #totalGex{position:static;transform:none;font-size:20px;}
     }
     @media(max-width:480px){
       .spx-price{font-size:18px;}
@@ -180,13 +188,13 @@
   <div class="gex-data" id="gexDataBar">
     <span class="spx-price" id="spxPrice">--</span>
     <span class="regime-badge pin" id="regimeBadge" style="display:none;">--</span>
+    <div class="total-gex" id="totalGex"><span class="label">Total GEX</span>--</div>
     <div class="total-gex stat-tile neutral" id="vannaTile" title="Vanna: how dealer delta shifts as implied vol changes.">
       <span class="label">Vanna</span><span class="val">--</span><span class="tag" id="vannaTag"></span>
     </div>
     <div class="total-gex stat-tile neutral" id="charmTile" title="Charm (0DTE): how much dealer delta drifts per day as time passes toward expiry ($/day) — a delta-drift measure, not gamma decay.">
       <span class="label">Charm</span><span class="val">--</span><span class="tag" id="charmTag"></span>
     </div>
-    <div class="total-gex" id="totalGex"><span class="label">Total GEX</span>--</div>
     <span class="pct-change" id="pctChange1m"></span>
     <span class="pct-change" id="pctChange5m"></span>
     <span class="market-badge closed" id="marketBadge">Market Closed</span>
@@ -683,7 +691,12 @@ function renderTopBar(data) {
   regimeEl.className = 'regime-badge ' + (regime === 'PIN' ? 'pin' : 'breakout');
   regimeEl.style.display = regime !== '--' ? 'inline-block' : 'none';
 
-  document.getElementById('totalGex').innerHTML = '<span class="label">Total GEX</span>' + (totalGex != null ? fmtGex(totalGex) : '--');
+  {
+    const tgEl = document.getElementById('totalGex');
+    tgEl.innerHTML = '<span class="label">Total GEX</span>' + (totalGex != null ? fmtGex(totalGex) : '--');
+    tgEl.classList.toggle('pos', totalGex != null && totalGex > 0);
+    tgEl.classList.toggle('neg', totalGex != null && totalGex <= 0);
+  }
 
   // Vanna / Charm stat tiles (graceful-degrade to '--' if absent)
   function setStatTile(tileId, tagId, value, posTag, negTag, tipPos, tipNeg) {

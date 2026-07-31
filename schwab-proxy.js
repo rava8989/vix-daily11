@@ -6757,8 +6757,12 @@ async function handleScheduledInner(env) {
                 : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at ${tLbl}. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
               const dcRawG = await env.SIGNAL_KV.get('discord_config');
               const dcG = dcRawG ? JSON.parse(dcRawG) : null;
-              if (dcG && dcG.channelId) await sendDiscordDM(env, dcG.channelId, msg, dcG.proxyUrl);
-              await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
+              let grOk = false;
+              if (dcG && dcG.channelId) grOk = (await sendDiscordDM(env, dcG.channelId, msg, dcG.proxyUrl)).ok;
+              // only terminal-mark on CONFIRMED delivery — a failed send leaves
+              // the claim to expire (300s) so the next tick retries.
+              if (grOk) await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
+              else console.warn('[gamma-regime] Discord send not ok — will retry');
             }
           }
         } catch (e) { console.warn('[gamma-regime]', e.message); }

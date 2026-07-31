@@ -1167,6 +1167,70 @@ async function earnResolveJob(env, etNow, token) {
   }
 }
 
+// 9:40 "morning after" card (owner 2026-07-31): re-send yesterday's FINAL
+// board to the earnings channel with an added close→open % per ticker —
+// observation only, the strategy itself is unchanged. Claim-gated (P22).
+async function earnAfterJob(env, etNow, token) {
+  const h = etNow.getHours(), m = etNow.getMinutes();
+  if (!(h === 9 && m >= 40 && m <= 55)) return;
+  const iso = isoDateET(etNow);
+  const key = `earn_after_${iso}`;
+  const done = await env.SIGNAL_KV.get(key);
+  if (done && !done.startsWith('claim:')) return;
+  let prev = null;
+  for (let back = 1; back <= 7 && !prev; back++) {
+    const d = toET(new Date(Date.now() - back * 86400000));
+    if (d.getDay() === 0 || d.getDay() === 6 || isHol(d)) continue;
+    prev = isoDateET(d);
+  }
+  if (!prev) return;
+  const raw = await env.SIGNAL_KV.get(`earn_board_${prev}`);
+  if (!raw) { await env.SIGNAL_KV.put(key, 'no-board', { expirationTtl: 86400 }); return; }
+  const b = JSON.parse(raw);
+  const scored = (b.board || []).filter(r => !(r.notes || []).some(n => String(n).startsWith('outside universe')));
+  if (!scored.length) { await env.SIGNAL_KV.put(key, 'no-rows', { expirationTtl: 86400 }); return; }
+  if (!(await claimSendSlot(env, key))) return;
+  try {
+    for (const r of scored) {
+      try {
+        const end = Date.now(), start = end - 6 * 86400000;
+        const j = await fetchSchwabJSON(
+          `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(r.ticker)}` +
+          `&periodType=month&period=1&frequencyType=daily&frequency=1&startDate=${start}&endDate=${end}`, token, env);
+        const cs = (j?.candles || []).map(c => ({ d: isoDateET(toET(new Date(c.datetime))), o: c.open, c: c.close }));
+        const eC = cs.find(c => c.d === prev)?.c;
+        const xO = cs.find(c => c.d === iso)?.o;
+        if (eC > 0 && xO > 0) r.afterPct = xO / eC - 1;
+      } catch (e) { console.warn('[earn-after]', r.ticker, e.message); }
+    }
+    b.after = true; b.final = false; b.date = prev;
+    let png = null;
+    try { png = await renderEarningsCardPng(b); } catch (e) { console.warn('[earn-after] render:', e.message); }
+    const textFallback = `🌙 **[EARNINGS] morning after — ${prev}**\n` +
+      scored.map(r => `${r.ticker} ${r.afterPct != null ? (r.afterPct >= 0 ? '+' : '') + (r.afterPct * 100).toFixed(1) + '%' : '—'}`).join(' · ') +
+      `\n_close → next open · observation only_`;
+    const wh = await env.SIGNAL_KV.get('earnings_webhook_url');
+    if (wh) {
+      let ok = false;
+      if (png) ok = await postWebhookImage(wh, png, EARN_CARD_FOOTER, 'earnings-after.png');
+      if (!ok) { try { await fetch(wh, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textFallback.slice(0, 1900) }) }); } catch (_) {} }
+    }
+    try {
+      const dcRaw = await env.SIGNAL_KV.get('discord_config');
+      const dc = dcRaw ? JSON.parse(dcRaw) : null;
+      if (dc && dc.channelId) {
+        let ok = false;
+        if (png) ok = (await sendDiscordImage(env, dc.channelId, png, dc.proxyUrl, 'earnings-after.png', EARN_CARD_FOOTER)).ok;
+        if (!ok) await sendDiscordDM(env, dc.channelId, textFallback.slice(0, 2000), dc.proxyUrl);
+      }
+    } catch (_) {}
+    await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
+    await logEvent(env, 'info', 'earn-after', `morning-after card sent for ${prev}`, { rows: scored.length });
+  } catch (e) {
+    console.warn('[earn-after] failed:', e.message);
+  }
+}
+
 async function earnRescoreJob(env, etNow, token) {
   const iso = isoDateET(etNow);
   const m = etNow.getMinutes(), h = etNow.getHours();
@@ -6680,6 +6744,7 @@ async function handleScheduledInner(env) {
       if (earnToken) {
         try { await earnMorningJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-morning]', e.message); }
         try { await earnResolveJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-resolve]', e.message); }
+        try { await earnAfterJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-after]', e.message); }
         try { await earnExitJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-exit]', e.message); }
         try { await earnRescoreJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-rescore]', e.message); }
         try { await earnFinalJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-final]', e.message); }
@@ -10652,8 +10717,9 @@ function buildEarningsCardSvg(b) {
     h += `<text x="${W - P}" y="34" text-anchor="end" font-family="${F}" font-size="12" fill="${C.mute}">${_cardEsc(_earnCardDate(b.date))}</text>`;
     // Stage label so a morning PREVIEW is never mistaken for the final call
     // (user 2026-07-13: banks all "pass" at 9am — that's provisional, 3:30 decides).
-    const stageTxt = b.final ? 'FINAL board — this is the call' : 'morning preview · final board decides at 3:30pm ET';
-    h += `<text x="${P}" y="49" font-family="${F}" font-size="10.5" fill="${b.final ? '#4ade80' : C.mute}">${stageTxt}</text>`;
+    const stageTxt = b.after ? 'morning after — how the board opened (close → next open)'
+                   : b.final ? 'FINAL board — this is the call' : 'morning preview · final board decides at 3:30pm ET';
+    h += `<text x="${P}" y="49" font-family="${F}" font-size="10.5" fill="${b.after ? C.accent : b.final ? '#4ade80' : C.mute}">${stageTxt}</text>`;
     return h;
   };
   const footBar = (y, bg, txtColor, msg) => {
@@ -10709,8 +10775,16 @@ function buildEarningsCardSvg(b) {
     s += `<clipPath id="er${i}"><rect x="${P + 12}" y="${top}" width="${clipW}" height="${rowH}"/></clipPath>`;
     s += `<text x="${P + 14}" y="${top + 20}" clip-path="url(#er${i})" font-family="${F}" font-size="15"><tspan font-weight="600" fill="${C.text}">${_cardEsc(r.ticker)}</tspan><tspan font-size="11" fill="${C.mute}">  ${_cardEsc(r.when || '')}</tspan></text>`;
     s += `<text x="${P + 14}" y="${top + 37}" clip-path="url(#er${i})" font-family="${F}" font-size="12" fill="${C.sub}">${_cardEsc(_earnReason(r))}</text>`;
-    // Right: weight% for a LONG, else the verdict word.
-    if (isLong) s += `<text x="${W - P - 14}" y="${top + 22}" text-anchor="end" font-family="${F}" font-size="17" font-weight="600" fill="${C.green}">${w}%</text>`;
+    // Right: weight% for a LONG, else the verdict word. In after-mode the
+    // overnight result takes the prime spot and the verdict shifts left.
+    if (b.after) {
+      const ap = r.afterPct;
+      const apTxt = ap == null ? '—' : `${ap >= 0 ? '+' : ''}${(ap * 100).toFixed(1)}%`;
+      const apCol = ap == null ? C.mute : ap >= 0 ? C.green : C.red;
+      s += `<text x="${W - P - 14}" y="${top + 22}" text-anchor="end" font-family="${F}" font-size="16" font-weight="600" fill="${apCol}">${apTxt}</text>`;
+      const vTxt = isLong ? `LONG ${w}%` : (r.verdict === 'CROWDED' ? 'crowded' : 'pass');
+      s += `<text x="${W - P - 76}" y="${top + 22}" text-anchor="end" font-family="${F}" font-size="11" fill="${isLong ? C.green : C.red}">${vTxt}</text>`;
+    } else if (isLong) s += `<text x="${W - P - 14}" y="${top + 22}" text-anchor="end" font-family="${F}" font-size="17" font-weight="600" fill="${C.green}">${w}%</text>`;
     else s += `<text x="${W - P - 14}" y="${top + 22}" text-anchor="end" font-family="${F}" font-size="12" fill="${C.red}">${r.verdict === 'CROWDED' ? 'crowded' : 'pass'}</text>`;
     // 4 gate dots, right-aligned, ending at W-P-14.
     const dots = [r.g1, r.g2, r.g3, r.g4];
@@ -10721,7 +10795,15 @@ function buildEarningsCardSvg(b) {
   });
   let footY = y0 + shown.length * step + 4;
   let footBg, footTxt, msg;
-  if (longs.length) {
+  if (b.after) {
+    const withPct = shown.filter(r => r.afterPct != null);
+    const avg = withPct.length ? withPct.reduce((a, r) => a + r.afterPct, 0) / withPct.length : null;
+    const longRes = longs.map(l => shown.find(r => r.ticker === l.ticker)).filter(r => r && r.afterPct != null);
+    footBg = C.foot; footTxt = C.footTxt;
+    msg = longRes.length
+      ? `traded: ${longRes.map(r => `${r.ticker} ${r.afterPct >= 0 ? '+' : ''}${(r.afterPct * 100).toFixed(1)}%`).join(' · ')}`
+      : `no positions were taken — observation only${avg != null ? ` · board avg ${avg >= 0 ? '+' : ''}${(avg * 100).toFixed(1)}%` : ''}`;
+  } else if (longs.length) {
     footBg = C.footGood; footTxt = C.footGoodTxt;
     msg = `buy 3:45–3:55 close · ${longs.map(l => `${l.ticker} ${w}%`).join(' · ')} → sell at open`;
   } else {
@@ -12186,6 +12268,14 @@ export default {
         b = raw ? JSON.parse(raw) : SAMPLES.C;
       }
       if (!b) return jsonResp({ ok: false, error: 'no board for that date' }, 404, {});
+      // after=1: preview the 9:40 "morning after" variant. With a sample board,
+      // fake results are injected so the layout can be eyeballed.
+      if (url.searchParams.get('after') === '1') {
+        b = JSON.parse(JSON.stringify(b));
+        b.after = true; b.final = false;
+        const fake = [0.062, -0.031, 0.008, -0.113, 0.024, 0.001, -0.007, 0.157, -0.049, 0.012];
+        (b.board || []).forEach((r, i) => { if (r.afterPct == null) r.afterPct = fake[i % fake.length]; });
+      }
       if (url.searchParams.get('png') === '1') {
         try {
           const png = await renderEarningsCardPng(b);

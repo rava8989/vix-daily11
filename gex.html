@@ -586,7 +586,11 @@ function mbChip(el, g, at) {
 }
 async function refreshMorningBook() {
   const sec = document.getElementById('morningBookSection');
-  if (!sec || sec.style.display === 'none') return;
+  if (!sec) return;
+  // Self-show on the SPX book (the section ships display:none; nothing else
+  // un-hides it — the panel was invisible on launch day because of this).
+  if (gexSym === 'spx') sec.style.display = 'block';
+  if (sec.style.display === 'none') return;
   try {
     const j = await (await fetch(MB_URL, { cache: 'no-store' })).json();
     const g935 = j.g935 ? j.g935.g : null, g1000 = j.g1000 ? j.g1000.g : null;

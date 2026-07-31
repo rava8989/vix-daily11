@@ -40,7 +40,8 @@
     /* Headline Total GEX (owner 2026-07-31): centered between the price and
        the stat tiles via flex auto-margins, big, green/red by sign — this
        exact number is what the 9:35 gate reads. */
-    #totalGex{margin-left:auto;margin-right:auto;font-size:28px;line-height:1.05;text-align:center;}
+    #totalGex{margin-left:auto;font-size:28px;line-height:1.05;text-align:center;}
+    #vannaTile{margin-left:auto;}
     #totalGex .label{text-align:center;}
     #totalGex.pos{color:var(--green);}
     #totalGex.neg{color:var(--red);}
@@ -186,9 +187,9 @@
   </nav>
   <div class="header-spacer"></div>
   <div class="gex-data" id="gexDataBar">
+    <div class="total-gex" id="totalGex"><span class="label">Total GEX</span>--</div>
     <span class="spx-price" id="spxPrice">--</span>
     <span class="regime-badge pin" id="regimeBadge" style="display:none;">--</span>
-    <div class="total-gex" id="totalGex"><span class="label">Total GEX</span>--</div>
     <div class="total-gex stat-tile neutral" id="vannaTile" title="Vanna: how dealer delta shifts as implied vol changes.">
       <span class="label">Vanna</span><span class="val">--</span><span class="tag" id="vannaTag"></span>
     </div>

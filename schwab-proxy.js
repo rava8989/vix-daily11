@@ -6749,12 +6749,26 @@ async function handleScheduledInner(env) {
             const gr = grRaw ? JSON.parse(grRaw) : null;
             const grFresh = gr && gr.timestamp && (Date.now() / 1000 - gr.timestamp) < 600 && typeof gr.totalGex === 'number';
             const grKey = `gamma_regime_${isoDateET(etNow)}`;
+            // Persist the day's canonical 9:35 reading for the 10:00 flip
+            // check (gex_current_0dte is overwritten every minute).
+            if (grFresh && !(await env.SIGNAL_KV.get(`g935_snap_${isoDateET(etNow)}`))) {
+              await env.SIGNAL_KV.put(`g935_snap_${isoDateET(etNow)}`,
+                JSON.stringify({ g: gr.totalGex, at: `${_gh}:${String(_gm).padStart(2, '0')}` }), { expirationTtl: 86400 });
+            }
             if (grFresh && await claimSendSlot(env, grKey)) {
               const bn = (gr.totalGex / 1e9).toFixed(1);
               const tLbl = `${_gh}:${String(_gm).padStart(2, '0')}`;
-              const msg = gr.totalGex > 0
+              let msg = gr.totalGex > 0
                 ? `🟢 **Gamma regime: POSITIVE** — 0DTE book +${bn}B at ${tLbl}. Dealer hedging dampens moves — pin-friendly tape.`
                 : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at ${tLbl}. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
+              // Fed rider (owner 2026-07-31): the decision, not the odds, is the risk.
+              try {
+                if (fedSch.includes(todayLong(etNow))) {
+                  msg += gr.totalGex > 0
+                    ? ` FOMC day — the 2:00 PM decision can break any morning regime.`
+                    : ` FOMC day — a negative book has never produced a good pin day on a Fed decision.`;
+                }
+              } catch (_) {}
               // Σ3 SIGNALS CHANNEL (owner: same room as the trade signals,
               // channel post only — no subscriber DMs). Disclaimer appended
               // like every other public post.
@@ -6767,6 +6781,33 @@ async function handleScheduledInner(env) {
             }
           }
         } catch (e) { console.warn('[gamma-regime]', e.message); }
+        // 10:00 BOOK-FLIP note (owner 2026-07-31 'do 1'): when the book's sign
+        // at ~10:00 differs from the 9:35 snap, post ONE line to the signals
+        // channel — flip days historically ran ~¼-strength at coin-flip WR for
+        // the whole board (portfolio +$349-394/d vs +$1,318-1,753 stable, n=48).
+        // Posts ONLY on a flip; stable days stay silent. Claim-gated, delivery-
+        // confirmed, window 10:00–10:25.
+        try {
+          const _fh = etNow.getHours(), _fm = etNow.getMinutes();
+          if (_fh === 10 && _fm >= 0 && _fm <= 25) {
+            const snapRaw = await env.SIGNAL_KV.get(`g935_snap_${isoDateET(etNow)}`);
+            const snap = snapRaw ? JSON.parse(snapRaw) : null;
+            const curRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+            const cur = curRaw ? JSON.parse(curRaw) : null;
+            const curFresh = cur && cur.timestamp && (Date.now() / 1000 - cur.timestamp) < 600 && typeof cur.totalGex === 'number';
+            if (snap && typeof snap.g === 'number' && curFresh && (snap.g > 0) !== (cur.totalGex > 0)) {
+              const fKey = `book_flip_${isoDateET(etNow)}`;
+              if (await claimSendSlot(env, fKey)) {
+                const b0 = (snap.g / 1e9).toFixed(1), b1 = (cur.totalGex / 1e9).toFixed(1);
+                const dir = cur.totalGex > 0 ? `NEGATIVE (${b0}B) → POSITIVE (+${b1}B)` : `POSITIVE (+${b0}B) → NEGATIVE (${b1}B)`;
+                const fMsg = `⚠️ **Book flipped** — ${dir} since ${snap.at || '9:35'}. Unstable-gamma days have historically run ~¼-strength at coin-flip odds across the whole board. Size easy.`;
+                let fOk = false;
+                try { const fr = await postSignalsChannel(env, fMsg + FANOUT_DISCLAIMER); fOk = !!(fr && fr.ok); } catch (e2) { console.warn('[book-flip] post:', e2.message); }
+                if (fOk) await env.SIGNAL_KV.put(fKey, 'sent', { expirationTtl: 86400 });
+              }
+            }
+          }
+        } catch (e) { console.warn('[book-flip]', e.message); }
 
         try { await earnAfterJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-after]', e.message); }
         try { await earnExitJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-exit]', e.message); }

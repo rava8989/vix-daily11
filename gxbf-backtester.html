@@ -1715,7 +1715,10 @@ function runBacktestBS(data, params) {
   // Days gated without an entry here had no ≤$32 fill or no chain data.
   const GATED_STRAD_PL = {
     '2024-11-01': -2765, '2024-12-19': 1632, '2025-01-03': 2087, '2025-02-27': 8653,
-    '2026-01-21': 3442, '2026-03-11': -1610, '2026-06-08': 272 };
+    '2026-01-21': 3442, '2026-03-11': -1610, '2026-06-08': 272,
+    // owner 2026-07-31: by-the-book restatement — borderline + OPEX+1 gated days
+    '2024-09-09': -60, '2024-12-23': 247, '2025-02-24': 1040,
+    '2025-06-20': 96, '2025-06-23': 2497, '2026-05-18': -2005 };
   const gatedStrads = [];
 
   // `data` is the raw chronological array. Build a parallel ISO-date list +

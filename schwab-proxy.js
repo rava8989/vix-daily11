@@ -6736,6 +6736,33 @@ async function handleScheduledInner(env) {
       if (earnToken) {
         try { await earnMorningJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-morning]', e.message); }
         try { await earnResolveJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-resolve]', e.message); }
+        // 9:35 gamma-regime post to the Sigma 3 CHANNEL (owner 2026-07-31).
+        // Lives HERE because this section provably runs on every market tick —
+        // the first placement (inside the once-at-9:31 morning function) never
+        // executed at 9:35 and 2026-07-31's post was missed. Window runs to
+        // 10:30 so a late tick still posts; the message carries the actual
+        // read time. Claim-gated (P22), freshness checked before claiming.
+        try {
+          const _gh = etNow.getHours(), _gm = etNow.getMinutes();
+          if ((_gh === 9 && _gm >= 35) || (_gh === 10 && _gm <= 30)) {
+            const grRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+            const gr = grRaw ? JSON.parse(grRaw) : null;
+            const grFresh = gr && gr.timestamp && (Date.now() / 1000 - gr.timestamp) < 600 && typeof gr.totalGex === 'number';
+            const grKey = `gamma_regime_${isoDateET(etNow)}`;
+            if (grFresh && await claimSendSlot(env, grKey)) {
+              const bn = (gr.totalGex / 1e9).toFixed(1);
+              const tLbl = `${_gh}:${String(_gm).padStart(2, '0')}`;
+              const msg = gr.totalGex > 0
+                ? `🟢 **Gamma regime: POSITIVE** — 0DTE book +${bn}B at ${tLbl}. Dealer hedging dampens moves — pin-friendly tape.`
+                : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at ${tLbl}. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
+              const dcRawG = await env.SIGNAL_KV.get('discord_config');
+              const dcG = dcRawG ? JSON.parse(dcRawG) : null;
+              if (dcG && dcG.channelId) await sendDiscordDM(env, dcG.channelId, msg, dcG.proxyUrl);
+              await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
+            }
+          }
+        } catch (e) { console.warn('[gamma-regime]', e.message); }
+
         try { await earnAfterJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-after]', e.message); }
         try { await earnExitJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-exit]', e.message); }
         try { await earnRescoreJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-rescore]', e.message); }
@@ -8164,32 +8191,6 @@ async function handleScheduledInner(env) {
         recordedAt: new Date().toISOString(),
       }), { expirationTtl: 86400 });
     } catch (_) { /* non-critical */ }
-  }
-
-  // 9:35 gamma-regime post to the Sigma 3 CHANNEL (owner 2026-07-31): one
-  // message per day stating the book's sign. Claim-gated (P22) with a 'sent'
-  // terminal marker; freshness checked BEFORE claiming so a missing reading
-  // retries on the next tick until 9:40, then the day goes silent.
-  {
-    const _h = etNow.getHours(), _m = etNow.getMinutes();
-    if (_h === 9 && _m >= 35 && _m <= 40) {
-      try {
-        const grRaw = await env.SIGNAL_KV.get('gex_current_0dte');
-        const gr = grRaw ? JSON.parse(grRaw) : null;
-        const grFresh = gr && gr.timestamp && (Date.now() / 1000 - gr.timestamp) < 600 && typeof gr.totalGex === 'number';
-        const grKey = `gamma_regime_${isoDateET(etNow)}`;
-        if (grFresh && await claimSendSlot(env, grKey)) {
-          const bn = (gr.totalGex / 1e9).toFixed(1);
-          const msg = gr.totalGex > 0
-            ? `🟢 **Gamma regime: POSITIVE** — 0DTE book +${bn}B at 9:35. Dealer hedging dampens moves — pin-friendly tape.`
-            : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at 9:35. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
-          const dcRawG = await env.SIGNAL_KV.get('discord_config');
-          const dcG = dcRawG ? JSON.parse(dcRawG) : null;
-          if (dcG && dcG.channelId) await sendDiscordDM(env, dcG.channelId, msg, dcG.proxyUrl);
-          await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
-        }
-      } catch (e) { console.warn('[gamma-regime]', e.message); }
-    }
   }
 
   // b2) Open GXBF if signal says so, OR record skip reason.

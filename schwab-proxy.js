@@ -13257,7 +13257,7 @@ export default {
     if (request.method !== 'OPTIONS' &&
         ['/cyclicality-append-now', '/score-advisories-now', '/research-persist-now',
          '/cot-refresh-now', '/watchdog-now', '/weekly-digest-now', '/vix-decomp-now',
-         '/remirror-history'].includes(url.pathname)) {
+         '/remirror-history', '/history-patch'].includes(url.pathname)) {
       const s = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
       if (!s || (s !== env.SYNC_SECRET && s !== env.GEXM_TRIGGER_TOKEN)) return jsonResp({ error: 'Unauthorized' }, 401, corsHeaders);
     }
@@ -13565,6 +13565,34 @@ export default {
       } catch (e) { result = { ok: false, error: e.message }; }
       return new Response(JSON.stringify(result, null, 2),
         { status: result.ok ? 200 : 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+    }
+
+    // POST /history-patch — owner repair tool: field-level patches applied to
+    // the AUTHORITATIVE history store (KV) and then mirrored to GitHub.
+    // Body: [{date:'YYYY-MM-DD', set:{field:value,...}, del:['field',...]}].
+    // Direct git edits to history_data.json get stomped by the next KV mirror
+    // (learned 2026-07-30: the gated-day restatement was wiped by /remirror-
+    // history) — restatements must go through here.
+    if (url.pathname === '/history-patch' && request.method === 'POST') {
+      let result;
+      try {
+        const patches = await request.json();
+        if (!Array.isArray(patches)) throw new Error('body must be an array of {date, set, del}');
+        const rows = await getHistory(env);
+        const applied = [];
+        for (const p of patches) {
+          const row = rows.find(r => r.date === p.date);
+          if (!row) { applied.push({ date: p.date, missing: true }); continue; }
+          for (const [k, v] of Object.entries(p.set || {})) row[k] = v;
+          for (const k of (p.del || [])) delete row[k];
+          applied.push({ date: p.date, ok: true });
+        }
+        await setHistory(env, rows, { dateStr: 'history-patch' });
+        const m = await mirrorHistoryToGitHub(env, rows, 'manual: history-patch (owner repair)');
+        result = { ok: true, applied, mirror: m };
+      } catch (e) { result = { ok: false, error: e.message }; }
+      return new Response(JSON.stringify(result, null, 2),
+        { status: result.ok ? 200 : 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
     }
 
     if (url.pathname === '/weekly-digest-now' && request.method === 'GET') {

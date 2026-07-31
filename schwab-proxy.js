@@ -1209,21 +1209,13 @@ async function earnAfterJob(env, etNow, token) {
     const textFallback = `🌙 **[EARNINGS] morning after — ${prev}**\n` +
       scored.map(r => `${r.ticker} ${r.afterPct != null ? (r.afterPct >= 0 ? '+' : '') + (r.afterPct * 100).toFixed(1) + '%' : '—'}`).join(' · ') +
       `\n_close → next open · observation only_`;
+    // Earnings-play channel ONLY (owner 2026-07-31) — no Sigma 3 mirror.
     const wh = await env.SIGNAL_KV.get('earnings_webhook_url');
     if (wh) {
       let ok = false;
       if (png) ok = await postWebhookImage(wh, png, EARN_CARD_FOOTER, 'earnings-after.png');
       if (!ok) { try { await fetch(wh, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textFallback.slice(0, 1900) }) }); } catch (_) {} }
     }
-    try {
-      const dcRaw = await env.SIGNAL_KV.get('discord_config');
-      const dc = dcRaw ? JSON.parse(dcRaw) : null;
-      if (dc && dc.channelId) {
-        let ok = false;
-        if (png) ok = (await sendDiscordImage(env, dc.channelId, png, dc.proxyUrl, 'earnings-after.png', EARN_CARD_FOOTER)).ok;
-        if (!ok) await sendDiscordDM(env, dc.channelId, textFallback.slice(0, 2000), dc.proxyUrl);
-      }
-    } catch (_) {}
     await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
     await logEvent(env, 'info', 'earn-after', `morning-after card sent for ${prev}`, { rows: scored.length });
   } catch (e) {

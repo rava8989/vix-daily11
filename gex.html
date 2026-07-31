@@ -392,34 +392,8 @@
     </div>
   </div>
 
-  <!-- Charm by Strike -->
-  <div class="chart-section" id="charmStrikeSection" style="display:none;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-      <h2 style="margin-bottom:0;"><span>Charm</span> by strike</h2>
-      <span id="charmStrikeReadout" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);"></span>
-    </div>
-    <div class="chart-wrap" style="height:300px;">
-      <canvas id="charmStrikeChart"></canvas>
-    </div>
-    <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      Per-strike charm (∂delta/∂time): green = positive, red = negative. Spot (gray), pin (amber), flip (gray) marked. Charm shows where dealer hedging drifts as the day decays.
-    </div>
-  </div>
-
-  <!-- Charm into the Close -->
-  <div class="chart-section" id="charmTimeSection" style="display:none;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-      <h2 style="margin-bottom:0;"><span>Charm</span> into the close</h2>
-      <span id="charmTimeReadout" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text2);"></span>
-    </div>
-    <div class="chart-wrap" style="height:300px;">
-      <canvas id="charmTimeChart"></canvas>
-    </div>
-    <div id="charmTimeNote" style="display:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);padding:24px 0;text-align:center;">capturing… (fills in through the session)</div>
-    <div class="bottom-info" style="text-align:left;padding:8px 0 0;">
-      0DTE charm per tick — $-delta drift per day (time factored out): green = positive (pin firms), red = negative (decay feeds the move). Reflects real hedging pressure, not units shrinking into the close.
-    </div>
-  </div>
+  <!-- Charm charts removed 2026-07-31 (owner): never validated against any
+       outcome; the Charm tile + Level Map footnote carry the same takeaway. -->
 
   <!-- GEX heatmap — strike × expiry (term structure) or strike × time (today) -->
   <div class="chart-section" id="gexHeatSection" style="display:none;">
@@ -825,8 +799,6 @@ let gammaCurveChart = null;
 let flowChart = null;
 let flow0dteChart = null;
 let netPremChart = null;
-let charmStrikeChart = null;
-let charmTimeChart = null;
 let gammaLevelMapDrawn = false; // SVG is rebuilt from scratch each render; this flag is informational only
 let pollTimer = null;
 // ── Event log: server-persisted in KV, available on any device ──
@@ -1548,195 +1520,6 @@ function renderNetPremChart(data) {
                       callback: v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(0) + 'M' } },
         ySpx: { position: 'right', grid: { drawOnChartArea: false, drawBorder: false },
                 ticks: { color: 'rgba(148,163,184,0.7)', font: { family: 'JetBrains Mono', size: 10 } } },
-      },
-      animation: { duration: 300 },
-    }
-  });
-}
-
-// ── Charm by strike (graceful-degrade: hide if server omits/empties data.strikes or has no cex) ──
-function renderCharmStrikeChart(data) {
-  const section = document.getElementById('charmStrikeSection');
-  const strikes = data.strikes; // [{strike, netGex, callGex, putGex, cex}, ...]
-  const hasCex = Array.isArray(strikes) && strikes.length > 0 &&
-                 strikes.some(s => s && Number.isFinite(s.cex));
-  if (!hasCex) {
-    section.style.display = 'none';
-    if (charmStrikeChart) { charmStrikeChart.destroy(); charmStrikeChart = null; }
-    return;
-  }
-  section.style.display = 'block';
-
-  const labels = strikes.map(s => s.strike);
-  const values = strikes.map(s => (s.cex || 0) / 1e9); // billions
-  const colors = strikes.map(s => ((s.cex || 0) >= 0 ? '#16a34a' : '#dc2626'));
-
-  // Aggregate net-charm sign + regime tie-in (factual framing — no invented % call).
-  const readout = document.getElementById('charmStrikeReadout');
-  const charmSign = (data.charm || 0) >= 0 ? '+' : '−';
-  const pin = (data.maxPosStrike != null) ? Math.round(data.maxPosStrike) : '—';
-  let readoutTxt;
-  if (data.regime === 'PIN') {
-    readoutTxt = 'Net charm ' + charmSign + ' · long-gamma: time decay pulls toward the pin (' + pin + ') into the close';
-  } else if (data.regime === 'BREAKOUT') {
-    readoutTxt = 'Net charm ' + charmSign + ' · short-gamma: decay feeds the move (no pin)';
-  } else {
-    readoutTxt = 'Net charm ' + charmSign;
-  }
-  readout.textContent = readoutTxt;
-  readout.style.color = (data.charm || 0) > 0 ? 'var(--green)' : (data.charm || 0) < 0 ? 'var(--red)' : 'var(--text2)';
-
-  const annotations = {};
-  if (Number.isFinite(data.spot)) {
-    annotations.spotLine = { type: 'line', scaleID: 'x', value: data.spot,
-      borderColor: 'rgba(148,163,184,0.7)', borderWidth: 1, borderDash: [4, 4],
-      label: { display: true, content: 'spot', position: 'start',
-        backgroundColor: 'rgba(148,163,184,0.85)', color: '#0f172a',
-        font: { family: 'JetBrains Mono', size: 10 } } };
-  }
-  if (Number.isFinite(data.maxPosStrike)) {
-    annotations.pinLine = { type: 'line', scaleID: 'x', value: data.maxPosStrike,
-      borderColor: '#f59e0b', borderWidth: 1.5, borderDash: [4, 4],
-      label: { display: true, content: 'pin', position: 'end',
-        backgroundColor: '#f59e0b', color: '#0f172a',
-        font: { family: 'JetBrains Mono', size: 10 } } };
-  }
-  if (data.flipStrike != null && Number.isFinite(data.flipStrike)) {
-    annotations.flipLine = { type: 'line', scaleID: 'x', value: data.flipStrike,
-      borderColor: 'rgba(148,163,184,0.7)', borderWidth: 1, borderDash: [4, 4],
-      label: { display: true, content: 'flip', position: 'start',
-        backgroundColor: 'rgba(148,163,184,0.85)', color: '#0f172a',
-        font: { family: 'JetBrains Mono', size: 10 } } };
-  }
-
-  if (charmStrikeChart) {
-    charmStrikeChart.data.labels = labels;
-    charmStrikeChart.data.datasets[0].data = values;
-    charmStrikeChart.data.datasets[0].backgroundColor = colors;
-    charmStrikeChart.options.plugins.annotation.annotations = annotations;
-    charmStrikeChart.update('none');
-    return;
-  }
-
-  const ctx = document.getElementById('charmStrikeChart').getContext('2d');
-  charmStrikeChart = new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [
-      { label: 'Charm by strike (B)', data: values, backgroundColor: colors,
-        borderWidth: 0, categoryPercentage: 0.9, barPercentage: 0.9 },
-    ]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e293b', borderColor: '#2d3f55', borderWidth: 1,
-          titleFont: { family: 'JetBrains Mono', size: 12, weight: 'bold' },
-          bodyFont:  { family: 'JetBrains Mono', size: 11 },
-          titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10, cornerRadius: 8,
-          callbacks: {
-            title: (items) => 'Strike ' + Number(items[0].label).toFixed(0),
-            label: (item) => { const v = item.raw; return 'Charm ' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'B'; },
-          }
-        },
-        annotation: { annotations },
-      },
-      scales: {
-        x: { type: 'linear', grid: { color: 'rgba(45,63,85,0.3)', drawBorder: false },
-             ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 },
-                      maxRotation: 45, autoSkip: true, maxTicksLimit: 14,
-                      callback: v => Number(v).toFixed(0) } },
-        y: { grid: { color: 'rgba(45,63,85,0.3)', drawBorder: false },
-             title: { display: true, text: 'Charm (B)', color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
-             ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 },
-                      callback: v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + 'B' } }
-      },
-      animation: { duration: 300 },
-    }
-  });
-}
-
-// ── Charm into the close (graceful-degrade: show "capturing…" note if <2 ticks carry ch) ──
-function renderCharmTimeChart(data) {
-  const section = document.getElementById('charmTimeSection');
-  const note = document.getElementById('charmTimeNote');
-  const canvasWrap = document.getElementById('charmTimeChart').parentElement;
-  const series = Array.isArray(data.flowSeries) ? data.flowSeries : [];
-  // Filter to ticks where ch is a finite number (older ticks may omit it).
-  const ticks = series.filter(t => t && Number.isFinite(t.ch));
-
-  if (ticks.length < 2) {
-    section.style.display = 'block';
-    canvasWrap.style.display = 'none';
-    note.style.display = 'block';
-    if (charmTimeChart) { charmTimeChart.destroy(); charmTimeChart = null; }
-    return;
-  }
-  section.style.display = 'block';
-  canvasWrap.style.display = 'block';
-  note.style.display = 'none';
-
-  const labels = [];
-  const values = []; // billions
-  for (const t of ticks) {
-    const d = _toETSafe(new Date((t.ts || 0) * 1000));
-    labels.push(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
-    values.push((t.ch || 0) / 1e9);
-  }
-  const chNow = values.length ? values[values.length - 1] : 0;
-
-  const readout = document.getElementById('charmTimeReadout');
-  readout.textContent = 'Charm ' + (chNow >= 0 ? '+' : '−') + Math.abs(chNow).toFixed(2) + 'B';
-  readout.style.color = chNow > 0 ? 'var(--green)' : chNow < 0 ? 'var(--red)' : 'var(--text2)';
-
-  const annotations = {
-    zeroLine: { type: 'line', yMin: 0, yMax: 0,
-      borderColor: 'rgba(148,163,184,0.6)', borderWidth: 1, borderDash: [4, 4] },
-  };
-
-  if (charmTimeChart) {
-    charmTimeChart.data.labels = labels;
-    charmTimeChart.data.datasets[0].data = values;
-    charmTimeChart.options.plugins.annotation.annotations = annotations;
-    charmTimeChart.update('none');
-    return;
-  }
-
-  const ctx = document.getElementById('charmTimeChart').getContext('2d');
-  charmTimeChart = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: [
-      { label: 'Charm (B)', data: values,
-        borderColor: '#16a34a', borderWidth: 2, pointRadius: 0, tension: 0.25,
-        segment: { borderColor: c => (c.p1.parsed.y >= 0 ? '#16a34a' : '#dc2626') },
-        fill: { target: 'origin', above: 'rgba(22,163,74,0.10)', below: 'rgba(220,38,38,0.10)' } },
-    ]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: true, labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 }, boxWidth: 12 } },
-        tooltip: {
-          backgroundColor: '#1e293b', borderColor: '#2d3f55', borderWidth: 1,
-          titleFont: { family: 'JetBrains Mono', size: 12, weight: 'bold' },
-          bodyFont:  { family: 'JetBrains Mono', size: 11 },
-          titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10, cornerRadius: 8,
-          callbacks: {
-            title: (items) => items[0].label + ' ET',
-            label: (item) => { const v = item.raw; return 'Charm ' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'B'; },
-          }
-        },
-        annotation: { annotations },
-      },
-      scales: {
-        x: { grid: { color: 'rgba(45,63,85,0.3)', drawBorder: false },
-             ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 },
-                      maxRotation: 45, autoSkip: true, maxTicksLimit: 14 } },
-        y: { grid: { color: 'rgba(45,63,85,0.3)', drawBorder: false },
-             title: { display: true, text: 'Charm ($B/day)', color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
-             ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 },
-                      callback: v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + 'B' } }
       },
       animation: { duration: 300 },
     }
@@ -2482,8 +2265,6 @@ async function tryLoadCached() {
     renderChart(data);
     renderGammaCurve(data);
     renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
-    renderCharmStrikeChart(data);
-    renderCharmTimeChart(data);
     renderGammaLevelMap(data); renderPositionsChart(data);
     renderTable(data);
     renderEvents(data);
@@ -2525,8 +2306,6 @@ async function fetchAndRender() {
                   renderTopBar(data); renderCards(data); renderChart(data);
                   renderGammaCurve(data);
                   renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
-                  renderCharmStrikeChart(data);
-                  renderCharmTimeChart(data);
                   renderGammaLevelMap(data); renderPositionsChart(data);
                   renderTable(data); renderEvents(data);
                   document.getElementById('mainContent').style.display = 'block';
@@ -2584,8 +2363,6 @@ async function fetchAndRender() {
     renderChart(data);
     renderGammaCurve(data);
     renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
-    renderCharmStrikeChart(data);
-    renderCharmTimeChart(data);
     renderGammaLevelMap(data); renderPositionsChart(data);
     renderTable(data);
     renderEvents(data);
@@ -2661,8 +2438,6 @@ document.getElementById('gexModeToggle').addEventListener('click', async (e) => 
   if (gammaCurveChart) { gammaCurveChart.destroy(); gammaCurveChart = null; }
   if (flowChart) { flowChart.destroy(); flowChart = null; }
   if (flow0dteChart) { flow0dteChart.destroy(); flow0dteChart = null; }
-  if (charmStrikeChart) { charmStrikeChart.destroy(); charmStrikeChart = null; }
-  if (charmTimeChart) { charmTimeChart.destroy(); charmTimeChart = null; }
   await guardedFetch();
 });
 

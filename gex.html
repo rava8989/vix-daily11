@@ -690,7 +690,7 @@ const GC_RULES =
   '<b style="color:var(--green);">Don\'t-fade rule:</b> a gap ≥ 0.4% through a book over +20B kept going into the close on 61% of 62 nights (+0.14%/day avg) — <b>down-gaps are the real edge</b> (+0.35%/d, t 2.3); up-gaps are only a mild lean (+0.03%/d). ' +
   '<b style="color:var(--red);">No-wall control:</b> the same gap on a negative book is a literal coin flip (50% fade, n=105) — carries no information. ' +
   '<b style="color:var(--text3);">Below 0.4%</b> (~30 SPX pts): noise either way — ignore the open. ' +
-  '<b style="color:var(--text2);">Domain (VIX-controlled pass, 2026-07-31):</b> these stats hold at VIX &lt; 20 (~83% of nights); above VIX 20 the book goes silent — read VIX, not the ladder. Calm VIX (&lt;15) + negative book: quiet medians but ≥1% jump odds ~10% — 5× a walled night.';
+  '<b style="color:var(--text2);">Domain (VIX-controlled pass, 2026-07-31):</b> these stats hold at VIX &lt; 20 (~83% of nights); above VIX 20 the book goes silent — read VIX, not the ladder. Calm VIX (&lt;15) + negative book: nights usually stay quiet, but a ≥1% open (~75 pts) hits ~1-in-10 — vs 1-in-50 behind a wall.';
 function gcBucketIdx(b) { let i = 0; while (i < GC_CUTS.length && b > GC_CUTS[i]) i++; return i; }
 function gcSet(id, txt, col, sub) {
   const el = document.getElementById(id), v = el.querySelector('.gcVal');
@@ -733,7 +733,7 @@ async function refreshGapCard() {
     // above, vol carries everything. Calm VIX + neg book = the jump-risk cell.
     const highVol = L.vix != null && L.vix > 20;
     const calmRisk = L.vix != null && L.vix < 15 && L.book <= 0;
-    const jumpLine = '<br><b style="color:var(--amber, #fbbf24);">calm tape + no wall — ≥1% jump odds ~10%, 5× a walled night</b>';
+    const jumpLine = '<br><b style="color:var(--amber, #fbbf24);">⚠ calm market but no wall: ~1-in-10 chance of a 75+ pt open (walled nights: 1-in-50)</b>';
     const vixVerdict = when => gcSet('gcVerdict', 'VIX REGIME — book silent', 'var(--red)',
       'VIX ' + L.vix.toFixed(1) + ' &gt; 20: above 20 the book stops predicting gaps (medians 0.38% vs 0.38% either sign) — read VIX itself. Ladder stats don\'t apply ' + when + '.');
     document.getElementById('gcLadder').style.opacity = highVol ? '.4' : '';

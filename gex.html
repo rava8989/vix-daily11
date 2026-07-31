@@ -694,9 +694,23 @@ function renderTopBar(data) {
 
   {
     const tgEl = document.getElementById('totalGex');
-    tgEl.innerHTML = '<span class="label">Total GEX</span>' + (totalGex != null ? fmtGex(totalGex) : '--');
-    tgEl.classList.toggle('pos', totalGex != null && totalGex > 0);
-    tgEl.classList.toggle('neg', totalGex != null && totalGex <= 0);
+    // Pre-open mornings must not show yesterday's book (owner 2026-07-31):
+    // a reading from a previous ET day renders as "waiting for open".
+    let staleDay = false;
+    try {
+      if (updatedAt) {
+        const rd = _toETSafe(new Date(updatedAt)), nd = _toETSafe(new Date());
+        staleDay = rd.getFullYear() !== nd.getFullYear() || rd.getMonth() !== nd.getMonth() || rd.getDate() !== nd.getDate();
+      }
+    } catch (_) {}
+    if (staleDay || totalGex == null) {
+      tgEl.innerHTML = '<span class="label">Total GEX</span><span style="font-size:15px;color:var(--text3);">waiting for open</span>';
+      tgEl.classList.remove('pos', 'neg');
+    } else {
+      tgEl.innerHTML = '<span class="label">Total GEX</span>' + fmtGex(totalGex);
+      tgEl.classList.toggle('pos', totalGex > 0);
+      tgEl.classList.toggle('neg', totalGex <= 0);
+    }
   }
 
   // Vanna / Charm stat tiles (graceful-degrade to '--' if absent)

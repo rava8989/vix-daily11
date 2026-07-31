@@ -487,10 +487,13 @@ async function computeEveningBook(env, token, etNow) {
   // chain's post-close underlying drifts (observed 7489.7 vs real 7503.9 close
   // 2026-07-31), which would poison the gap measurement at a 0.4% threshold.
   // $SPX lastPrice after 16:00 = the final index print and stays static.
+  let vixClose = null;
   try {
-    const q = await fetchSchwabJSON('https://api.schwabapi.com/marketdata/v1/quotes?symbols=%24SPX&fields=quote', token, env);
+    const q = await fetchSchwabJSON('https://api.schwabapi.com/marketdata/v1/quotes?symbols=%24SPX,%24VIX&fields=quote', token, env);
     const lp = q?.['$SPX']?.quote?.lastPrice;
     if (lp && lp > 1000) S = lp;
+    const vx = q?.['$VIX']?.quote?.lastPrice;
+    if (vx && vx > 5 && vx < 150) vixClose = Math.round(vx * 100) / 100;
   } catch (e) { console.warn('[evening-book] quote close failed, chain fallback:', e.message); }
   const seenExp = new Set();
   for (let off = 1; off <= 46; off += 7) {
@@ -533,7 +536,7 @@ async function computeEveningBook(env, token, etNow) {
   const h = etNow.getHours(), m = etNow.getMinutes();
   return {
     date: isoDateET(etNow), book: Math.round(tot / 1e9 * 100) / 100,
-    spx: Math.round(S * 100) / 100,
+    spx: Math.round(S * 100) / 100, vix: vixClose,
     at: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
     nExp, span: [Math.round((kLo / S - 1) * 1000) / 10, Math.round((kHi / S - 1) * 1000) / 10],
   };
@@ -12995,7 +12998,7 @@ export default {
               try {
                 const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');
                 if (!log.some(r => r.d === snap.date)) {
-                  log.push({ d: snap.date, book: snap.book, spx: snap.spx });
+                  log.push({ d: snap.date, book: snap.book, spx: snap.spx, vix: snap.vix });
                   await env.SIGNAL_KV.put('evening_book_log', JSON.stringify(log));
                 }
               } catch (e) { console.warn('[evening-book] log append failed:', e.message); }

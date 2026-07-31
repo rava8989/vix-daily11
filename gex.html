@@ -267,6 +267,33 @@
     <div style="font-size:10.5px;color:var(--text3);margin-top:10px;">Historical record Sep 2024 – Jul 2026 (466 days) · these stats change nothing about the strategies — context only.</div>
   </div>
 
+  <!-- Overnight Gap card (owner 2026-07-31): bank-scale ALL-EXPIRY book at the
+       close + the 1,009-night gap ladder + the ≥0.4% morning verdict. Info only. -->
+  <div class="chart-section" id="gapCardSection" style="display:none;">
+    <h2>Overnight <span>Gap</span> <span style="font-size:10px;color:var(--text3);font-weight:400;">· book at close → what tomorrow's open means statistically · information only</span></h2>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px;">
+      <div id="gcBook" style="flex:1;min-width:170px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">book at close <span id="gcBookDate" style="text-transform:none;"></span></div>
+        <div class="gcVal" style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:var(--text3);">—</div>
+        <div id="gcBucketLbl" style="font-size:11px;color:var(--text2);"></div>
+      </div>
+      <div id="gcGap" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">overnight gap</div>
+        <div class="gcVal" style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:var(--text3);">—</div>
+        <div id="gcGapSub" style="font-size:11px;color:var(--text2);"></div>
+      </div>
+      <div id="gcVerdict" style="flex:2;min-width:230px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">verdict</div>
+        <div class="gcVal" style="font-size:16px;font-weight:700;padding-top:3px;color:var(--text3);">—</div>
+        <div id="gcVerdictSub" style="font-size:11.5px;color:var(--text2);line-height:1.5;"></div>
+      </div>
+    </div>
+    <div id="gcLadder" style="display:flex;gap:4px;margin-bottom:4px;"></div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:10px;">tonight's bucket highlighted · median |gap| and odds of a ≥1% open per bucket · 1,009 nights Jul 2022 – Jul 2026</div>
+    <div id="gcRules" style="font-size:12px;line-height:1.7;color:var(--text2);"></div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:10px;border-top:1px solid var(--border);padding-top:8px;"><b style="color:var(--text2);">Book here = ALL-EXPIRY net dealer gamma at the close</b> — every SPX expiration out to 45 days at that evening's open interest (fixed-IV research scale). This is the inventory dealers hold overnight — <b>not</b> the intraday 0DTE headline at the top of this page. Read of the tape only — changes nothing about the strategies.</div>
+  </div>
+
   <!-- Gamma Level Map (vertical price ladder — summarizes GEX profile + gamma curve) -->
   <div class="chart-section" id="gammaLevelMapSection" style="display:none;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
@@ -566,7 +593,7 @@ function GEX_ENDPOINT() {
 // Only the panels that are SPX-RULE or SPX-HISTORY specific stay locked. The
 // flow + charm-into-close panels now have a real SPY capture behind them
 // (gex_spy_flow_<date>), so they follow the book like everything else.
-const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection', 'morningBookSection'];
+const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection', 'morningBookSection', 'gapCardSection'];
 
 // ── Morning Book panel (owner 2026-07-31, info only) ──
 const MB_URL = 'https://schwab-proxy.ravamt4.workers.dev/morning-book';
@@ -647,6 +674,101 @@ async function refreshMorningBook() {
 }
 setInterval(refreshMorningBook, 60000);
 setTimeout(refreshMorningBook, 800);
+
+// ── Overnight Gap card (owner 2026-07-31, info only) ──
+// Bank-scale evening book + the 1,009-night gap ladder + the ≥0.4% verdict.
+const GC_URL = 'https://schwab-proxy.ravamt4.workers.dev/evening-book';
+const GC_CUTS = [-13.5, 10.4, 24.1, 34.6];   // full-bank quintile cuts (B)
+const GC_BUCKETS = [
+  { lbl: 'deep negative', range: '< −13.5B', med: '0.39%', b1: '10%', col: 'var(--red)' },
+  { lbl: 'shallow / mixed', range: '−13.5 … +10.4B', med: '0.36%', b1: '11%', col: 'var(--amber, #fbbf24)' },
+  { lbl: 'mild positive', range: '+10.4 … +24.1B', med: '0.27%', b1: '4%', col: 'var(--text2)' },
+  { lbl: 'heavy positive', range: '+24.1 … +34.6B', med: '0.20%', b1: '2%', col: 'var(--green)' },
+  { lbl: 'max wall', range: '> +34.6B', med: '0.18%', b1: '0%', col: 'var(--green)' },
+];
+const GC_RULES =
+  '<b style="color:var(--green);">Don\'t-fade rule:</b> a gap ≥ 0.4% through a book over +20B kept going into the close on 61% of 62 nights (+0.14%/day avg) — <b>down-gaps are the real edge</b> (+0.35%/d, t 2.3); up-gaps are only a mild lean (+0.03%/d). ' +
+  '<b style="color:var(--red);">No-wall control:</b> the same gap on a negative book is a literal coin flip (50% fade, n=105) — carries no information. ' +
+  '<b style="color:var(--text3);">Below 0.4%</b> (~30 SPX pts): noise either way — ignore the open.';
+function gcBucketIdx(b) { let i = 0; while (i < GC_CUTS.length && b > GC_CUTS[i]) i++; return i; }
+function gcSet(id, txt, col, sub) {
+  const el = document.getElementById(id), v = el.querySelector('.gcVal');
+  v.textContent = txt; v.style.color = col || 'var(--text)';
+  const s = el.querySelector('div:last-child');
+  if (sub != null && s && s !== v) s.innerHTML = sub;
+}
+function gcLadder(activeIdx) {
+  const wrap = document.getElementById('gcLadder');
+  wrap.innerHTML = GC_BUCKETS.map((b, i) => {
+    const on = i === activeIdx;
+    return `<div style="flex:1;min-width:90px;border-radius:8px;padding:7px 8px;border:1px solid ${on ? b.col : 'var(--border)'};background:var(--bg3);${on ? '' : 'opacity:.55;'}">` +
+      `<div style="font-size:9.5px;color:${b.col};font-weight:700;text-transform:uppercase;letter-spacing:.04em;">${b.lbl}${on ? ' ◄' : ''}</div>` +
+      `<div style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;">${b.range}</div>` +
+      `<div style="font-size:11px;color:var(--text2);margin-top:2px;">med gap <b style="color:var(--text);">${b.med}</b> · ≥1%: <b style="color:var(--text);">${b.b1}</b></div></div>`;
+  }).join('');
+}
+async function refreshGapCard() {
+  const sec = document.getElementById('gapCardSection');
+  if (!sec) return;
+  if (gexSym === 'spx') sec.style.display = 'block';   // self-show (lessons P23)
+  if (sec.style.display === 'none') return;
+  try {
+    const j = await (await fetch(GC_URL, { cache: 'no-store' })).json();
+    document.getElementById('gcRules').innerHTML = GC_RULES;
+    const L = j.latest;
+    if (!L) {
+      gcSet('gcBook', '—', 'var(--text3)');
+      gcSet('gcVerdict', 'no snapshot yet', 'var(--text3)', 'first close populates the book automatically');
+      gcLadder(-1); return;
+    }
+    const bi = gcBucketIdx(L.book);
+    const bCol = L.book > 20 ? 'var(--green)' : (L.book <= 0 ? 'var(--red)' : 'var(--amber, #fbbf24)');
+    document.getElementById('gcBookDate').textContent = '· ' + L.date;
+    gcSet('gcBook', (L.book > 0 ? '+' : '') + L.book.toFixed(1) + 'B', bCol);
+    document.getElementById('gcBucketLbl').textContent = GC_BUCKETS[bi].lbl + ' · SPX close ' + L.spx;
+    gcLadder(bi);
+    const isEvening = L.date === j.date;
+    const gapEl = document.getElementById('gcGap');
+    if (isEvening) {
+      // tonight's book — tomorrow's open is the unknown
+      gcSet('gcGap', '—', 'var(--text3)');
+      gapEl.querySelector('#gcGapSub').textContent = 'known at tomorrow’s open · expect median ' + GC_BUCKETS[bi].med;
+      if (L.book > 20) gcSet('gcVerdict', 'WALLED NIGHT', 'var(--green)',
+        'quiet open likely (median ' + GC_BUCKETS[bi].med + ', ≥1% odds ' + GC_BUCKETS[bi].b1 + ').<br>If it still gaps ≥0.4% → <b>don’t fade it</b> — especially a down-gap.');
+      else if (L.book <= 0) gcSet('gcVerdict', 'NO WALL TONIGHT', 'var(--red)',
+        'gappier zone (median ' + GC_BUCKETS[bi].med + ', ≥1% odds ' + GC_BUCKETS[bi].b1 + ').<br>Whatever tomorrow opens, the gap itself carries <b>no direction info</b> — coin flip.');
+      else gcSet('gcVerdict', 'BETWEEN CELLS', 'var(--amber, #fbbf24)',
+        'mild book (+0…+20B) — no tested morning rule; expect median ' + GC_BUCKETS[bi].med + '.');
+      return;
+    }
+    // morning / intraday: L is yesterday's close book
+    if (!j.todayOpen) {
+      gcSet('gcGap', 'pre-open', 'var(--text3)');
+      gapEl.querySelector('#gcGapSub').textContent = 'vs ' + L.date + ' close ' + L.spx;
+      gcSet('gcVerdict', L.book > 20 ? 'WALLED NIGHT — awaiting open' : (L.book <= 0 ? 'NO WALL — awaiting open' : 'BETWEEN CELLS — awaiting open'),
+        L.book > 20 ? 'var(--green)' : (L.book <= 0 ? 'var(--red)' : 'var(--amber, #fbbf24)'),
+        'expect median |gap| ' + GC_BUCKETS[bi].med + ' · ≥1% odds ' + GC_BUCKETS[bi].b1);
+      return;
+    }
+    const gap = (j.todayOpen - L.spx) / L.spx * 100;
+    const up = gap >= 0;
+    gcSet('gcGap', (up ? '+' : '') + gap.toFixed(2) + '%', Math.abs(gap) >= 0.4 ? (up ? 'var(--green)' : 'var(--red)') : 'var(--text2)');
+    gapEl.querySelector('#gcGapSub').textContent = 'open ' + j.todayOpen + ' vs ' + L.date + ' close ' + L.spx;
+    if (Math.abs(gap) < 0.4) {
+      gcSet('gcVerdict', 'NO SIGNAL', 'var(--text3)', 'gap under 0.4% — statistically noise, ignore the open either way.');
+    } else if (L.book > 20) {
+      gcSet('gcVerdict', 'DON’T FADE', 'var(--green)',
+        up ? 'up-gap through a +20B wall — mild continuation lean (+0.03%/d, weak cell). Don’t fight it, don’t chase it.'
+           : '<b>down-gap through a +20B wall — the strongest cell</b> (+0.35%/d, t 2.3, 64% follow). Don’t fade this one.');
+    } else if (L.book <= 0) {
+      gcSet('gcVerdict', 'COIN FLIP', 'var(--red)', 'big gap but no wall behind it — historically 50/50 by the close. The gap tells you nothing.');
+    } else {
+      gcSet('gcVerdict', 'BETWEEN CELLS', 'var(--amber, #fbbf24)', 'book +0…+20B — no tested rule for this zone.');
+    }
+  } catch (e) { console.warn('[gap-card]', e.message); }
+}
+setInterval(refreshGapCard, 300000);
+setTimeout(refreshGapCard, 900);
 
 function applySymbolChrome(data) {
   const served = (data && data.gexSymbol) || gexSym;

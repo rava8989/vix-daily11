@@ -461,6 +461,85 @@ async function captureVixSurfaceSnap(env, etNow, token) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// EVENING ALL-EXPIRY BOOK — bank-scale (2026-07-31, Gap card)
+// ────────────────────────────────────────────────────────────────────
+// Reproduces the 1,009-night research bank's formula EXACTLY so the gap
+// ladder's quintile cuts (−13.9 / +10.5 / +24.7 / +34.8 B) keep applying
+// after ThetaData: OI-only, fixed IV 15%, r 4.3% q 1.3%, T=(DTE+0.5)/365,
+// strikes within ±12% of spot (the bank's stored window), expirations
+// 1..45 DTE. Schwab's chain OI is the same morning print ThetaData served,
+// so the live number continues the banked series 1:1. Do NOT confuse with
+// calculateGEX's real-IV all-expiry total — different scale by design.
+const EVBOOK_R = 0.043, EVBOOK_Q = 0.013, EVBOOK_IV = 0.15;
+function _evbookGamma(S, K, T) {
+  if (T <= 0) return 0;
+  const sq = EVBOOK_IV * Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (EVBOOK_R - EVBOOK_Q + 0.5 * EVBOOK_IV * EVBOOK_IV) * T) / sq;
+  const npdf = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2 * Math.PI);
+  return npdf * Math.exp(-EVBOOK_Q * T) / (S * sq);
+}
+async function computeEveningBook(env, token, etNow) {
+  // Schwab 502s on one 46-day × 350-strike chain call (observed 2026-07-31)
+  // — fetch in 7-day windows instead, one retry each; NO partial books (a
+  // missing chunk would shift the scale, so any chunk failing twice throws).
+  let tot = 0, oiSum = 0, nExp = 0, kLo = Infinity, kHi = -Infinity, S = null;
+  // Close from the QUOTE's last index print, NOT chain underlyingPrice — the
+  // chain's post-close underlying drifts (observed 7489.7 vs real 7503.9 close
+  // 2026-07-31), which would poison the gap measurement at a 0.4% threshold.
+  // $SPX lastPrice after 16:00 = the final index print and stays static.
+  try {
+    const q = await fetchSchwabJSON('https://api.schwabapi.com/marketdata/v1/quotes?symbols=%24SPX&fields=quote', token, env);
+    const lp = q?.['$SPX']?.quote?.lastPrice;
+    if (lp && lp > 1000) S = lp;
+  } catch (e) { console.warn('[evening-book] quote close failed, chain fallback:', e.message); }
+  const seenExp = new Set();
+  for (let off = 1; off <= 46; off += 7) {
+    const from = new Date(etNow); from.setDate(from.getDate() + off);
+    const to = new Date(etNow); to.setDate(to.getDate() + Math.min(off + 6, 46));
+    const url = `https://api.schwabapi.com/marketdata/v1/chains?symbol=%24SPX&strikeCount=350&fromDate=${isoDateET(from)}&toDate=${isoDateET(to)}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`;
+    let chain = null;
+    for (let attempt = 0; attempt < 2 && !chain; attempt++) {
+      try { chain = await fetchSchwabJSON(url, token, env); }
+      catch (e) {
+        if (attempt === 1) throw new Error(`chunk +${off}d failed twice: ${e.message}`);
+        await new Promise(r => setTimeout(r, 900));
+      }
+    }
+    if (!S) S = chain.underlyingPrice || chain.underlying?.last || chain.underlying?.mark;
+    if (!S) throw new Error('no SPX spot in chain');
+    for (const [map, sign] of [[chain.callExpDateMap || {}, 1], [chain.putExpDateMap || {}, -1]]) {
+      for (const expKey in map) {
+        const dte = parseInt(expKey.split(':')[1], 10);
+        if (!(dte >= 1 && dte <= 45)) continue;
+        const expTag = expKey.split(':')[0] + ':' + sign;
+        if (seenExp.has(expTag)) continue;          // window overlap guard
+        seenExp.add(expTag);
+        if (sign === 1) nExp++;
+        const T = (dte + 0.5) / 365;
+        for (const ks in map[expKey]) {
+          const K = parseFloat(ks);
+          if (!K || Math.abs(K - S) > S * 0.12) continue;
+          const c = Array.isArray(map[expKey][ks]) ? map[expKey][ks][0] : map[expKey][ks];
+          const oi = c?.openInterest || 0;
+          if (!oi) continue;
+          oiSum += oi;
+          if (K < kLo) kLo = K; if (K > kHi) kHi = K;
+          tot += sign * oi * _evbookGamma(S, K, T) * S * S * 100 * 0.01;
+        }
+      }
+    }
+  }
+  if (oiSum === 0) throw new Error('dead chain (zero OI everywhere)');
+  const h = etNow.getHours(), m = etNow.getMinutes();
+  return {
+    date: isoDateET(etNow), book: Math.round(tot / 1e9 * 100) / 100,
+    spx: Math.round(S * 100) / 100,
+    at: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+    nExp, span: [Math.round((kLo / S - 1) * 1000) / 10, Math.round((kHi / S - 1) * 1000) / 10],
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
 // GEXMAGNET nightly single-stock chain collector (2026-07-02)
 // ────────────────────────────────────────────────────────────────────
 // Phase 0 of ~/projects/gexmagnet found NO single-stock chain snapshots
@@ -12886,6 +12965,56 @@ export default {
         const b = await env.SIGNAL_KV.get(`g1000_snap_${iso}`);
         return new Response(JSON.stringify({ date: iso,
           g935: a ? JSON.parse(a) : null, g1000: b ? JSON.parse(b) : null }), { headers: cors });
+      } catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors }); }
+    }
+
+    // ── GET /evening-book ── Public: bank-scale ALL-EXPIRY book at the close
+    // for the GEX page's Gap card (owner 2026-07-31, info only). Lazily
+    // computes once per trading day after 16:05 ET (claim-gated, then served
+    // from KV forever). Also returns today's open (from morning_signal_data)
+    // so the card can score the overnight gap against the prior snapshot,
+    // and the rolling log's last entries for context. Continues the
+    // 1,009-night ThetaData bank series — same formula, same scale.
+    if (url.pathname === '/evening-book' && request.method === 'GET') {
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+      try {
+        const etNowEb = toET(new Date());
+        const isoEb = isoDateET(etNowEb);
+        let latest = null;
+        try { latest = JSON.parse((await env.SIGNAL_KV.get('evening_book_latest')) || 'null'); } catch (_) {}
+        const isTradingDayEb = etNowEb.getDay() >= 1 && etNowEb.getDay() <= 5 && !isHol(etNowEb);
+        // 16:25+: the official close print has settled by then (lastPrice static).
+        const afterCloseEb = etNowEb.getHours() > 16 || (etNowEb.getHours() === 16 && etNowEb.getMinutes() >= 25);
+        if (isTradingDayEb && afterCloseEb && (!latest || latest.date < isoEb)) {
+          if (await claimSendSlot(env, `evening_book_${isoEb}`)) {
+            try {
+              const tokEb = await getAccessToken(env);
+              const snap = await computeEveningBook(env, tokEb, etNowEb);
+              await env.SIGNAL_KV.put('evening_book_latest', JSON.stringify(snap));
+              await env.SIGNAL_KV.put(`evening_book_${isoEb}`, 'sent', { expirationTtl: 3 * 86400 });
+              try {
+                const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');
+                if (!log.some(r => r.d === snap.date)) {
+                  log.push({ d: snap.date, book: snap.book, spx: snap.spx });
+                  await env.SIGNAL_KV.put('evening_book_log', JSON.stringify(log));
+                }
+              } catch (e) { console.warn('[evening-book] log append failed:', e.message); }
+              latest = snap;
+            } catch (e) { console.warn('[evening-book] compute failed:', e.message); }
+          }
+        }
+        let prev = null;
+        try {
+          const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');
+          const before = log.filter(r => latest && r.d < latest.date);
+          if (before.length) prev = before[before.length - 1];
+        } catch (_) {}
+        let todayOpen = null;
+        try {
+          const msd = JSON.parse((await env.SIGNAL_KV.get(`morning_signal_data_${isoEb}`)) || 'null');
+          if (msd && msd.spxOpen) todayOpen = msd.spxOpen;
+        } catch (_) {}
+        return new Response(JSON.stringify({ date: isoEb, latest, prev, todayOpen }), { headers: cors });
       } catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors }); }
     }
 

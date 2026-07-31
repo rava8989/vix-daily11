@@ -595,6 +595,12 @@ body {
     </ul>
     <strong>Allowed days</strong> — OPEX-1, CPI, and NM-non-Monday are <em>no longer banned</em>; they fire if the trigger/block check passes.
     GXBF is fully independent of M8BF / Straddle / BOBF — it neither blocks nor is blocked by them.
+    <strong>9:35 gamma gate (live since 2026-07-30):</strong> the fresh 0DTE total dealer-gamma book must be
+    positive at signal time — a negative book historically ran −$369/day vs +$999/day on positive books.
+    A gated (negative-book) day converts to the <strong>GATED STRADDLE</strong>: open-strike straddle ≤ $32,
+    working until 1:30 PM, held to settlement. The backtester's <code>g935</code> series is reconstructed
+    from the banked per-strike OI + 9:35 call chains (validated against all 12 live-known gated days);
+    days with no reading fail open, exactly like live.
     <br><br>
     <strong>Center routing (volume, live default — hybrid retired 2026-06-10 after failing OOS validation)</strong> — at the chosen <strong>Entry Time</strong> (default <code>09:35 ET</code>;
     the dropdown below offers every 5-min step from <code>09:35</code> through <code>14:00</code>) the gamma model computes two centers
@@ -698,7 +704,11 @@ body {
       <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)">OPEX+1 VIX gap-up %
         <input type="number" class="num-input" id="gGapPct" value="2" min="0" step="0.5" style="width:54px" title="On OPEX+1, block GXBF if VIX gapped up ≥ this % overnight.">
       </label>
-      <span style="font-size:10px;color:var(--text3);white-space:nowrap">ON → trade iff (overnight drop &gt; thr below OR OPEX+1) AND not (VIX≥max · OPEX+1 gap-up≥% · EOM). OPEX-1, CPI, and NM-non-Mon are ALLOWED. Special-days chips still apply on top.</span>
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text);cursor:pointer;font-weight:600">
+        <input type="checkbox" id="g935Gate" checked style="cursor:pointer">
+        <span style="white-space:nowrap">9:35 gamma gate (live rule 2026-07-30)</span>
+      </label>
+      <span style="font-size:10px;color:var(--text3);white-space:nowrap">ON → trade iff (overnight drop &gt; thr below OR OPEX+1) AND not (VIX≥max · OPEX+1 gap-up≥% · EOM). Gamma gate: negative 9:35 0DTE book (g935 ≤ 0) → no fly, day converts to the GATED STRADDLE (missing g935 fails open, like live).</span>
     </div>
   </div>
 
@@ -1252,6 +1262,7 @@ function getParams() {
     ovDropThr:     (() => { const v = parseFloat(document.getElementById('ovDropThr').value); return Number.isFinite(v) ? v : 0.65; })(),
     centerSrc:     (document.querySelector('input[name="centerSrc"]:checked') || {}).value || 'vol',
     gxbfGating:    document.getElementById('gxbfGating').checked,
+    g935Gate:      document.getElementById('g935Gate').checked,
     gVixMax:       (() => { const v = parseFloat(document.getElementById('gVixMax').value); return Number.isFinite(v) ? v : 25; })(),
     gGapPct:       (() => { const v = parseFloat(document.getElementById('gGapPct').value); return Number.isFinite(v) ? v : 2; })(),
     specialMode:   specialState.mode,
@@ -1698,7 +1709,14 @@ function pickByPolicy(candidates, targetDTE, policy) {
 // flat top-level fields as a fallback so the UI doesn't crash mid-rebuild.
 function runBacktestBS(data, params) {
   const trades = [];
-  let skipped = { ovDrop: 0, gating: 0, noWing: 0, contracts0: 0, badData: 0 };
+  let skipped = { ovDrop: 0, gating: 0, gammaGated: 0, noWing: 0, contracts0: 0, badData: 0 };
+  // Gated-day straddle results (1-lot, open strike ≤$32, mid+half-spread fills,
+  // held to settle) — the banked sim for days where put-chain data exists.
+  // Days gated without an entry here had no ≤$32 fill or no chain data.
+  const GATED_STRAD_PL = {
+    '2024-11-01': -2765, '2024-12-19': 1632, '2025-01-03': 2087, '2025-02-27': 8653,
+    '2026-01-21': 3442, '2026-03-11': -1610, '2026-06-08': 272 };
+  const gatedStrads = [];
 
   // `data` is the raw chronological array. Build a parallel ISO-date list +
   // a by-date map so the existing special-day infra (which expects
@@ -1755,6 +1773,17 @@ function runBacktestBS(data, params) {
         (opex1 && gapPct >= params.gGapPct) ||
         eom;
       if (!(trigger && !blocked)) { skipped.gating++; continue; }
+      // ── 9:35 gamma gate (live rule since 2026-07-30) ──
+      // Negative fresh 0DTE total dealer gamma at signal time → the fly stands
+      // down and the day trades the GATED STRADDLE instead. g935 is the
+      // reconstructed 9:35 0DTE book ($B) from the OI+chains banks (validated
+      // against all 12 live-known gated days). Missing g935 fails open.
+      if (params.g935Gate && rec.g935 != null && rec.g935 <= 0) {
+        skipped.gammaGated++;
+        if (GATED_STRAD_PL[rec.date] != null)
+          gatedStrads.push({ date: rec.date, pl: GATED_STRAD_PL[rec.date] });
+        continue;
+      }
     } else if (params.ovDropOn) {
       // ── Manual overnight VIX-drop filter (gating OFF) ──
       if (drop == null || drop < params.ovDropThr) { skipped.ovDrop++; continue; }
@@ -1869,7 +1898,7 @@ function runBacktestBS(data, params) {
     });
   }
 
-  return { trades, kpis: computeKPIs(trades, params), skipped, priceSourceCount: 0 };
+  return { trades, kpis: computeKPIs(trades, params), skipped, gatedStrads, priceSourceCount: 0 };
 }
 
 // Alias so the calling code can remain generic
@@ -2140,7 +2169,7 @@ async function doRun() {
     const params = getParams();
     console.log('[gxbf] backtest params:', params);
     const result = runBacktest(GXBF_DATA, params);
-    const { trades, kpis, skipped, priceSourceCount } = result;
+    const { trades, kpis, skipped, gatedStrads, priceSourceCount } = result;
     lastTrades = trades;
     console.log('[diagonal] backtest done:', {
       trades: trades.length,
@@ -2164,12 +2193,18 @@ async function doRun() {
     try { renderTradeLog(trades); } catch (e) { console.error('[diagonal] log render failed:', e); }
 
     const sk = skipped
-      ? (skipped.ovDrop||0)+(skipped.gating||0)+(skipped.noWing||0)+(skipped.contracts0||0)+(skipped.badData||0)
+      ? (skipped.ovDrop||0)+(skipped.gating||0)+(skipped.gammaGated||0)+(skipped.noWing||0)+(skipped.contracts0||0)+(skipped.badData||0)
       : 0;
     const gated = skipped && skipped.gating ? ` (${skipped.gating} gated out)`
                  : (skipped && skipped.ovDrop ? ` (${skipped.ovDrop} VIX-drop)` : '');
+    let gg = '';
+    if (skipped && skipped.gammaGated) {
+      const gsSum = (gatedStrads || []).reduce((a, x) => a + x.pl, 0);
+      const gsN = (gatedStrads || []).length;
+      gg = ` · ${skipped.gammaGated} gamma-gated → straddle: ${gsN ? (gsSum >= 0 ? '+' : '−') + '$' + Math.abs(gsSum).toLocaleString() + ' on ' + gsN + ' fills (1-lot)' : 'no fill data'}`;
+    }
     document.getElementById('hdrMeta').textContent =
-      `${trades.length} trades · 0DTE SPXW · ${sk} skipped` + gated;
+      `${trades.length} trades · 0DTE SPXW · ${sk} skipped` + gated + gg;
   } catch (e) {
     console.error('[diagonal] backtest failed:', e);
     alert('Backtest failed: ' + e.message);

@@ -6795,6 +6795,12 @@ async function handleScheduledInner(env) {
             const curRaw = await env.SIGNAL_KV.get('gex_current_0dte');
             const cur = curRaw ? JSON.parse(curRaw) : null;
             const curFresh = cur && cur.timestamp && (Date.now() / 1000 - cur.timestamp) < 600 && typeof cur.totalGex === 'number';
+            // Persist the day's canonical 10:00 reading for the Morning Book
+            // panel (first fresh read 10:00–10:10).
+            if (curFresh && _fm <= 10 && !(await env.SIGNAL_KV.get(`g1000_snap_${isoDateET(etNow)}`))) {
+              await env.SIGNAL_KV.put(`g1000_snap_${isoDateET(etNow)}`,
+                JSON.stringify({ g: cur.totalGex, at: `${_fh}:${String(_fm).padStart(2, '0')}` }), { expirationTtl: 86400 });
+            }
             if (snap && typeof snap.g === 'number' && curFresh && (snap.g > 0) !== (cur.totalGex > 0)) {
               const fKey = `book_flip_${isoDateET(etNow)}`;
               if (await claimSendSlot(env, fKey)) {
@@ -12868,6 +12874,19 @@ export default {
       } catch (e) {
         return jsonResp({ error: e.message }, 500, publicCors);
       }
+    }
+
+    // ── GET /morning-book ── Public: the day's persisted 9:35 + 10:00 book
+    // snaps for the GEX page's Morning Book panel (owner 2026-07-31, info only).
+    if (url.pathname === '/morning-book' && request.method === 'GET') {
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+      try {
+        const iso = isoDateET(toET(new Date()));
+        const a = await env.SIGNAL_KV.get(`g935_snap_${iso}`);
+        const b = await env.SIGNAL_KV.get(`g1000_snap_${iso}`);
+        return new Response(JSON.stringify({ date: iso,
+          g935: a ? JSON.parse(a) : null, g1000: b ? JSON.parse(b) : null }), { headers: cors });
+      } catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors }); }
     }
 
     // ── GET /straddle-today ── Public live straddle state (no auth)

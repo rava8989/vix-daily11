@@ -245,6 +245,28 @@
     </div>
   </div>
 
+  <!-- Morning Book (owner 2026-07-31): the 9:35 + 10:00 readings and what each
+       regime has historically meant for the Σ3 strategies. Info only. -->
+  <div class="chart-section" id="morningBookSection" style="display:none;">
+    <h2>Morning <span>Book</span> <span style="font-size:10px;color:var(--text3);font-weight:400;">· 9:35 &amp; 10:00 regime · historical stats · information only</span></h2>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px;">
+      <div id="mb935" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">9:35 book</div>
+        <div class="mbVal" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;">—</div>
+      </div>
+      <div id="mb1000" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">10:00 book</div>
+        <div class="mbVal" style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;">—</div>
+      </div>
+      <div id="mbState" style="flex:2;min-width:220px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">day state</div>
+        <div class="mbVal" style="font-size:15px;font-weight:600;padding-top:4px;">waiting for 9:35</div>
+      </div>
+    </div>
+    <div id="mbStats" style="font-size:12.5px;line-height:1.75;color:var(--text2);"></div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:10px;">Historical record Sep 2024 – Jul 2026 (466 days) · these stats change nothing about the strategies — context only.</div>
+  </div>
+
   <!-- Gamma Level Map (vertical price ladder — summarizes GEX profile + gamma curve) -->
   <div class="chart-section" id="gammaLevelMapSection" style="display:none;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
@@ -544,7 +566,57 @@ function GEX_ENDPOINT() {
 // Only the panels that are SPX-RULE or SPX-HISTORY specific stay locked. The
 // flow + charm-into-close panels now have a real SPY capture behind them
 // (gex_spy_flow_<date>), so they follow the book like everything else.
-const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection'];
+const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection', 'morningBookSection'];
+
+// ── Morning Book panel (owner 2026-07-31, info only) ──
+const MB_URL = 'https://schwab-proxy.ravamt4.workers.dev/morning-book';
+const MB_STATS = {
+  pos: 'Service flow: <b>59%</b> avg day-WR (wipeout days 8%) · Portfolio: <b>+$1,675/day · 71%</b> win days.<br>Pin sleeves lead — GXBF fly ON (+$999/d · 70%), BOBF +$616/d · 69%, Diagonal +$469/d · 81% · Straddle runs soft (+$688/d · 55%) · PNBF unaffected (always is).',
+  neg: 'Service flow: <b>50%</b> avg day-WR (wipeout days <b>15% — 2× normal</b>) · Portfolio: <b>+$1,209/day · 69%</b>.<br>Long-vol leads — Straddle +$1,875/d · 74%, Tail +$1,374/d · GXBF stands down → <b>GATED STRADDLE</b> · BOBF runs soft (+$226/d · 51%) · PNBF unaffected.',
+  stablePos: '<span style="color:var(--green);font-weight:600;">Stable-positive day</span> — historically <b>+$1,753/day · 73%</b> win days for the whole book.',
+  stableNeg: '<span style="color:var(--red);font-weight:600;">Stable-negative day</span> — historically <b>+$1,318/day · 72%</b> win days; watch the wipeout risk.',
+  flip: '<span style="color:var(--amber,#fbbf24);font-weight:600;">⚠ ENDPOINT FLIP</span> — historically the portfolio\'s weakest tape: <b>+$349–394/day at 50–54%</b> (~¼ of a normal day) · service wipeout risk up to 21% · every sleeve mediocre except PNBF · <b>size easy</b>.<br><span style="color:var(--text3);">Note: a mid-morning dip through zero that recovered is NOT a flip — those were historically the best days (+$2,921/d). Only the 10:00 endpoint counts.</span>',
+};
+function mbChip(el, g, at) {
+  const v = el.querySelector('.mbVal');
+  if (g == null) { v.textContent = '—'; v.style.color = 'var(--text3)'; return; }
+  const bn = (g / 1e9).toFixed(1);
+  v.textContent = (g > 0 ? '+' : '') + bn + 'B' + (at ? '  · ' + at : '');
+  v.style.color = g > 0 ? 'var(--green)' : 'var(--red)';
+}
+async function refreshMorningBook() {
+  const sec = document.getElementById('morningBookSection');
+  if (!sec || sec.style.display === 'none') return;
+  try {
+    const j = await (await fetch(MB_URL, { cache: 'no-store' })).json();
+    const g935 = j.g935 ? j.g935.g : null, g1000 = j.g1000 ? j.g1000.g : null;
+    mbChip(document.getElementById('mb935'), g935, j.g935 && j.g935.at);
+    mbChip(document.getElementById('mb1000'), g1000, j.g1000 && j.g1000.at);
+    const st = document.getElementById('mbState').querySelector('.mbVal');
+    const stats = document.getElementById('mbStats');
+    if (g935 == null) { st.textContent = 'waiting for 9:35'; st.style.color = 'var(--text3)'; stats.innerHTML = ''; return; }
+    const s935 = g935 > 0;
+    if (g1000 == null) {
+      st.textContent = s935 ? 'POSITIVE morning — 10:00 confirms' : 'NEGATIVE morning — 10:00 confirms';
+      st.style.color = s935 ? 'var(--green)' : 'var(--red)';
+      stats.innerHTML = MB_STATS[s935 ? 'pos' : 'neg'];
+      return;
+    }
+    const s1000 = g1000 > 0;
+    if (s935 === s1000) {
+      st.textContent = s935 ? 'STABLE POSITIVE' : 'STABLE NEGATIVE';
+      st.style.color = s935 ? 'var(--green)' : 'var(--red)';
+      stats.innerHTML = MB_STATS[s935 ? 'stablePos' : 'stableNeg'] + '<br><br>' + MB_STATS[s935 ? 'pos' : 'neg'];
+    } else {
+      st.textContent = 'FLIPPED ' + (s935 ? 'POS → NEG' : 'NEG → POS');
+      st.style.color = 'var(--amber, #fbbf24)';
+      stats.innerHTML = MB_STATS.flip;
+    }
+  } catch (e) { console.warn('[morning-book]', e.message); }
+}
+setInterval(refreshMorningBook, 60000);
+setTimeout(refreshMorningBook, 800);
+
 function applySymbolChrome(data) {
   const served = (data && data.gexSymbol) || gexSym;
   const note = document.getElementById('gexSymNote');

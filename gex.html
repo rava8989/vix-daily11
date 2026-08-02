@@ -245,6 +245,16 @@
     </div>
   </div>
 
+  <!-- Σ3 Daily Stance gauges (owner 2026-07-31): three threshold-true dials —
+       Morning Book / GEX Cone (raw framing) / Overnight Wall→Gap. Zones are
+       painted at the exact research cutoffs so needle color ≡ chip color by
+       construction (the day's two catches: no decorative zones, color=meaning).
+       Wall dial MIRRORS the Gap card's DOM so the two can never disagree. -->
+  <div class="chart-section" id="stanceSection" style="display:none;">
+    <h2>Daily <span>Stance</span> <span style="font-size:10px;color:var(--text3);font-weight:400;">· book · cone · overnight — one glance · information only</span></h2>
+    <div id="stanceRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;text-align:center;"><div id="stBook"></div><div id="stCone"></div><div id="stWall"></div></div>
+  </div>
+
   <!-- Morning Book (owner 2026-07-31): the 9:35 + 10:00 readings and what each
        regime has historically meant for the Σ3 strategies. Info only. -->
   <div class="chart-section" id="morningBookSection" style="display:none;">
@@ -567,7 +577,7 @@ function GEX_ENDPOINT() {
 // Only the panels that are SPX-RULE or SPX-HISTORY specific stay locked. The
 // flow + charm-into-close panels now have a real SPY capture behind them
 // (gex_spy_flow_<date>), so they follow the book like everything else.
-const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection', 'morningBookSection', 'gapCardSection'];
+const SPX_ONLY_PANELS = ['gateStripSection', 'gexConeSection', 'regimePaysSection', 'liqSection', 'posSection', 'morningBookSection', 'gapCardSection', 'stanceSection'];
 
 // ── Morning Book panel (owner 2026-07-31, info only) ──
 const MB_URL = 'https://schwab-proxy.ravamt4.workers.dev/morning-book';
@@ -622,6 +632,7 @@ async function refreshMorningBook() {
   try {
     const j = await (await fetch(MB_URL, { cache: 'no-store' })).json();
     const g935 = j.g935 ? j.g935.g : null, g1000 = j.g1000 ? j.g1000.g : null;
+    try { stanceBook(g935, g1000); } catch (_) {}
     mbChip(document.getElementById('mb935'), g935, j.g935 && j.g935.at);
     mbChip(document.getElementById('mb1000'), g1000, j.g1000 && j.g1000.at);
     const st = document.getElementById('mbState').querySelector('.mbVal');
@@ -756,6 +767,144 @@ async function refreshGapCard() {
 }
 setInterval(refreshGapCard, 300000);
 setTimeout(refreshGapCard, 900);
+
+// ── Σ3 Daily Stance gauges (owner 2026-07-31) ──
+// Threshold-true dials: zone boundaries sit at the exact research cutoffs so
+// the needle's zone color always equals the chip color. Cone speaks RAW-stream
+// stats (matches gex-cone-guide.html). Wall dial mirrors the Gap card's DOM.
+const ST_COL = { red:'#ef4444', amber:'#fbbf24', green:'#22c55e', blue:'#38bdf8', grey:'#5b6785', fg:'#e2e8f0' };
+function stPolar(r, ang) {  // ang in degrees, -90 (left) .. +90 (right)
+  const a = ang * Math.PI / 180;
+  return [100 + r * Math.sin(a), 100 - r * Math.cos(a)];
+}
+function stArc(a0, a1, color) {
+  const [x0, y0] = stPolar(70, a0), [x1, y1] = stPolar(70, a1);
+  return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A 70 70 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" stroke="${color}" stroke-width="12" fill="none"/>`;
+}
+function stGauge(id, title, zones, ticks, needleAng, dim) {
+  // zones: [{a0,a1,c}] · ticks: [{ang,label,c}] · needleAng clamped ±88
+  const na = Math.max(-88, Math.min(88, needleAng));
+  const [nx, ny] = stPolar(58, na);
+  let s = `<svg viewBox="0 0 200 122" style="width:100%;height:auto;${dim ? 'opacity:.45;' : ''}">`;
+  for (const z of zones) s += stArc(z.a0, z.a1, z.c);
+  for (const t of ticks) {
+    const [ax, ay] = stPolar(84, t.ang);
+    s += `<text x="${ax.toFixed(0)}" y="${ay.toFixed(0)}" font-size="8.5" fill="${t.c}" font-weight="700" text-anchor="middle">${t.label}</text>`;
+  }
+  s += `<line x1="100" y1="100" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="${ST_COL.fg}" stroke-width="4" stroke-linecap="round"/>`;
+  s += `<circle cx="100" cy="100" r="6" fill="${ST_COL.fg}"/></svg>`;
+  return s;
+}
+function stSlot(id, title, svg, chip, chipCol, verdict, verdictCol) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div'); el.id = id;
+    document.getElementById('stanceRow').appendChild(el);
+  }
+  el.innerHTML = `<div style="font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;">${title}</div>${svg}` +
+    `<div style="display:inline-block;background:var(--bg3);border:1px solid ${chipCol};border-radius:6px;padding:2px 12px;margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:${chipCol};">${chip}</div>` +
+    `<div style="font-size:10.5px;color:${verdictCol};margin-top:5px;font-weight:600;">${verdict}</div>`;
+  const sec = document.getElementById('stanceSection');
+  if (sec && gexSym === 'spx') sec.style.display = 'block';
+}
+// Dial 1 — Morning Book: cutoff 0; latest of 9:35/10:00; flip = signs differ.
+function stanceBook(g935, g1000) {
+  const zones = [{a0:-90,a1:0,c:ST_COL.red},{a0:0,a1:90,c:ST_COL.green}];
+  const ticks = [{ang:0,label:'0',c:ST_COL.grey}];
+  if (g935 == null && g1000 == null) {
+    stSlot('stBook','Morning Book', stGauge('b','',zones,ticks,0,true), 'WAITING', ST_COL.grey, 'waiting for 9:35', 'var(--text3)');
+    return;
+  }
+  const v = (g1000 != null ? g1000 : g935) / 1e9;
+  const flipped = g935 != null && g1000 != null && (g935 > 0) !== (g1000 > 0);
+  const ang = Math.max(-40, Math.min(40, v)) / 40 * 90;
+  if (flipped) {
+    stSlot('stBook','Morning Book', stGauge('b','',zones,ticks,ang,false),
+      'FLIPPED ' + (g935 > 0 ? 'POS→NEG' : 'NEG→POS'), ST_COL.amber, '⚠ worst cell — size easy', ST_COL.amber);
+  } else if (v > 0) {
+    stSlot('stBook','Morning Book', stGauge('b','',zones,ticks,ang,false),
+      'POSITIVE ' + (v >= 0 ? '+' : '') + v.toFixed(1) + 'B', ST_COL.green, "✓ strategies' best day type · +$1.8k/d", ST_COL.green);
+  } else {
+    stSlot('stBook','Morning Book', stGauge('b','',zones,ticks,ang,false),
+      'NEGATIVE ' + v.toFixed(1) + 'B', ST_COL.red, 'GXBF off → GATED STRAD · wipeouts 2×', ST_COL.red);
+  }
+}
+// Dial 2 — GEX Cone (RAW framing, matches the guide): p20/p80 cutoffs at ±54°.
+function stanceCone() {
+  const bands = window.__coneBands;
+  const zones = [{a0:-90,a1:-54,c:ST_COL.red},{a0:-54,a1:54,c:ST_COL.blue},{a0:54,a1:90,c:ST_COL.green}];
+  const ticks = [{ang:-54,label:'p20',c:ST_COL.grey},{ang:54,label:'p80',c:ST_COL.grey}];
+  let latest = null, slot = null;
+  try {
+    const path = JSON.parse(localStorage.getItem(conePathKey()) || '{}');
+    for (const s of CONE_SLOTS) if (path[s] != null) { latest = path[s]; slot = s; }
+  } catch (_) {}
+  if (!bands || latest == null || slot == null) {
+    stSlot('stCone','GEX Cone', stGauge('c','',zones,ticks,0,true), 'WAITING', ST_COL.grey, 'waiting for readings', 'var(--text3)');
+    return;
+  }
+  const i = bands.times.indexOf(slot);
+  const p20 = bands.p20[i], p80 = bands.p80[i];
+  let ang, chip, chipCol, verdict, vCol;
+  if (latest < p20) {
+    ang = -66; chip = 'BELOW BAND ' + latest.toFixed(1) + 'B'; chipCol = ST_COL.red;
+    verdict = '✗ no M8BF — Anchor Filter zone'; vCol = ST_COL.red;
+  } else if (latest > p80) {
+    ang = 66; chip = 'ABOVE BAND ' + latest.toFixed(1) + 'B'; chipCol = ST_COL.green;
+    verdict = '✓ favorable for M8BF — best fly zone (62.6% WR)'; vCol = ST_COL.green;
+  } else {
+    ang = -45 + 90 * (latest - p20) / Math.max(1e-9, p80 - p20);
+    chip = 'INSIDE ' + latest.toFixed(1) + 'B'; chipCol = ST_COL.blue;
+    verdict = '— normal rules'; vCol = ST_COL.blue;
+  }
+  stSlot('stCone','GEX Cone', stGauge('c','',zones,ticks,ang,false), chip, chipCol, verdict, vCol);
+}
+// Dial 3 — Overnight Wall→Gap: mirrors the Gap card's DOM (single source of
+// truth — the two can never disagree). Book mode: cutoffs 0 / +20B. Gap mode:
+// neutral grey arc with ±0.4% ticks; chip color = the card's verdict color.
+function stanceWall() {
+  const bookTxt = document.querySelector('#gcBook .gcVal')?.textContent || '—';
+  const gapTxt  = document.querySelector('#gcGap .gcVal')?.textContent || '—';
+  const verTxt  = document.querySelector('#gcVerdict .gcVal')?.textContent || '—';
+  const verCol  = document.querySelector('#gcVerdict .gcVal')?.style.color || ST_COL.grey;
+  if (bookTxt === '—') {
+    const zones = [{a0:-90,a1:0,c:ST_COL.red},{a0:0,a1:45,c:ST_COL.amber},{a0:45,a1:90,c:ST_COL.green}];
+    stSlot('stWall','Overnight Wall → Gap', stGauge('w','',zones,[{ang:0,label:'0',c:ST_COL.grey},{ang:45,label:'+20B',c:ST_COL.green}],0,true),
+      'WAITING', ST_COL.grey, 'first close populates', 'var(--text3)');
+    return;
+  }
+  const short = {
+    'WALLED NIGHT': "quiet open likely · don't fade a 30pt+ gap",
+    'NO WALL TONIGHT': 'gappy zone · gaps mean nothing',
+    'BETWEEN CELLS': '~ lean quiet · no gap rule',
+    'DON’T FADE': "don't bet on it coming back",
+    'COIN FLIP': 'gap tells you nothing',
+    'NO SIGNAL': 'ignore the open',
+  };
+  const verdict = short[verTxt] || (verTxt.startsWith('VIX REGIME') ? 'book silent — read VIX' : verTxt.toLowerCase());
+  const gapMatch = gapTxt.match(/^([+\-])?(\d+\.\d+)%$/);
+  const vixDim = verTxt.startsWith('VIX REGIME');
+  if (gapMatch) {           // GAP mode (after the open)
+    const g = parseFloat((gapMatch[1] === '-' ? '-' : '') + gapMatch[2]);
+    const ang = Math.max(-1, Math.min(1, g)) * 90;
+    const zones = [{a0:-90,a1:-36,c:'#2a3450'},{a0:-36,a1:36,c:'#1a2137'},{a0:36,a1:90,c:'#2a3450'}];
+    const ticks = [{ang:-36,label:'−0.4',c:ST_COL.grey},{ang:36,label:'+0.4',c:ST_COL.grey}];
+    stSlot('stWall','Overnight Wall → Gap', stGauge('w','',zones,ticks,ang,vixDim),
+      'GAP ' + gapTxt, verCol, verdict, verCol);
+  } else {                  // BOOK mode (evening / pre-open)
+    const bv = parseFloat(bookTxt.replace('B','').replace('+',''));
+    const ang = isFinite(bv) ? Math.max(-40, Math.min(40, bv)) / 40 * 90 : 0;
+    const zones = [{a0:-90,a1:0,c:ST_COL.red},{a0:0,a1:45,c:ST_COL.amber},{a0:45,a1:90,c:ST_COL.green}];
+    const ticks = [{ang:0,label:'0',c:ST_COL.grey},{ang:45,label:'+20B',c:ST_COL.green}];
+    const chipCol = vixDim ? ST_COL.red : (bv > 20 ? ST_COL.green : (bv <= 0 ? ST_COL.red : ST_COL.amber));
+    stSlot('stWall','Overnight Wall → Gap', stGauge('w','',zones,ticks,ang,vixDim),
+      (bv > 20 ? 'WALLED ' : (bv <= 0 ? 'NO WALL ' : 'BETWEEN ')) + bookTxt, chipCol, verdict, verCol);
+  }
+}
+setInterval(stanceWall, 20000);
+setTimeout(stanceWall, 1600);
+setInterval(stanceCone, 60000);
+setTimeout(stanceCone, 1800);
 
 function applySymbolChrome(data) {
   const served = (data && data.gexSymbol) || gexSym;
@@ -2224,6 +2373,8 @@ async function initGatePanels() {
     document.getElementById('gexConeBanner').textContent =
       `band from last ${panels.coneWindowDays} banked sessions · built ${panels.built}`;
     document.getElementById('gexConeSection').style.display = 'block';
+    window.__coneBands = panels.cone;             // stance cone dial reads this
+    try { stanceCone(); } catch (_) {}
   }
 
   // ── Regime pays ──

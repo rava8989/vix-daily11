@@ -314,7 +314,7 @@ async function captureTailPutSnap(env, etNow, masterChain) {
     // audit P1-f: a greeks/IV-less fallback chain empties the Δ picker exactly
     // when Schwab is down — the one day the redundancy matters. Never silent:
     // one owner DM per day so a triggered tail can be placed manually.
-    if (await claimSendSlot(env, `tail_snap_alert_${todayISO}`)) {
+    if (!TAIL_RETIRED && await claimSendSlot(env, `tail_snap_alert_${todayISO}`)) {
       try {
         const dcRaw = await env.SIGNAL_KV.get('discord_config');
         const dc = dcRaw ? JSON.parse(dcRaw) : null;
@@ -2850,8 +2850,24 @@ import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm';
 //   TRADE today @ 9:45 — buy 0DTE SPXW put delta -0.10, hold to 4 PM
 //   SKIP today (VVIX X.XX ≥ 110, puts too expensive). Stay TRIGGERED.
 //   No Tail Hedge today (COR1M X.XX, need cross below 7.75)
+// ── TAIL HEDGE RETIRED 2026-08-03 (owner order) ────────────────────────────
+// Removed from the live book AND the Σ3 service. Reason (full record in
+// tasks/TAIL_HEDGE_ARCHIVE.md): the edge is real but concentrated in 3 days of
+// 86; the trigger fires ~8x/month at ~-$342 per losing day = ~-$2,700/month of
+// carry, which at the owner's account size (~$26k) is ~10%/month — the account
+// would be exhausted before a payoff arrived. NOT a defect in the strategy: an
+// account-size decision. Bring it back at ~$90k (carry <= 3%/month), and FIRST,
+// before Straddle/Diagonal — it is the only convex sleeve.
+// Implementation: a flag, not a deletion. Every code path below is preserved so
+// resurrection is `TAIL_RETIRED = false` plus re-enabling the site sections.
+// Historical tailPL in history_data.json is PRESERVED — retirement is forward-only.
+// Before restarting, re-examine the COR1M trigger frequency (54 fires in 7
+// months is not tail-event frequency).
+const TAIL_RETIRED = true;
+
 let _tailHedgeCache = { value: null, fetchedAt: 0 };
 async function getTailHedgeStatusLine(env = null) {
+  if (TAIL_RETIRED) return null;              // no status line anywhere
   // 5-minute in-worker cache — values change slowly so this is plenty fresh.
   const now = Date.now();
   if (_tailHedgeCache.value && (now - _tailHedgeCache.fetchedAt) < 5*60*1000) {
@@ -6200,6 +6216,7 @@ async function settleGxbfEOD(env, etNow, spxClose, dateISO = null) {
 // across back-to-back cron ticks. Format = live page's renderTail copy button
 // (SPX 100 (Weeklys), see [[feedback_tos_copy_spx_weeklys]]).
 async function announceTailIfDue(env, tailOpen, todayISO, announce) {
+  if (TAIL_RETIRED) return null;              // retired 2026-08-03 (announce)
   if (!announce || !tailOpen) return tailOpen;
   const fkey = `tail_fanout_${todayISO}`;
   if (await env.SIGNAL_KV.get(fkey)) return tailOpen;
@@ -6221,6 +6238,7 @@ async function announceTailIfDue(env, tailOpen, todayISO, announce) {
 }
 
 async function freezeTailOpenIfDue(env, etNow, line = null, announce = false) {
+  if (TAIL_RETIRED) return null;              // retired 2026-08-03 (freeze)
   const todayISO = isoDateET(etNow);
   // No 9:45 entry on non-trading days — market closed, no live chain, no
   // snapshot. Without this the campaign stays TRIGGERED over the weekend, the
@@ -6291,6 +6309,7 @@ async function freezeTailOpenIfDue(env, etNow, line = null, announce = false) {
 // Refresh intraday mid + live P&L on today's open tail put (mirrors
 // refreshBobfLiveQuotes). Single long put: currentPnl = (mid − entryMid)×100×qty.
 async function refreshTailLiveQuotes(env, etNow, preChain = null) {
+  if (TAIL_RETIRED) return null;              // retired 2026-08-03 (refresh)
   const todayISO = isoDateET(etNow);
   const raw = await env.SIGNAL_KV.get(`tail_open_trade_${todayISO}`);
   if (!raw) return null;
@@ -13994,6 +14013,14 @@ export default {
       // Tail Hedge live status for the Live page (user 2026-06-11: the only
       // manual strategy must appear among today's trades when triggered).
       // Truth source = getTailHedgeStatusLine (same line as the morning msg).
+      // RETIRED 2026-08-03: the route stays (old clients poll it) but reports
+      // the retirement instead of a signal. See tasks/TAIL_HEDGE_ARCHIVE.md.
+      if (TAIL_RETIRED) {
+        return new Response(JSON.stringify({ retired: true, since: '2026-08-03',
+          line: null, trigger: null, candidate: null, open: null,
+          note: 'Tail Hedge retired 2026-08-03 — no live signal.' }),
+          { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
       const etNowT = toET(new Date());
       const todayT = isoDateET(etNowT);
       const line = await getTailHedgeStatusLine(env);

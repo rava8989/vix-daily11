@@ -10,7 +10,6 @@
     ['gxbf-backtester.html',       'GXBF BT'],
     ['diagonal.html',              '◢ Diagonal'],
     ['multi-strategy-tester.html', '⊞ Multi'],
-    ['cor1m_contango.html',        '▼ Tail Hedge'],
     ['cyclicality.html',           '◐ CycleLab'],
     ['gex.html',                   'Γ GEX'],
     ['earnings-play.html',         '🌙 Earnings'],

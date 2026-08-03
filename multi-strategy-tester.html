@@ -390,7 +390,6 @@ body {
     <a href="gex.html">GEX</a>
     <a href="diagonal.html">Diagonal</a>
     <a href="gxbf-backtester.html">GXBF BT</a>
-    <a href="cor1m_contango.html">Tail Hedge</a>
     <a href="multi-strategy-tester.html" class="active">Multi Strategy Tester</a>
   </nav>
   <div class="header-spacer"></div>
@@ -489,15 +488,6 @@ body {
       <div class="sz-field"><label class="sz-label" for="szM_bobf">BOBF</label><div class="sz-wrap"><input id="szM_bobf" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
       <div class="sz-field"><label class="sz-label" for="szM_diagonal">Diagonal</label><div class="sz-wrap"><input id="szM_diagonal" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
       <div class="sz-field"><label class="sz-label" for="szM_scalp">PNBF</label><div class="sz-wrap"><input id="szM_scalp" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
-    </div>
-
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;">
-      Tail Hedge — contracts per $50k of equity
-      <span style="font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;">scales with portfolio value · sized differently from the Sigma 3 strategies (not % allocation). Note: the LIVE tail doubles to 2 contracts on overnight-VIX-down days; this equity-sizing simulator does not model that per-day doubling.</span>
-    </div>
-    <div class="sz-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-      <div class="sz-field"><label class="sz-label" for="szT_tail">Contracts per $50k <span class="sz-dot" data-tip="On each trigger day, Tail Hedge contracts = floor(equity × N / $50,000). Example: N=2 → 2 contracts per $50k of equity → 4 ct at $100k, 8 ct at $200k, 1 ct at $25k, 0 ct under $25k. Max risk per contract is $200 (worst Sweet Spot trade historically was -$520). 0 = strategy off.">ⓘ</span></label>
-        <div class="sz-wrap"><input id="szT_tail" class="sz-input" type="number" value="1" min="0" step="1"></div></div>
     </div>
 
     <div style="margin:4px 0 14px;">
@@ -785,7 +775,7 @@ async function loadHistory() {
 // contracts), but IS in this list so the engine evaluates it per-row.
 const _SZ_KEYS = [['m8bf','M8BF','m8bfPL'],['strad','Straddle','stradPL'],
   ['gxbf','GXBF','gxbfPL'],['bobf','BOBF','bobfPL'],['diagonal','Diagonal','diagPL'],
-  ['scalp','PNBF','scalpPL'],['tail','Tail Hedge','tailPL']];
+  ['scalp','PNBF','scalpPL']]  // tail retired 2026-08-03;
 
 // Strategies that use the % allocation model (the original Sigma 3 + Diagonal
 // + PNBF). Tail Hedge is fixed-contracts, NOT % allocation, so it's excluded.
@@ -1022,7 +1012,7 @@ function _sizingRun() {
   // contracts = floor(equity × N / 50000). N=1 default → 1 ct/$50k, 2 ct/$100k.
   // (Distinct from % allocation: this scales linearly with account value, with
   // a $50k granularity step — no fractional contracts, no fixed dollar budget.)
-  const tailPer50k = Math.max(0, parseInt(document.getElementById('szT_tail')?.value, 10) || 0);
+  const tailPer50k = 0;   // Tail Hedge retired 2026-08-03 — sleeve removed
 
   // ── Auto-Tilt (rolling MAR) — OFF by default. When ON, each day's
   //    allocation % per strategy = user's TOTAL allocation % re-split by

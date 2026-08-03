@@ -222,37 +222,6 @@
     <details class="params"><summary>Key parameters</summary><p>Short put +10 ITM (1 DTE), long put −20 below short (~10 OTM, width 20), long ≈ 25 calendar DTE (±5). Window 12:30–15:00 ET, entry time = exit time, ~24h hold. VIX dead-zone (50, 80]; COR1M floor 10. Filter priority OPEX-1 &gt; EOM &gt; EOM-1 &gt; NM &gt; COR1M_LOW &gt; VIX_MID. Retuned 2026-06-09.</p></details>
   </section>
 
-  <!-- Tail Hedge -->
-  <section class="card">
-    <div class="chead"><span class="dot" style="background:var(--red)"></span><h2>Tail Hedge</h2><span class="tag">Long put · crash insurance</span></div>
-    <p class="oneliner">A long OTM 0DTE put bought as crash insurance when stock correlation (COR1M) crashes below 7.75 and vol-of-vol (VVIX) is calm. Bleeds small, pays big in a spike.</p>
-    <div class="payoff">
-      <svg viewBox="0 0 480 170" role="img" aria-label="Long put payoff: large profit on a crash, small fixed premium loss otherwise">
-        <polygon points="40,30 40,128 257,128" fill="rgba(74,222,128,0.12)"/>
-        <line class="zero" x1="40" y1="128" x2="440" y2="128"/><text class="plm" x="44" y="124">$0</text>
-        <polyline class="line" points="40,30 300,150 440,150"/>
-        <line class="tickd" x1="300" y1="128" x2="300" y2="158"/><text class="pl" x="300" y="168" text-anchor="middle" style="fill:var(--text)">put strike (≈Δ −0.10)</text>
-        <text class="plg" x="120" y="50" text-anchor="middle">big payoff on a crash ↓</text>
-        <text class="plr" x="380" y="146" text-anchor="middle">−premium (most days)</text>
-      </svg>
-    </div>
-    <div class="cols">
-      <div><h3>WHEN IT FIRES</h3><ul>
-        <li>COR1M at/below <b>7.75</b> — arms "buying mode" (on the cross down, or re-arm while it stays under)</li>
-        <li>Buy a put <b>every</b> morning at 9:45 ET until the first profitable day; then re-arm the next day while COR1M stays ≤ 7.75 — only stand down once it rises back above 7.75</li>
-        <li>Strike = Black-Scholes delta nearest −0.10 (the "Balanced" preset)</li>
-      </ul></div>
-      <div><h3>BLOCKED WHEN</h3><ul>
-        <li>VVIX ≥ 110 at the open (puts too rich) — skip, stay armed</li>
-        <li>COR1M hasn't crossed below 7.75 (no trigger)</li>
-        <li>No valid strike within ±0.10 of −0.10 delta</li>
-        <li>Missing intraday VIX / option snapshot</li>
-      </ul></div>
-    </div>
-    <div class="bet"><h3>THE BET</h3><p>Cheap insurance during complacent, low-correlation regimes that historically precede correlated selloffs. Most days the put expires worthless (lose ~$100–500 per contract; worst single day −$640 at 2 contracts). When a vol spike hits while you hold, one day can print $5k–$15k. Many small bleeds funded by rare large convex payoffs.</p></div>
-    <details class="params"><summary>Key parameters</summary><p>Trigger COR1M cross-down through 7.75 (prev ≥ 7.75 AND now ≤ 7.75). VVIX skip ≥ 110. Delta target −0.10 (Balanced), ±0.10 tolerance. Entry 9:45 ET, 0DTE SPXW put, 1 contract — <strong>2 when overnight VIX is down</strong>, σ = VIX-at-entry/100. Hold to 4 PM close (1 PM half-days). 4-yr backtest ≈ +$79k over ~68 trades — low win rate, high MAR.</p></details>
-  </section>
-
   <!-- PNBF (Pin Butterfly) -->
   <section class="card">
     <div class="chead"><span class="dot" style="background:var(--green)"></span><h2>PNBF</h2><span class="tag">Pin butterfly on the gamma magnet · bracket exit</span></div>

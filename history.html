@@ -144,7 +144,6 @@
     .strat-pill[data-strat="gxbf"]{background:rgba(45,212,191,.15);color:#2dd4bf;border-color:#2dd4bf;}
     .strat-pill[data-strat="bobf"]{background:rgba(251,146,60,.15);color:#fb923c;border-color:#fb923c;}
     .strat-pill[data-strat="diagonal"]{background:rgba(74,222,128,.15);color:#4ade80;border-color:#4ade80;}
-    .strat-pill[data-strat="tail"]{background:rgba(6,182,212,.15);color:#06b6d4;border-color:#06b6d4;}
     .strat-pill[data-strat="scalp"]{background:rgba(244,114,182,.15);color:#f472b6;border-color:#f472b6;}
     .strat-pill.inactive{border-color:transparent;}
     .strat-pill.solo{box-shadow:0 0 0 3px var(--accent),0 0 12px rgba(99,102,241,.4);}
@@ -237,7 +236,6 @@
       <a href="gex.html">GEX</a>
       <a href="diagonal.html">Diagonal</a>
       <a href="gxbf-backtester.html">GXBF BT</a>
-      <a href="cor1m_contango.html">Tail Hedge</a>
       <a href="multi-strategy-tester.html">Multi Tester</a>
     </nav>
     <div class="header-spacer"></div>
@@ -257,7 +255,6 @@
     <div class="strat-pill active" data-strat="gxbf" onclick="toggleStrat('gxbf')" ondblclick="soloStrat('gxbf')">GXBF</div>
     <div class="strat-pill active" data-strat="bobf" onclick="toggleStrat('bobf')" ondblclick="soloStrat('bobf')">BOBF</div>
     <div class="strat-pill active" data-strat="diagonal" onclick="toggleStrat('diagonal')" ondblclick="soloStrat('diagonal')" title="1/25 put-diagonal — entry anywhere in the 12:30–15:00 ET window, exit at the same clock time next day (24-hour hold, Entry Time === Exit Time, one diagonal active at a time); sDTE=1, +10 ITM, lDTE=25, −20 below (long 10 OTM, width 20); OPEX-1 + EOM + EOM-1 + NM + VIX 50–80% + COR1M≥10 excluded (default; 2026-06-09 safer-tail retune from 30/40 + VIX 50-90)">Diagonal</div>
-    <div class="strat-pill active" data-strat="tail" onclick="toggleStrat('tail')" ondblclick="soloStrat('tail')" title="Tail Hedge — Convex Tail preset (threshold 7.75, delta -0.10, VVIX<110). Buy 0DTE SPX put at 9:45 ET on any COR1M cross below 7.75 — 2 contracts when overnight VIX is down, else 1; hold to 4 PM. Companion strategy, not part of Sigma 3.">Tail Hedge</div>
     <div class="strat-pill active" data-strat="scalp" onclick="toggleStrat('scalp')" ondblclick="soloStrat('scalp')" title="PNBF — 30-wide 0DTE SPXW call fly bought ON the day's gamma magnet at 12:00 ET when the M8BF service's fly center sits exactly 5 pts from the magnet (T1 IS the magnet) and the debit ≤ $17.00. Skips EOM, CPI, FED, and Mon–Thu of monthly OPEX week. OCO bracket TP +3.0 / SL −5.0. Traded at 10 contracts; scalpPL is already 10-lot-sized dollars. Live record on magnetfly.html.">🧲 PNBF</div>
   </div>
 
@@ -433,7 +430,7 @@ let rows = [];
 let sortCol = null;
 let sortAsc = true;
 let currentMonths = 0;
-const activeStrats = { m8bf:true, strad:true, gxbf:true, bobf:true, diagonal:true, tail:true, scalp:true };
+const activeStrats = { m8bf:true, strad:true, gxbf:true, bobf:true, diagonal:true, scalp:true };  // tail retired 2026-08-03
 let soloKey = null;
 let activeDays = {1:true,2:true,3:true,4:true,5:true};
 let vixRegime = 'all';
@@ -491,7 +488,7 @@ function soloStrat(key) {
 }
 
 function updatePillStates() {
-  for (const k of ['m8bf','strad','gxbf','bobf','diagonal','tail','scalp']) {
+  for (const k of ['m8bf','strad','gxbf','bobf','diagonal','scalp']) {
     const el = document.querySelector(`.strat-pill[data-strat="${k}"]`);
     if (!el) continue;
     el.classList.toggle('active', activeStrats[k]);
@@ -711,7 +708,6 @@ function getRowPL(row) {
   if (activeStrats.gxbf && row.gxbfPL != null) { pl += row.gxbfPL; hasTrade = true; }
   if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { pl += row.bobfPL; hasTrade = true; }
   if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { pl += row.diagPL; hasTrade = true; }  // diagPL===0 = no-trade day, not a flat trade
-  if (activeStrats.tail && row.tailPL != null) { pl += row.tailPL; hasTrade = true; }
   if (activeStrats.scalp && row.scalpPL != null) { pl += row.scalpPL; hasTrade = true; }
   return hasTrade ? pl : null;
 }
@@ -771,7 +767,6 @@ function computeStats(visibleRows) {
     if (activeStrats.gxbf && row.gxbfPL != null) cum += row.gxbfPL;
     if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) cum += row.bobfPL;
     if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) cum += row.diagPL;  // diagPL===0 = no-trade day (matches getRowPL)
-    if (activeStrats.tail && row.tailPL != null) cum += row.tailPL;
     if (activeStrats.scalp && row.scalpPL != null) cum += row.scalpPL;
     if (cum > peak) peak = cum;
     const dd = peak - cum;
@@ -953,7 +948,6 @@ async function init() {
         gxbfPL: cur.gxbfPL != null ? cur.gxbfPL : null,
         bobfPL: cur.bobfPL != null ? cur.bobfPL : null,
         diagPL: cur.diagPL != null ? cur.diagPL : null,
-        tailPL: cur.tailPL != null ? cur.tailPL : null,
         scalpPL: cur.scalpPL != null ? cur.scalpPL : null,   // PNBF — already 10-lot-sized dollars
         prevWR: prevWR != null ? prevWR : null,
         signal,
@@ -999,7 +993,6 @@ const cols = [
   { key:'gxbfPL',      label:'GXBF',       type:'stratPL' },
   { key:'bobfPL',      label:'BOBF',       type:'stratPL' },
   { key:'diagPL',      label:'Diagonal',   type:'stratPL' },
-  { key:'tailPL',      label:'Tail Hedge', type:'stratPL' },
   { key:'scalpPL',     label:'🧲 PNBF',   type:'stratPL' },
   { key:'totalPL',     label:'Total',      type:'stratPL' },
   { key:'specialDay',  label:'Special',    type:'string'  },
@@ -1014,7 +1007,6 @@ function getValue(row, col) {
     case 'gxbfPL': return row.gxbfPL != null ? row.gxbfPL : -Infinity;
     case 'bobfPL': return row.signal?.bobfBadge !== 'BLOCKED' ? (row.bobfPL != null ? row.bobfPL : 0.1) : -Infinity;
     case 'diagPL': return row.diagPL != null ? row.diagPL : -Infinity;
-    case 'tailPL': return row.tailPL != null ? row.tailPL : -Infinity;
     case 'scalpPL': return row.scalpPL != null ? row.scalpPL : -Infinity;
     case 'totalPL': {
       const s = row.signal || {}; let t = 0;
@@ -1023,7 +1015,6 @@ function getValue(row, col) {
       if (activeStrats.gxbf && row.gxbfPL != null) t += row.gxbfPL;
       if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) t += row.bobfPL;
       if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) t += row.diagPL;  // 0 = no-trade day
-      if (activeStrats.tail && row.tailPL != null) t += row.tailPL;
       if (activeStrats.scalp && row.scalpPL != null) t += row.scalpPL;
       return t;
     }
@@ -1139,7 +1130,6 @@ function renderTable() {
     if (activeStrats.gxbf && row.gxbfPL != null) totGxbf += row.gxbfPL;
     if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) totBobf += row.bobfPL;
     if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) totDiag += row.diagPL;  // 0 = no-trade day
-    if (activeStrats.tail && row.tailPL != null) totTail += row.tailPL;
     if (activeStrats.scalp && row.scalpPL != null) totScalp += row.scalpPL;
   }
 
@@ -1178,7 +1168,6 @@ function renderTable() {
       h += stratCell(activeStrats.gxbf && row.gxbfPL != null, row.gxbfPL);
       h += stratCell(activeStrats.bobf && s.bobfBadge !== 'BLOCKED', row.bobfPL);
       h += stratCell(activeStrats.diagonal && row.diagPL != null, row.diagPL);
-      h += stratCell(activeStrats.tail && row.tailPL != null, row.tailPL);
       h += stratCell(activeStrats.scalp && row.scalpPL != null, row.scalpPL);
 
       let dayTotal = 0, hasDayTrade = false;
@@ -1187,7 +1176,6 @@ function renderTable() {
       if (activeStrats.gxbf && row.gxbfPL != null) { dayTotal += row.gxbfPL; hasDayTrade = true; }
       if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { dayTotal += row.bobfPL; hasDayTrade = true; }
       if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { dayTotal += row.diagPL; hasDayTrade = true; }  // 0 = no-trade day
-      if (activeStrats.tail && row.tailPL != null) { dayTotal += row.tailPL; hasDayTrade = true; }
       if (activeStrats.scalp && row.scalpPL != null) { dayTotal += row.scalpPL; hasDayTrade = true; }
       if (hasDayTrade) {
         const cls = dayTotal > 0 ? 'val-pos' : dayTotal < 0 ? 'val-neg' : 'val-zero';
@@ -1204,9 +1192,9 @@ function renderTable() {
   const fc = (v, active) => active ? `<td class="${valClass(v)}" style="font-weight:700">$${Math.round(v).toLocaleString()}</td>` : '<td style="color:var(--text3);text-align:center">—</td>';
   h += '</tbody><tfoot><tr>';
   h += '<td colspan="10" style="text-align:right;font-family:Inter,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2)">TOTAL</td>';
-  const totAll = (activeStrats.m8bf ? totM8 : 0) + (activeStrats.strad ? totStrad : 0) + (activeStrats.gxbf ? totGxbf : 0) + (activeStrats.bobf ? totBobf : 0) + (activeStrats.diagonal ? totDiag : 0) + (activeStrats.tail ? totTail : 0) + (activeStrats.scalp ? totScalp : 0);
-  h += fc(totM8, activeStrats.m8bf) + fc(totStrad, activeStrats.strad) + fc(totGxbf, activeStrats.gxbf) + fc(totBobf, activeStrats.bobf) + fc(totDiag, activeStrats.diagonal) + fc(totTail, activeStrats.tail) + fc(totScalp, activeStrats.scalp);
-  const anyActive = activeStrats.m8bf || activeStrats.strad || activeStrats.gxbf || activeStrats.bobf || activeStrats.diagonal || activeStrats.tail || activeStrats.scalp;
+  const totAll = (activeStrats.m8bf ? totM8 : 0) + (activeStrats.strad ? totStrad : 0) + (activeStrats.gxbf ? totGxbf : 0) + (activeStrats.bobf ? totBobf : 0) + (activeStrats.diagonal ? totDiag : 0) + (activeStrats.scalp ? totScalp : 0);
+  h += fc(totM8, activeStrats.m8bf) + fc(totStrad, activeStrats.strad) + fc(totGxbf, activeStrats.gxbf) + fc(totBobf, activeStrats.bobf) + fc(totDiag, activeStrats.diagonal) + fc(totScalp, activeStrats.scalp);
+  const anyActive = activeStrats.m8bf || activeStrats.strad || activeStrats.gxbf || activeStrats.bobf || activeStrats.diagonal || activeStrats.scalp;
   h += anyActive ? `<td class="${valClass(totAll)}" style="font-weight:700">$${Math.round(totAll).toLocaleString()}</td>` : `<td style="color:var(--text3);text-align:center">—</td>`;
   h += `<td></td>`; // Special Day column — no total
   h += '</tr></tfoot></table></div>';
@@ -1581,7 +1569,6 @@ function renderChart() {
     if (activeStrats.gxbf && row.gxbfPL != null) { rg += row.gxbfPL; dayPL += row.gxbfPL; }
     if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { rb += row.bobfPL; dayPL += row.bobfPL; }
     if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { rd += row.diagPL; dayPL += row.diagPL; }  // 0 = no-trade day
-    if (activeStrats.tail && row.tailPL != null) { rt += row.tailPL; dayPL += row.tailPL; }
     if (activeStrats.scalp && row.scalpPL != null) { rsc += row.scalpPL; dayPL += row.scalpPL; }
 
     const total = rm+rs+rg+rb+rd+rt+rsc;
@@ -1643,7 +1630,6 @@ function renderChart() {
     { label:'GXBF',     data:cumGxbf,  borderColor:'#2dd4bf', backgroundColor:'rgba(45,212,191,.1)',  tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.gxbf, yAxisID:'y' },
     { label:'BOBF',     data:cumBobf,  borderColor:'#fb923c', backgroundColor:'rgba(251,146,60,.1)',  tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.bobf, yAxisID:'y' },
     { label:'Diagonal', data:cumDiag,  borderColor:'#4ade80', backgroundColor:'rgba(74,222,128,.1)',  tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.diagonal, yAxisID:'y' },
-    { label:'Tail Hedge', data:cumTail, borderColor:'#06b6d4', backgroundColor:'rgba(6,182,212,.1)',  tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.tail, yAxisID:'y' },
     { label:'🧲 PNBF', data:cumScalp, borderColor:'#f472b6', backgroundColor:'rgba(244,114,182,.1)', tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.scalp, yAxisID:'y' },
     { label:'Combined', data:cumAll,   borderColor: isDark?'#e2e8f0':'#1e293b', backgroundColor: isDark?'rgba(226,232,240,.08)':'rgba(30,41,59,.08)', tension:.3, borderWidth:2.5, pointRadius:0, pointHitRadius:6, borderDash:[6,3], yAxisID:'y' },
     // Drawdown overlay
@@ -1795,7 +1781,6 @@ const EDGE_STRATS = [
   ['gxbf',     'GXBF',     'gxbfPL',  '#2dd4bf'],
   ['bobf',     'BOBF',     'bobfPL',  '#fb923c'],
   ['diagonal', 'Diagonal', 'diagPL',  '#4ade80'],
-  ['tail',     'Tail',     'tailPL',  '#f87171'],
   ['scalp',    'PNBF',     'scalpPL', '#f43f5e'],
 ];
 const EDGE_WINDOW_DAYS = 90;    // calendar days per rolling window

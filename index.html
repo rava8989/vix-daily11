@@ -362,7 +362,6 @@
         <a href="gex.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#22c55e,#16a34a);">GEX Dashboard</a>
         <a href="diagonal.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#f59e0b,#d97706);">◢ Diagonal Backtester</a>
         <a href="gxbf-backtester.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#ef4444,#dc2626);">GXBF BT</a>
-        <a href="cor1m_contango.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#06b6d4,#0891b2);">▼ Tail Hedge</a>
         <a href="cyclicality.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#8b5cf6,#7c3aed);">◐ CycleLab</a>
         <a href="earnings-play.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#0ea5e9,#2563eb);">🌙 Earnings Play</a>
         <a href="multi-strategy-tester.html" class="schwab-btn primary" style="text-decoration:none;font-size:13px;padding:8px 18px;border-radius:8px;text-align:center;background:linear-gradient(135deg,#8b5cf6,#6d28d9);">▦ Multi Strategy Tester</a>
@@ -661,19 +660,6 @@
       </div>
     </div>
 
-    <!-- CARD 6: Tail Hedge (companion — added 2026-06-08) -->
-    <div class="scard" id="cardTail" title="Tail Hedge (Convex Tail — DEFAULT, Δ-0.10). Watch COR1M hourly bars; whenever it crosses from above to at-or-below 7.75 (intraday or overnight), enter at the next 9:45 AM ET. VVIX gate: block when VVIX_open ≥ 110. Buy 0DTE SPXW put delta -0.10 — 2 contracts when overnight VIX is down (else 1), hold to 4 PM. Keep buying daily until the first profitable day; then RE-ARM the next day and keep buying as long as COR1M stays ≤ 7.75 (only stop when it rises back above 7.75) — so it never goes naked while complacency persists. Recommended preset (2026-06-16 sweep, 2× VIX-down sizing; re-arm added 2026-07-20): +$79,550, 74 trades, max DD $6,560, worst day -$640 — the cheaper 10-delta wing beats -0.20 on return AND drawdown. Full backtester: cor1m_contango.html.">
-      <div class="scard-header">
-        <span class="scard-label">Tail Hedge <span style="font-weight:400;font-size:10px;opacity:.7;letter-spacing:normal;text-transform:none">· companion · Sweet Spot</span></span>
-        <span class="today-trade-pill" id="pillTail" style="display:none;">▶ TODAY'S TRADE</span>
-        <span class="scard-badge" id="tailBadge">—</span>
-      </div>
-      <div class="scard-body">
-        <div class="scard-main" id="tailRec">Loading…</div>
-        <div class="scard-reason" id="tailReason"></div>
-      </div>
-    </div>
-
     <!-- CARD 7: PNBF (companion — paper-tracked candidate, added 2026-07-15) -->
     <div class="scard" id="cardScalp" title="PNBF — 30-wide 0DTE SPXW call fly bought ON the day's gamma magnet at 12:00 ET, only when the M8BF service's fly center sits exactly 5 pts from the magnet (its T1 IS the magnet) and the debit ≤ $17.00. Skips EOM, CPI, FED, and Mon–Thu of monthly OPEX week. Paper OCO bracket: TP +3.0 (+$300/lot) / SL −5.0 (−$500/lot). Traded at 10 contracts, signals via the Sigma channel + DMs. Backtest Sep 2024→Jun 2026: 87 trades, 83.9% WR, +$171/lot, PF 3.13. Full record: magnetfly.html.">
       <div class="scard-header">
@@ -940,87 +926,6 @@
       <li><strong>Backtest (Sep 2024 → Jun 2026, real NBBO + slippage):</strong> 87 trades · 83.9% WR · +$171/lot avg · t=5.40 · PF 3.13 · maxDD $1,000 · ~4/mo. Strategy-independent — never blocks or displaces M8BF / Straddle / GXBF / BOBF.</li>
     </ul>
     <hr class="divider">
-    <h3>Tail Hedge — Sweet Spot (default) <span style="font-weight:400;font-size:12px;color:var(--text3)">(companion strategy, separate from Sigma 3 — buys cheap 0DTE SPX puts when stock correlation crashes)</span></h3>
-    <p>
-      A <strong>tail-risk hedge</strong> that lays out cheap insurance on days when S&amp;P 500 stocks
-      stop moving together. When correlation suddenly drops below 7.75 — meaning everyone is doing their
-      own thing — history says a coordinated selloff often follows within days. The puts we bought for
-      <strong>$1-5 each</strong> can pay <strong>$5,000-$15,000</strong> when that selloff arrives.
-    </p>
-    <p class="muted-note" style="margin-top:4px">
-      Full interactive backtester + live regime visualization:
-      <a href="./cor1m_contango.html" style="color:var(--accent);text-decoration:underline">cor1m_contango.html</a>.
-      Backtested <strong>2022-06 → 2026-06</strong> on real ThetaData quotes with conservative fills (entry mid rounded UP to $0.10, P/L floored to $10 to cover commissions + slippage).
-    </p>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">In plain English</h4>
-    <ul>
-      <li><strong>COR1M</strong> measures how much S&amp;P 500 stocks move together. Low number (under 8) = stocks doing their own thing — calm, complacent. High number (over 30) = everyone selling together in panic.</li>
-      <li><strong>VVIX</strong> measures how jumpy options traders are about VIX itself. Normal: 80-95. Spiking above 110 = panic is already priced in, so puts cost too much.</li>
-      <li>When COR1M drops below 7.75, the market is unusually calm and stocks are doing their own thing. <em>That's exactly when an unexpected shock tends to break things — and a cheap put pays back 10× to 30× because nobody saw it coming.</em></li>
-      <li>When VVIX is above 110, the options market has already priced in the panic. The puts we want are too expensive to pay off. Skip the trade that day.</li>
-    </ul>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">The trigger — any cross of 7.75 fires it</h4>
-    <ul>
-      <li><strong>Watch COR1M hourly</strong> (ticker <code>$COR1M</code> on TradingView / Schwab / ToS). Each hourly bar prints at 9:30, 10:30, 11:30, … 15:30 ET.</li>
-      <li><strong>What fires it:</strong> whenever COR1M transitions from <em>above 7.75</em> to <em>at-or-below 7.75</em> on consecutive bars. That includes both:
-        <ul>
-          <li><strong>Overnight gap</strong>: yesterday's last bar was above 7.75, today's 9:30 bar is below.</li>
-          <li><strong>Intraday move</strong>: today's 9:30 was above 7.75, today's 10:30 (or later) is below.</li>
-        </ul>
-      </li>
-      <li><strong>When to enter:</strong>
-        <ul>
-          <li>Cross detected at the <strong>9:30 bar</strong> → trade <strong>same day</strong> at 9:45 AM ET.</li>
-          <li>Cross detected at <strong>10:30 or later</strong> → trade <strong>next trading day</strong> at 9:45 AM ET.</li>
-        </ul>
-      </li>
-      <li><strong>VVIX gate:</strong> on the trade day morning, check <code>$VVIX</code> open. If VVIX ≥ <strong>110</strong>, skip the trade that day (puts too expensive). Stay in buying-mode for tomorrow.</li>
-      <li>If both checks pass, at <strong>9:45 AM ET</strong> buy a 0DTE SPXW put with delta closest to <strong>−0.10</strong> — <strong>2 contracts when overnight VIX is down</strong> (today's open below yesterday's close, where the edge concentrates), else 1 (further OTM, ~$1-2.50 premium — cheaper wing, ~2× the risk-adjusted return of −0.20).</li>
-      <li>Hold to <strong>4:00 PM close</strong>. Put settles to intrinsic value (or expires worthless if SPX stayed above strike).</li>
-    </ul>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">State machine — keep buying until you win</h4>
-    <ul>
-      <li><strong>Once TRIGGERED, buy a put every trading morning</strong> (2 contracts when overnight VIX is down, else 1) until one of them pays off.</li>
-      <li><strong>First profitable day → bank it, then RE-ARM the next day if COR1M is still ≤ 7.75</strong> (owner 2026-07-20). It only fully stands down when COR1M rises back above 7.75 — so the hedge stays live through a persistent complacency regime instead of going naked after one small win.</li>
-      <li><strong>VVIX block does NOT exit</strong> — if VVIX ≥ 110 today, just skip today's buy, stay TRIGGERED.</li>
-      <li>Typical pattern: 5-10 small losses (~$100-500 each) followed by one big winner ($5k-$15k) that pays for all of them and adds profit. <em>Most days lose a little. A few days print huge. That's the trade.</em></li>
-    </ul>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">Historical results (Balanced — default, Δ-0.10 / 7.75, 2 contracts on VIX-down, 2022-06 → 2026-06)</h4>
-    <ul>
-      <li><strong>68 trades</strong> across <strong>8 campaigns</strong> in 4 years. 8 wins, 60 losses. Win rate <strong>11.8%</strong>.</li>
-      <li><strong>Total P/L: +$79,340</strong>. Max drawdown <strong>$6,560</strong>. <strong>MAR 12.09</strong>.</li>
-      <li><strong>Biggest single win: +$24,320</strong> (2025-11-20 NVDA-crash day, 2 contracts). <strong>Biggest single loss: −$640</strong> (a 2-contract day — that's the full worst case).</li>
-      <li>Positive every year it traded (2024–2026), and the total survives dropping the single best day.</li>
-      <li>Strategy was <strong>dormant 2022-06 → 2024-03</strong> — COR1M never dropped below 7.75 during the bear market era. <em>This is a low-correlation regime hedge, not an always-on insurance policy.</em> It does nothing during high-correlation environments (2022 grind down, 2008-style crashes).</li>
-    </ul>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">Why Balanced over looser variants</h4>
-    <ul>
-      <li>Threshold 7.75 arms only <strong>8 campaigns in 4 years</strong> — each trigger is a high-conviction regime break, not a routine dip.</li>
-      <li>Roughly <strong>half the activity</strong> of the widest variant (68 vs 128 trades) for <strong>83% of the return</strong> (+$79,340 vs +$95,070).</li>
-      <li><strong>One-third the drawdown</strong> ($6,560 vs $17,250) and <strong>half the worst single loss</strong> (−$640 vs −$1,320) — much cleaner to size.</li>
-      <li>More than double the risk-adjusted return (MAR <strong>12.09 vs 5.51</strong>).</li>
-    </ul>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">Why this hedges your other strategies</h4>
-    <ul>
-      <li>On the portfolio's single worst crash day in the record (2025-11-20 NVDA crash, core strategies −$3,967), the tail paid <strong>+$27,960</strong> — flipping the day to <strong>+$23,993</strong>. That one day is the hedge's whole job.</li>
-      <li>Most bad portfolio days happen <em>outside</em> a tail campaign (the trigger armed on only 2 of the 15 worst days) — it hedges crash <em>regimes</em>, not every red day. Size expectations accordingly.</li>
-      <li>Straddle is the biggest co-beneficiary — on tail-campaign days it added <strong>+$21,837</strong> across 14 fills; the same falling-VIX mornings feed both.</li>
-      <li>Diagonal is roughly flat across tail days (+$275) and M8BF runs normally — the tail doesn't interfere with either.</li>
-    </ul>
-
-    <h4 style="margin:14px 0 6px;font-size:13px;color:var(--text)">What it is <em>not</em></h4>
-    <ul>
-      <li><strong>Not an always-on hedge</strong> — only fires during low-correlation regimes (most of 2024 onward). Sat dormant during 2022 bear market.</li>
-      <li><strong>Not a part of Sigma 3</strong> — separate sizing, separate signal. Companion strategy, layered on top.</li>
-      <li><strong>Not protection against gradual decline</strong> — it pays on sharp 1-day shocks (FOMC surprises, geopolitical events). Won't help on slow grinding bear markets.</li>
-      <li><strong>Not a one-and-done per regime</strong> — it takes the first profit, then re-arms the next day while COR1M stays ≤ 7.75, only standing fully down when COR1M rises back above 7.75.</li>
-    </ul>
 
     <hr class="divider">
     <p>Last 2 digits win rate — AM vs PM. Avoid low win rate strikes.</p>
@@ -3189,15 +3094,7 @@
     if (diag && notCalc(diag)) {
       inner += `${sigColor(diag)}Diagonal │ ${diag}${RST}\n`;
     }
-    // Tail Hedge (Convex Tail — thr 7.75, delta -0.10, VVIX<110; 2026-06-16). Reads cached
-    // state populated by updateTailHedgeStatus() on page load.
-    if (_tailHedgeState?.text) {
-      const tl = `Tail Hedge │ ${_tailHedgeState.text}`;
-      const tc = _tailHedgeState.state === 'TRADE' ? GRN
-               : _tailHedgeState.state === 'SKIP'  ? RED
-               : DIM;
-      inner += `${tc}${tl}${RST}\n`;
-    }
+    // Tail Hedge RETIRED 2026-08-03 — no line in the morning message.
 
     // Advisory lines — fetched from the worker (/advisory-lines) so the test
     // message matches the real morning message exactly (Tilt / GEX / Day-type).
@@ -3753,69 +3650,12 @@
     }
   }
 
-  // ── Tail Hedge daily signal — reads cor1m_contango_bundle.json once and
-  //    caches the binary state. Used by BOTH the card UI AND the Discord
-  //    message builder (so the Test Post button shows the same line).
-  let _tailHedgeState = null;  // { state: 'TRADE'|'SKIP'|'WAIT', text, cor1m, vvix }
-
-  async function updateTailHedgeStatus() {
-    const rec   = document.getElementById('tailRec');
-    const pill  = document.getElementById('pillTail');
-    const badge = document.getElementById('tailBadge');
-    if (!rec) return;
-    try {
-      const r = await fetch('cor1m_contango_bundle.json', {cache:'no-store'});
-      const b = await r.json();
-      const _e = _toETSafe(new Date());   // ET date (iPhone-safe); UTC slice rolled the date wrong in the evening
-      const todayISO = `${_e.getFullYear()}-${String(_e.getMonth()+1).padStart(2,'0')}-${String(_e.getDate()).padStart(2,'0')}`;
-      const dailyToday = b.daily?.find(d => d.date === todayISO);
-      const cor1mOpen = dailyToday?.cor1m;
-      const vvixOpen  = dailyToday?.vvix;
-      // State machine from the worker's AUTHORITATIVE preset (default_preset = 'balanced'),
-      // NOT 'sweet_spot' — so this card + the Test-Post preview match getTailHedgeStatusLine
-      // and the real scheduled morning post (audit 2026-06-22).
-      const triggers = b.preset_results?.[b.default_preset || 'balanced']?.triggers || [];
-      const last = triggers[triggers.length - 1];
-      const isTriggered = last && last.exit_reason !== 'profitable';
-      if (isTriggered) {
-        // Within an active trigger window — VVIX gate decides.
-        if (vvixOpen != null && vvixOpen >= 110) {
-          rec.innerHTML = `<span style="color:var(--amber);">SKIP today</span> — VVIX <b>${vvixOpen.toFixed(2)}</b> ≥ 110 (puts too expensive). Stay TRIGGERED.`;
-          if (pill)  pill.style.display = 'none';
-          if (badge) badge.textContent = 'SKIP';
-          _tailHedgeState = { state: 'SKIP', cor1m: cor1mOpen, vvix: vvixOpen,
-                              text: `SKIP today (VVIX ${vvixOpen.toFixed(2)} ≥ 110)` };
-        } else {
-          rec.innerHTML = `<span style="color:var(--accent);">TRADE today @ 9:45 ET</span> — buy 0DTE SPXW put delta −0.10, hold to 4 PM. <span style="color:var(--text3);font-weight:400">VVIX ${vvixOpen?.toFixed(2) ?? '—'} &lt; 110 ✓</span>`;
-          if (pill)  pill.style.display = '';
-          if (badge) badge.textContent = 'TRADE';
-          _tailHedgeState = { state: 'TRADE', cor1m: cor1mOpen, vvix: vvixOpen,
-                              text: `▶ TRADE @ 9:45 — buy 0DTE SPXW put Δ-0.10  (VVIX ${vvixOpen?.toFixed(2) ?? '—'})` };
-        }
-      } else {
-        // WAITING — no active trigger.
-        const corS = cor1mOpen != null ? cor1mOpen.toFixed(2) : '—';
-        rec.innerHTML = `<span style="color:var(--text3);">No Tail Hedge today</span> — COR1M open <b>${corS}</b> (need cross below <b>7.75</b>). Waiting for next trigger.`;
-        if (pill)  pill.style.display = 'none';
-        if (badge) badge.textContent = 'WAIT';
-        _tailHedgeState = { state: 'WAIT', cor1m: cor1mOpen, vvix: vvixOpen,
-                            text: `No trade today (COR1M ${corS}, need < 7.75)` };
-      }
-    } catch(e) {
-      rec.textContent = 'Tail Hedge: bundle unavailable. See cor1m_contango.html.';
-      if (badge) badge.textContent = '—';
-      _tailHedgeState = { state: 'WAIT', text: 'status unavailable' };
-    }
-  }
-
-  // Read the cached tail hedge state (or trigger a fresh fetch if missing).
-  // Used by discordBuildMessage so Test Post + scheduled morning post agree.
-  async function getTailHedgeLineForDiscord() {
-    if (!_tailHedgeState) {
-      await updateTailHedgeStatus().catch(() => {});
-    }
-    return _tailHedgeState?.text ? `Tail Hedge │ ${_tailHedgeState.text}` : null;
-  }
+  // ── Tail Hedge RETIRED 2026-08-03 (owner order) ──────────────────────────
+  //    Strategy removed from the live book and the Σ3 service. Archive:
+  //    tasks/TAIL_HEDGE_ARCHIVE.md. Stubs kept so any stale caller is a no-op.
+  let _tailHedgeState = null;
+  async function updateTailHedgeStatus() { /* retired */ }
+  async function getTailHedgeLineForDiscord() { return null; }
 
   // ── PNBF daily signal (companion, paper-tracked) — reads the live
   //    worker's /magnetfly-today (same feed as magnetfly.html) and mirrors the

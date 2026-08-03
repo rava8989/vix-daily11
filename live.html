@@ -174,7 +174,6 @@
     <a href="gex.html">GEX</a>
     <a href="diagonal.html">Diagonal</a>
     <a href="gxbf-backtester.html">GXBF BT</a>
-    <a href="cor1m_contango.html">Tail Hedge</a>
     <a href="multi-strategy-tester.html">Multi Tester</a>
   </nav>
   <div class="header-spacer"></div>
@@ -629,105 +628,12 @@ async function loadBobf() {
   } catch (e) { console.warn('[live] /bobf-today fetch failed:', e); }
 }
 
-// ─── Tail Hedge (AUTO strategy — 2026-06-22: full parity with the others.
-// Cron freezes the 9:45 put, refreshes intraday P&L, settles tailPL at close,
-// and stops the campaign on the first profitable day. Skipper auto-places it
-// when its Tail Hedge toggle is on/live, same as every other strategy.) ────
+// ─── Tail Hedge RETIRED 2026-08-03 (owner order) ─────────────────────────
+// Removed from the live book and the Σ3 service. Archive + resurrection
+// conditions: tasks/TAIL_HEDGE_ARCHIVE.md. Stubs keep callers safe.
 let tail = null;
-async function loadTail() {
-  try {
-    const r = await fetchWithRetry(PROXY + '/tail-today', { cache: 'no-store' });
-    if (r.ok) tail = await r.json();
-  } catch (e) { console.warn('[live] /tail-today fetch failed:', e); }
-}
-
-function renderTail() {
-  const sec = document.getElementById('tailSection');
-  if (!tail) { sec.style.display = 'none'; return; }
-  const today = tail.date;
-  const openT   = (tail.open && tail.open.openDate === today && tail.open.status !== 'closed') ? tail.open : null;
-  const closedT = (tail.lastClosed && tail.lastClosed.closeDate === today) ? tail.lastClosed : null;
-  const t = openT || closedT;
-  if (!tail.active && !tail.skip && !t) { sec.style.display = 'none'; return; }
-  sec.style.display = '';
-
-  const since = tail.state && tail.state.since ? ` · trigger since ${tail.state.since}` : '';
-  const cand = tail.candidate;
-
-  // TOS copy string (from the live trade or the candidate)
-  const tOpen = t || (cand ? { strike: cand.k, expDate: cand.e, entryAsk: cand.a } : null);
-  if (tOpen && tOpen.strike != null) {
-    const px = (tOpen.entryAsk ?? cand?.a);
-    window._tos.tail = `BUY +${tOpen.contracts || 1} SPX 100 (Weeklys) ${tosDate(tOpen.expDate)} ${_tk(tOpen.strike)} PUT @${px?.toFixed(2)} LMT`;
-  }
-
-  // Header badge — live-trade status if we have a trade today, else trigger state
-  let badge, badgeClass, statusText = '';
-  if (t) {
-    switch (t.status) {
-      case 'filled':
-        badge = 'FILLED · LIVE'; badgeClass = 'open';
-        statusText = `SPXW ${t.strike}P · entered $${(t.entryMid ?? t.entryAsk)?.toFixed(2)} mid @ 9:45 ET`;
-        break;
-      case 'closed':
-        badge = 'CLOSED'; badgeClass = t.pnl >= 0 ? 'open' : 'error';
-        statusText = `SPXW ${t.strike}P · settled SPX ${t.spxClose?.toFixed(2)} · final P&L ${fmt$(t.pnl)}`;
-        break;
-      default:
-        badge = (t.status || 'OPEN').toUpperCase(); badgeClass = 'pending';
-        statusText = `SPXW ${t.strike}P`;
-    }
-  } else {
-    badge = tail.skip ? 'SKIP TODAY' : 'TRIGGER ACTIVE';
-    badgeClass = tail.skip ? 'skip' : 'open';
-  }
-
-  const livePnl = t ? (t.status === 'filled' ? t.currentPnl : t.status === 'closed' ? t.pnl : null) : null;
-  const plClass = livePnl == null ? '' : livePnl > 0 ? 'diag-pl-pos' : livePnl < 0 ? 'diag-pl-neg' : '';
-
-  const candRow = cand
-    ? `<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin:8px 0 4px;">
-         Put: <b>SPXW ${cand.k}P</b> (Δ ${cand.d}) — bid ${cand.b ?? '—'} / ask ${cand.a ?? '—'}
-         <span style="font-size:11px;color:var(--text3)"> @ ${tail.snapAt ?? '9:40'} snap, exp ${cand.e}</span>
-         ${window._tos.tail ? tosBtn('tail') : ''}
-       </div>`
-    : '';
-
-  const html = [];
-  html.push(`<div class="diag-card">`);
-  html.push(`<div class="diag-header">`);
-  html.push(`<div class="diag-title">▼ <span>Tail Hedge</span></div>`);
-  html.push(`<span class="diag-badge ${badgeClass}">${badge}</span>`);
-  html.push(`<div style="flex:1"></div>`);
-  html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">COR1M ${tail.cor1m ?? '—'} · VVIX ${tail.vvix ?? '—'}</span>`);
-  html.push(`</div>`);
-
-  if (tail.skip && !t) {
-    html.push(`<div style="font-size:13px;color:var(--text2);">${tail.line.replace('Tail Hedge │ ', '')} — sequence stays open; check again tomorrow.${since}</div>`);
-  } else if (t) {
-    html.push(`<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">${statusText}</div>`);
-    html.push(`<div class="diag-grid">`);
-    if (livePnl != null) {
-      html.push(`<div class="diag-stat"><div class="diag-stat-label">${t.status === 'closed' ? 'Final' : 'Live'} P&L</div><div class="diag-stat-value ${plClass}">${fmt$(livePnl)}</div><div class="diag-stat-sub">${t.contracts || 1} contract${(t.contracts || 1) > 1 ? 's · 2× (overnight VIX down)' : ''}</div></div>`);
-    } else {
-      html.push(`<div class="diag-stat"><div class="diag-stat-label">P&L</div><div class="diag-stat-value">—</div><div class="diag-stat-sub">awaiting quote</div></div>`);
-    }
-    html.push(`<div class="diag-stat"><div class="diag-stat-label">SPX</div><div class="diag-stat-value">${t.currentSpot?.toFixed(2) ?? t.spxClose?.toFixed(2) ?? '—'}</div><div class="diag-stat-sub">Strike ${t.strike}</div></div>`);
-    const entryPx = t.entryMid ?? t.entryAsk;
-    html.push(`<div class="diag-stat"><div class="diag-stat-label">Entry</div><div class="diag-stat-value">$${entryPx != null ? (entryPx*100).toFixed(0) : '—'}</div><div class="diag-stat-sub">$${entryPx?.toFixed(2) ?? '—'} mid</div></div>`);
-    if (t.currentValue != null && t.status !== 'closed') {
-      html.push(`<div class="diag-stat"><div class="diag-stat-label">Current</div><div class="diag-stat-value">$${(t.currentValue*100).toFixed(0)}</div><div class="diag-stat-sub">$${t.currentValue?.toFixed(2)} mid</div></div>`);
-    }
-    html.push(`</div>`);
-    html.push(candRow);
-  } else {
-    html.push(`<div style="font-size:13px;color:var(--text);font-weight:600;">Buy 0DTE SPXW put, Δ −0.10, at <u>9:45 ET</u> — <strong>2 contracts when overnight VIX is down</strong>, else 1. Auto-placed, repeat daily until the first profitable day.</div>`);
-    html.push(candRow);
-    html.push(`<div style="font-size:11.5px;color:var(--text3);margin-top:6px;">Skip rule: no entry when VVIX ≥ 110 (now ${tail.vvix ?? '—'}). COR1M ${tail.cor1m ?? '—'}${since}.</div>`);
-  }
-  html.push(`</div>`);
-  sec.innerHTML = html.join('');
-}
+async function loadTail() { /* retired */ }
+function renderTail() { return ''; }
 
 // ─── PNBF (companion paper trade — /magnetfly-today feed). 30-wide 0DTE
 // call fly bought ON the gamma magnet at noon, sized at 10 lots. entry/tp/sl/
@@ -1904,13 +1810,7 @@ function renderLiveTotal() {
   }
   // else: diagOpen.openDate === today → brand-new open today, excluded
 
-  // Tail Hedge — now a real auto-traded strategy; include it like the others
-  // (filled → live currentPnl; settled today → realized pnl). (audit 2026-06-22)
-  let tailPL = null;
-  const tOpen = (tail?.open && tail.open.openDate === today && tail.open.status === 'filled') ? tail.open : null;
-  const tClosed = (tail?.lastClosed && tail.lastClosed.closeDate === today) ? tail.lastClosed : null;
-  if (tClosed && tClosed.pnl != null) tailPL = tClosed.pnl;
-  else if (tOpen && tOpen.currentPnl != null) tailPL = tOpen.currentPnl;
+  // Tail Hedge retired 2026-08-03 — excluded from the portfolio row.
 
   const parts = [
     { name: 'M8BF',     pl: m8bfPL },
@@ -1918,7 +1818,6 @@ function renderLiveTotal() {
     { name: 'GXBF',     pl: gxbfPL },
     { name: 'Straddle', pl: stradPL },
     { name: 'Diagonal', pl: diagPL  },
-    { name: 'Tail',     pl: tailPL  },
   ];
   const total = parts.reduce((s, p) => s + (p.pl ?? 0), 0);
   const anyData = parts.some(p => p.pl != null);

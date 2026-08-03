@@ -542,6 +542,41 @@ async function computeEveningBook(env, token, etNow) {
   };
 }
 
+// Compute + persist tonight's bank-scale evening book if missing (claim-gated,
+// idempotent; returns the freshest snapshot or null). Shared by GET
+// /evening-book (lazy) and the after-close cron backstop — AUDIT FIX
+// 2026-07-31: a night with zero page hits used to leave a permanent hole in
+// the gap-ladder series and starve the next morning's Gap card + Wall gauge.
+async function ensureEveningBook(env, etNowEb) {
+  const isoEb = isoDateET(etNowEb);
+  let latest = null;
+  try { latest = JSON.parse((await env.SIGNAL_KV.get('evening_book_latest')) || 'null'); } catch (_) {}
+  const isTradingDayEb = etNowEb.getDay() >= 1 && etNowEb.getDay() <= 5 && !isHol(etNowEb);
+  // 16:25+: the official close print has settled by then (lastPrice static).
+  const afterCloseEb = etNowEb.getHours() > 16 || (etNowEb.getHours() === 16 && etNowEb.getMinutes() >= 25);
+  if (!(isTradingDayEb && afterCloseEb && (!latest || latest.date < isoEb))) return latest;
+  if (!(await claimSendSlot(env, `evening_book_${isoEb}`))) return latest;
+  try {
+    const tokEb = await getAccessToken(env);
+    const snap = await computeEveningBook(env, tokEb, etNowEb);
+    await env.SIGNAL_KV.put('evening_book_latest', JSON.stringify(snap));
+    await env.SIGNAL_KV.put(`evening_book_${isoEb}`, 'sent', { expirationTtl: 3 * 86400 });
+    try {
+      const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');
+      if (!log.some(r => r.d === snap.date)) {
+        log.push({ d: snap.date, book: snap.book, spx: snap.spx, vix: snap.vix });
+        await env.SIGNAL_KV.put('evening_book_log', JSON.stringify(log));
+      }
+    } catch (e) { console.warn('[evening-book] log append failed:', e.message); }
+    return snap;
+  } catch (e) {
+    console.warn('[evening-book] compute failed:', e.message);
+    // release the claim so the next tick/request retries immediately
+    try { const c = await env.SIGNAL_KV.get(`evening_book_${isoEb}`); if (c && c.startsWith('claim:')) await env.SIGNAL_KV.delete(`evening_book_${isoEb}`); } catch (_) {}
+    return latest;
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 // GEXMAGNET nightly single-stock chain collector (2026-07-02)
 // ────────────────────────────────────────────────────────────────────
@@ -1292,14 +1327,29 @@ async function earnAfterJob(env, etNow, token) {
       scored.map(r => `${r.ticker} ${r.afterPct != null ? (r.afterPct >= 0 ? '+' : '') + (r.afterPct * 100).toFixed(1) + '%' : '—'}`).join(' · ') +
       `\n_close → next open · observation only_`;
     // Earnings-play channel ONLY (owner 2026-07-31) — no Sigma 3 mirror.
+    // P22 (audit 2026-07-31): 'sent' ONLY on confirmed delivery; a failed
+    // delivery releases the claim so the next tick in 9:40–9:55 retries.
     const wh = await env.SIGNAL_KV.get('earnings_webhook_url');
-    if (wh) {
-      let ok = false;
-      if (png) ok = await postWebhookImage(wh, png, EARN_CARD_FOOTER, 'earnings-after.png');
-      if (!ok) { try { await fetch(wh, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textFallback.slice(0, 1900) }) }); } catch (_) {} }
+    if (!wh) {
+      await env.SIGNAL_KV.put(key, 'no-webhook', { expirationTtl: 86400 });
+      await logEvent(env, 'warn', 'earn-after', 'morning-after card skipped — earnings_webhook_url unset');
+      return;
     }
-    await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
-    await logEvent(env, 'info', 'earn-after', `morning-after card sent for ${prev}`, { rows: scored.length });
+    let delivered = false;
+    if (png) delivered = await postWebhookImage(wh, png, EARN_CARD_FOOTER, 'earnings-after.png');
+    if (!delivered) {
+      try {
+        const r = await fetch(wh, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textFallback.slice(0, 1900) }) });
+        delivered = r.ok;
+      } catch (e) { console.warn('[earn-after] text fallback failed:', e.message); }
+    }
+    if (delivered) {
+      await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
+      await logEvent(env, 'info', 'earn-after', `morning-after card sent for ${prev}`, { rows: scored.length });
+    } else {
+      await env.SIGNAL_KV.delete(key);          // release claim → retry next tick
+      console.warn('[earn-after] delivery failed — claim released for retry');
+    }
   } catch (e) {
     console.warn('[earn-after] failed:', e.message);
   }
@@ -5651,8 +5701,12 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
     const fresh = g0 && g0.timestamp && (Date.now() / 1000 - g0.timestamp) < 600;
     if (fresh && typeof g0.totalGex === 'number' && g0.totalGex <= 0) {
       const bn = (g0.totalGex / 1e9).toFixed(1);
-      // GXBF itself stands down (unchanged since the gate shipped 2026-07-30 AM).
-      await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B`, { expirationTtl: 86400 });
+      // GXBF itself stands down. AUDIT FIX 2026-07-31 (marker-before-send):
+      // the terminal `gamma-gate:` marker is now written at the END of each
+      // COMPLETED outcome below — not here. A transient failure mid-branch
+      // leaves no terminal, the caller releases its claim, and the next tick
+      // in the 9:35–9:45 window retries the whole gate. In-flight double-entry
+      // is prevented by the caller's claimSendSlot on gxbf_done_<date>.
 
       // ── GATED-DAY STRADDLE (owner ship order 2026-07-30 PM) ──
       // A gated day converts to the standard open-strike straddle: strike =
@@ -5685,6 +5739,7 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
           if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
             `⚪ **GXBF** — gamma-gated (${bn}B) on a ${why} morning. No straddle conversion (regular logic: overnight VIX must be down). No trade today.`, dc.proxyUrl);
         } catch (_) {}
+        await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B:no-conv`, { expirationTtl: 86400 });
         return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle: `no-conversion:${why}` };
       }
       let gatedStraddle = null;
@@ -5726,10 +5781,13 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
           const dc = dcRaw ? JSON.parse(dcRaw) : null;
           if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
             `⚠️ **GATED STRADDLE failed to open** (${se.message}) — GXBF gamma-gated at ${bn}B. ` +
-            `POST /straddle-recovery or place manually: open-strike straddle, limit $32, cancel 13:30.`, dc.proxyUrl);
+            `Auto-retrying each tick until 9:45 ET. If it keeps failing, place manually: open-strike straddle, limit $32, cancel 13:30, hold to settle.`, dc.proxyUrl);
         } catch (_) {}
-        gatedStraddle = 'open-FAILED';
+        // AUDIT FIX 2026-07-31: NO terminal marker on failure — the caller
+        // releases its claim and the next in-window tick retries the gate.
+        return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle: 'open-FAILED-retrying' };
       }
+      await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B`, { expirationTtl: 86400 });
       return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle };
     }
   } catch (e) { console.warn('[gxbf] gamma gate check failed (fail-open):', e.message); }
@@ -6818,84 +6876,8 @@ async function handleScheduledInner(env) {
       if (earnToken) {
         try { await earnMorningJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-morning]', e.message); }
         try { await earnResolveJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-resolve]', e.message); }
-        // 9:35 gamma-regime post to the Sigma 3 CHANNEL (owner 2026-07-31).
-        // Lives HERE because this section provably runs on every market tick —
-        // the first placement (inside the once-at-9:31 morning function) never
-        // executed at 9:35 and 2026-07-31's post was missed. Window runs to
-        // 10:30 so a late tick still posts; the message carries the actual
-        // read time. Claim-gated (P22), freshness checked before claiming.
-        try {
-          const _gh = etNow.getHours(), _gm = etNow.getMinutes();
-          if ((_gh === 9 && _gm >= 35) || (_gh === 10 && _gm <= 30)) {
-            const grRaw = await env.SIGNAL_KV.get('gex_current_0dte');
-            const gr = grRaw ? JSON.parse(grRaw) : null;
-            const grFresh = gr && gr.timestamp && (Date.now() / 1000 - gr.timestamp) < 600 && typeof gr.totalGex === 'number';
-            const grKey = `gamma_regime_${isoDateET(etNow)}`;
-            // Persist the day's canonical 9:35 reading for the 10:00 flip
-            // check (gex_current_0dte is overwritten every minute).
-            if (grFresh && !(await env.SIGNAL_KV.get(`g935_snap_${isoDateET(etNow)}`))) {
-              await env.SIGNAL_KV.put(`g935_snap_${isoDateET(etNow)}`,
-                JSON.stringify({ g: gr.totalGex, at: `${_gh}:${String(_gm).padStart(2, '0')}` }), { expirationTtl: 86400 });
-            }
-            if (grFresh && await claimSendSlot(env, grKey)) {
-              const bn = (gr.totalGex / 1e9).toFixed(1);
-              const tLbl = `${_gh}:${String(_gm).padStart(2, '0')}`;
-              let msg = gr.totalGex > 0
-                ? `🟢 **Gamma regime: POSITIVE** — 0DTE book +${bn}B at ${tLbl}. Dealer hedging dampens moves — pin-friendly tape.`
-                : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at ${tLbl}. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
-              // Fed rider (owner 2026-07-31): the decision, not the odds, is the risk.
-              try {
-                if (fedSch.includes(todayLong(etNow))) {
-                  msg += gr.totalGex > 0
-                    ? ` FOMC day — the 2:00 PM decision can break any morning regime.`
-                    : ` FOMC day — a negative book has never produced a good pin day on a Fed decision.`;
-                }
-              } catch (_) {}
-              // Σ3 SIGNALS CHANNEL (owner: same room as the trade signals,
-              // channel post only — no subscriber DMs). Disclaimer appended
-              // like every other public post.
-              let grOk = false;
-              try { const grRes = await postSignalsChannel(env, msg + FANOUT_DISCLAIMER); grOk = !!(grRes && grRes.ok); } catch (e) { console.warn('[gamma-regime] channel post:', e.message); }
-              // only terminal-mark on CONFIRMED delivery — a failed send leaves
-              // the claim to expire (300s) so the next tick retries.
-              if (grOk) await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
-              else console.warn('[gamma-regime] channel send not ok — will retry');
-            }
-          }
-        } catch (e) { console.warn('[gamma-regime]', e.message); }
-        // 10:00 BOOK-FLIP note (owner 2026-07-31 'do 1'): when the book's sign
-        // at ~10:00 differs from the 9:35 snap, post ONE line to the signals
-        // channel — flip days historically ran ~¼-strength at coin-flip WR for
-        // the whole board (portfolio +$349-394/d vs +$1,318-1,753 stable, n=48).
-        // Posts ONLY on a flip; stable days stay silent. Claim-gated, delivery-
-        // confirmed, window 10:00–10:25.
-        try {
-          const _fh = etNow.getHours(), _fm = etNow.getMinutes();
-          if (_fh === 10 && _fm >= 0 && _fm <= 25) {
-            const snapRaw = await env.SIGNAL_KV.get(`g935_snap_${isoDateET(etNow)}`);
-            const snap = snapRaw ? JSON.parse(snapRaw) : null;
-            const curRaw = await env.SIGNAL_KV.get('gex_current_0dte');
-            const cur = curRaw ? JSON.parse(curRaw) : null;
-            const curFresh = cur && cur.timestamp && (Date.now() / 1000 - cur.timestamp) < 600 && typeof cur.totalGex === 'number';
-            // Persist the day's canonical 10:00 reading for the Morning Book
-            // panel (first fresh read 10:00–10:10).
-            if (curFresh && _fm <= 10 && !(await env.SIGNAL_KV.get(`g1000_snap_${isoDateET(etNow)}`))) {
-              await env.SIGNAL_KV.put(`g1000_snap_${isoDateET(etNow)}`,
-                JSON.stringify({ g: cur.totalGex, at: `${_fh}:${String(_fm).padStart(2, '0')}` }), { expirationTtl: 86400 });
-            }
-            if (snap && typeof snap.g === 'number' && curFresh && (snap.g > 0) !== (cur.totalGex > 0)) {
-              const fKey = `book_flip_${isoDateET(etNow)}`;
-              if (await claimSendSlot(env, fKey)) {
-                const b0 = (snap.g / 1e9).toFixed(1), b1 = (cur.totalGex / 1e9).toFixed(1);
-                const dir = cur.totalGex > 0 ? `NEGATIVE (${b0}B) → POSITIVE (+${b1}B)` : `POSITIVE (+${b0}B) → NEGATIVE (${b1}B)`;
-                const fMsg = `⚠️ **Book flipped** — ${dir} since ${snap.at || '9:35'}. Unstable-gamma days have historically run ~¼-strength at coin-flip odds across the whole board. Size easy.`;
-                let fOk = false;
-                try { const fr = await postSignalsChannel(env, fMsg + FANOUT_DISCLAIMER); fOk = !!(fr && fr.ok); } catch (e2) { console.warn('[book-flip] post:', e2.message); }
-                if (fOk) await env.SIGNAL_KV.put(fKey, 'sent', { expirationTtl: 86400 });
-              }
-            }
-          }
-        } catch (e) { console.warn('[book-flip]', e.message); }
+        // (gamma-regime + book-flip blocks moved OUT of the earnToken guard
+        //  2026-07-31 audit fix — they are Discord/KV-only, see below.)
 
         try { await earnAfterJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-after]', e.message); }
         try { await earnExitJob(env, etNow, earnToken); } catch (e) { console.warn('[earn-exit]', e.message); }
@@ -6904,6 +6886,110 @@ async function handleScheduledInner(env) {
         try { await earnNightlyCollect(env, etNow, earnToken); } catch (e) { console.warn('[earn-collect]', e.message); }
       }
     }
+  }
+
+  // ── Morning book posts (Discord/KV-only — AUDIT FIX 2026-07-31) ──
+  // Moved OUT of the earnings `if (earnToken)` guard: the 9:35 gamma-regime
+  // post, the g935/g1000 snaps and the 10:00 book-flip note need NO Schwab
+  // token (they read gex_current_0dte KV and post to Discord), so a Schwab
+  // OAuth failure must not delay or kill them. Windows are self-gated inside.
+  if (isMarket) {
+  // 9:35 gamma-regime post to the Sigma 3 CHANNEL (owner 2026-07-31).
+  // Lives HERE because this section provably runs on every market tick —
+  // the first placement (inside the once-at-9:31 morning function) never
+  // executed at 9:35 and 2026-07-31's post was missed. Window runs to
+  // 10:30 so a late tick still posts; the message carries the actual
+  // read time. Claim-gated (P22), freshness checked before claiming.
+  try {
+    const _gh = etNow.getHours(), _gm = etNow.getMinutes();
+    if ((_gh === 9 && _gm >= 35) || (_gh === 10 && _gm <= 30)) {
+      const grRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+      const gr = grRaw ? JSON.parse(grRaw) : null;
+      const grFresh = gr && gr.timestamp && (Date.now() / 1000 - gr.timestamp) < 600 && typeof gr.totalGex === 'number';
+      const grKey = `gamma_regime_${isoDateET(etNow)}`;
+      // Persist the day's canonical 9:35 reading for the 10:00 flip
+      // check (gex_current_0dte is overwritten every minute).
+      if (grFresh && !(await env.SIGNAL_KV.get(`g935_snap_${isoDateET(etNow)}`))) {
+        await env.SIGNAL_KV.put(`g935_snap_${isoDateET(etNow)}`,
+          JSON.stringify({ g: gr.totalGex, at: `${_gh}:${String(_gm).padStart(2, '0')}` }), { expirationTtl: 86400 });
+      }
+      if (grFresh && await claimSendSlot(env, grKey)) {
+        const bn = (gr.totalGex / 1e9).toFixed(1);
+        const tLbl = `${_gh}:${String(_gm).padStart(2, '0')}`;
+        let msg = gr.totalGex > 0
+          ? `🟢 **Gamma regime: POSITIVE** — 0DTE book +${bn}B at ${tLbl}. Dealer hedging dampens moves — pin-friendly tape.`
+          : `🔴 **Gamma regime: NEGATIVE** — 0DTE book ${bn}B at ${tLbl}. Dealer hedging amplifies moves — trend/whipsaw risk day.`;
+        // Fed rider (owner 2026-07-31): the decision, not the odds, is the risk.
+        try {
+          if (fedSch.includes(todayLong(etNow))) {
+            msg += gr.totalGex > 0
+              ? ` FOMC day — the 2:00 PM decision can break any morning regime.`
+              : ` FOMC day — a negative book has never produced a good pin day on a Fed decision.`;
+          }
+        } catch (_) {}
+        // Σ3 SIGNALS CHANNEL (owner: same room as the trade signals,
+        // channel post only — no subscriber DMs). Disclaimer appended
+        // like every other public post.
+        let grOk = false;
+        try { const grRes = await postSignalsChannel(env, msg + FANOUT_DISCLAIMER); grOk = !!(grRes && grRes.ok); } catch (e) { console.warn('[gamma-regime] channel post:', e.message); }
+        // only terminal-mark on CONFIRMED delivery — a failed send leaves
+        // the claim to expire (300s) so the next tick retries.
+        if (grOk) await env.SIGNAL_KV.put(grKey, 'sent', { expirationTtl: 86400 });
+        else console.warn('[gamma-regime] channel send not ok — will retry');
+      }
+    }
+  } catch (e) { console.warn('[gamma-regime]', e.message); }
+  // 10:00 BOOK-FLIP note (owner 2026-07-31 'do 1'): when the book's sign
+  // at ~10:00 differs from the 9:35 snap, post ONE line to the signals
+  // channel — flip days historically ran ~¼-strength at coin-flip WR for
+  // the whole board (portfolio +$349-394/d vs +$1,318-1,753 stable, n=48).
+  // Posts ONLY on a flip; stable days stay silent. Claim-gated, delivery-
+  // confirmed, window 10:00–10:25.
+  try {
+    const _fh = etNow.getHours(), _fm = etNow.getMinutes();
+    if (_fh === 10 && _fm >= 0 && _fm <= 25) {
+      const snapRaw = await env.SIGNAL_KV.get(`g935_snap_${isoDateET(etNow)}`);
+      const snap = snapRaw ? JSON.parse(snapRaw) : null;
+      // Persist the day's canonical 10:00 ENDPOINT: first fresh read in the
+      // window (normally 10:00–10:01; late-labeled on degraded mornings so
+      // the endpoint always exists — audit fix 2026-07-31, was ≤ :10 only).
+      let e1000 = null;
+      try { const eRaw = await env.SIGNAL_KV.get(`g1000_snap_${isoDateET(etNow)}`); e1000 = eRaw ? JSON.parse(eRaw) : null; } catch (_) {}
+      if (!e1000) {
+        const curRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+        const cur = curRaw ? JSON.parse(curRaw) : null;
+        const curFresh = cur && cur.timestamp && (Date.now() / 1000 - cur.timestamp) < 600 && typeof cur.totalGex === 'number';
+        if (curFresh) {
+          e1000 = { g: cur.totalGex, at: `${_fh}:${String(_fm).padStart(2, '0')}` };
+          await env.SIGNAL_KV.put(`g1000_snap_${isoDateET(etNow)}`, JSON.stringify(e1000), { expirationTtl: 86400 });
+        }
+      }
+      // AUDIT FIX 2026-07-31: the flip note compares ENDPOINT vs ENDPOINT
+      // (9:35 snap sign vs the persisted 10:00 snap sign) — never the live
+      // tick. The research says only endpoint flips matter; a mid-window
+      // wiggle at 10:17 must NOT fire the note.
+      if (snap && typeof snap.g === 'number' && e1000 && typeof e1000.g === 'number' && (snap.g > 0) !== (e1000.g > 0)) {
+        const fKey = `book_flip_${isoDateET(etNow)}`;
+        if (await claimSendSlot(env, fKey)) {
+          const b0 = (snap.g / 1e9).toFixed(1), b1 = (e1000.g / 1e9).toFixed(1);
+          const dir = e1000.g > 0 ? `NEGATIVE (${b0}B) → POSITIVE (+${b1}B)` : `POSITIVE (+${b0}B) → NEGATIVE (${b1}B)`;
+          const fMsg = `⚠️ **Book flipped** — ${dir} since ${snap.at || '9:35'}. Unstable-gamma days have historically run ~¼-strength at coin-flip odds across the whole board. Size easy.`;
+          let fOk = false;
+          try { const fr = await postSignalsChannel(env, fMsg + FANOUT_DISCLAIMER); fOk = !!(fr && fr.ok); } catch (e2) { console.warn('[book-flip] post:', e2.message); }
+          if (fOk) await env.SIGNAL_KV.put(fKey, 'sent', { expirationTtl: 86400 });
+        }
+      }
+    }
+  } catch (e) { console.warn('[book-flip]', e.message); }
+  }
+
+  // ── Evening-book cron backstop (AUDIT FIX 2026-07-31) ──
+  // The gap-ladder series must not depend on someone loading a page after the
+  // close. Cron ticks 16:30–17:10 compute tonight's bank-scale book if the
+  // lazy GET /evening-book hasn't already; same claim slot, so no double
+  // compute. Failure releases the claim → next tick retries.
+  if ((etHour === 16 && etMin >= 30) || (etHour === 17 && etMin <= 10)) {
+    try { await ensureEveningBook(env, etNow); } catch (e) { console.warn('[evening-book] backstop:', e.message); }
   }
 
   // ── GEXMAGNET chain collector: RETIRED 2026-07-04 (owner call — strategy
@@ -8336,8 +8422,26 @@ async function handleScheduledInner(env) {
       const existingRaw = await env.SIGNAL_KV.get('gxbf_open_trade');
       const existing = existingRaw ? JSON.parse(existingRaw) : null;
       if (!existing || existing.openDate !== isoDateET(etNow)) {
-        const gxbfResult = await handleGxbfEntry(env, etNow, signal, masterChain);
-        console.log(`[gxbf] entry: ${JSON.stringify(gxbfResult)}`);
+        // P22 (audit 2026-07-31): claim the SAME slot the per-tick GXBF section
+        // uses — on a delayed-signal morning an overlapping tick can reach its
+        // claimed section while this deferred block is still running; without a
+        // claim here both would enter (the gated-straddle path fans out to every
+        // subscriber — the old triple-send failure mode). Same release rule as
+        // the tick caller: drop our claim unless the handler wrote a terminal.
+        const gxbfKeyB2 = `gxbf_done_${isoDateET(etNow)}`;
+        if (await claimSendSlot(env, gxbfKeyB2)) {
+          try {
+            const gxbfResult = await handleGxbfEntry(env, etNow, signal, masterChain);
+            console.log(`[gxbf] entry: ${JSON.stringify(gxbfResult)}`);
+          } finally {
+            try {
+              const curV = await env.SIGNAL_KV.get(gxbfKeyB2);
+              if (curV && curV.startsWith('claim:')) await env.SIGNAL_KV.delete(gxbfKeyB2);
+            } catch (_) {}
+          }
+        } else {
+          console.log('[gxbf] b2 deferred entry skipped — slot claimed/done (tick section owns it)');
+        }
       }
     } catch (e) { console.warn('[gxbf] open failed:', e.message); }
   } else {
@@ -11022,10 +11126,16 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
     // GXBF (owner 2026-07-30): a calendar-affirmative morning is POSSIBLE, not
     // YES — the 9:35 gamma gate has the final word (negative 0DTE book = skip).
     // Same P23 amber convention as BOBF/PNBF: affirmative-but-not-final.
+    // AUDIT FIX 2026-07-31: the gated outcome depends on overnight VIX — down
+    // = straddle conversion, up/flat = no trade. Say the real outcome; oNight
+    // is known at card time (9:31).
     const gxYes = !isNo(signal.gxbfText);
     const gxDet = strip(signal.gxbfText, 'GXBF') || '—';
+    const _oN = (typeof signal.oNight === 'number' && isFinite(signal.oNight)) ? signal.oNight : null;
+    const gateTail = _oN == null ? 'gate: pos fly / neg strad·VIX↓'
+      : (_oN > 0 ? 'gate: pos fly / neg strad' : 'gate: pos fly / neg no-trade');
     rows.push(gxYes
-      ? { n: 'GXBF', det: `${gxDet} · gate: pos fly / neg strad`, yes: true, state: 'possible' }
+      ? { n: 'GXBF', det: `${gxDet} · ${gateTail}`, yes: true, state: 'possible' }
       : { n: 'GXBF', det: gxDet, yes: false });
   }
   {
@@ -11045,10 +11155,15 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
     // A GXBF-possible morning is a Straddle-possible morning too (owner
     // 2026-07-30): the 9:35 gamma gate converts a gated day to the GATED
     // STRADDLE, so the row can't read NO while that path is open.
+    // AUDIT FIX 2026-07-31: conversion also requires overnight VIX DOWN — on a
+    // VIX-up/flat morning the gated outcome is no-trade, so no POSSIBLE row.
+    // oNight unknown → keep the amber row but state the full condition.
     const stradYes = !isNo(signal.stradText);
     const gxPossible = rows.some(r => r.n === 'GXBF' && r.state === 'possible');
-    if (!stradYes && gxPossible) {
-      rows.push({ n: 'Straddle', det: 'if GXBF gamma-gates at 9:35', yes: true, state: 'possible' });
+    const _oNs = (typeof signal.oNight === 'number' && isFinite(signal.oNight)) ? signal.oNight : null;
+    if (!stradYes && gxPossible && (_oNs == null || _oNs > 0)) {
+      rows.push({ n: 'Straddle', yes: true, state: 'possible',
+        det: _oNs == null ? 'if GXBF gates + VIX down' : 'if GXBF gamma-gates at 9:35' });
     } else {
       rows.push({ n: 'Straddle', det: strip(signal.stradText, 'Straddle') || '—', yes: stradYes });
     }
@@ -12973,8 +13088,8 @@ export default {
 
     // ── GET /evening-book ── Public: bank-scale ALL-EXPIRY book at the close
     // for the GEX page's Gap card (owner 2026-07-31, info only). Lazily
-    // computes once per trading day after 16:05 ET (claim-gated, then served
-    // from KV forever). Also returns today's open (from morning_signal_data)
+    // computes once per trading day after 16:25 ET (claim-gated, then served
+    // from KV forever); the cron backstop covers no-visitor nights. Also returns today's open (from morning_signal_data)
     // so the card can score the overnight gap against the prior snapshot,
     // and the rolling log's last entries for context. Continues the
     // 1,009-night ThetaData bank series — same formula, same scale.
@@ -12983,29 +13098,9 @@ export default {
       try {
         const etNowEb = toET(new Date());
         const isoEb = isoDateET(etNowEb);
-        let latest = null;
-        try { latest = JSON.parse((await env.SIGNAL_KV.get('evening_book_latest')) || 'null'); } catch (_) {}
-        const isTradingDayEb = etNowEb.getDay() >= 1 && etNowEb.getDay() <= 5 && !isHol(etNowEb);
-        // 16:25+: the official close print has settled by then (lastPrice static).
-        const afterCloseEb = etNowEb.getHours() > 16 || (etNowEb.getHours() === 16 && etNowEb.getMinutes() >= 25);
-        if (isTradingDayEb && afterCloseEb && (!latest || latest.date < isoEb)) {
-          if (await claimSendSlot(env, `evening_book_${isoEb}`)) {
-            try {
-              const tokEb = await getAccessToken(env);
-              const snap = await computeEveningBook(env, tokEb, etNowEb);
-              await env.SIGNAL_KV.put('evening_book_latest', JSON.stringify(snap));
-              await env.SIGNAL_KV.put(`evening_book_${isoEb}`, 'sent', { expirationTtl: 3 * 86400 });
-              try {
-                const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');
-                if (!log.some(r => r.d === snap.date)) {
-                  log.push({ d: snap.date, book: snap.book, spx: snap.spx, vix: snap.vix });
-                  await env.SIGNAL_KV.put('evening_book_log', JSON.stringify(log));
-                }
-              } catch (e) { console.warn('[evening-book] log append failed:', e.message); }
-              latest = snap;
-            } catch (e) { console.warn('[evening-book] compute failed:', e.message); }
-          }
-        }
+        // Lazy compute via the shared helper (claim-gated, idempotent) — the
+        // cron backstop covers nights with no page hits (audit 2026-07-31).
+        const latest = await ensureEveningBook(env, etNowEb);
         let prev = null;
         try {
           const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');

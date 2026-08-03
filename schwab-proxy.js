@@ -829,6 +829,70 @@ async function earnRefreshPipeline(env) {
   } catch (e) { console.warn('[earn] pipeline refresh:', e.message); return null; }
 }
 
+// ── Weekly earnings-calendar audit (owner 2026-08-03) ──
+// A wrong report date/time is the one error the scanner can't survive — it
+// would trade the wrong night. Every weekend: force a FRESH 15-day calendar
+// pull, diff it against the previous pipeline build (moves / drops / BMO-AMC
+// flips), independently cross-check the names that matter (next 7 days,
+// base_rate ≥ 0.5 — the potential LONG candidates) against Nasdaq's separate
+// per-ticker earnings-date endpoint, rebuild the cache (weekend visitors get
+// a Saturday build), and refresh the GitHub fallback mirror. DM only when
+// something changed or mismatched — silent when clean.
+async function earnCalendarAudit(env) {
+  const etA = toET(new Date());
+  const todayA = isoDateET(etA);
+  const toA = isoDateET(new Date(Date.now() + 15 * 86400_000));
+  await env.SIGNAL_KV.delete(`earn_cal_${todayA}_${toA}`);   // bypass the 20h calendar cache
+  const oldRaw = await env.SIGNAL_KV.get('earn_pipeline_cache');
+  const oldP = oldRaw ? JSON.parse(oldRaw) : null;
+  const fresh = await earnRefreshPipeline(env);
+  if (!fresh || !Array.isArray(fresh.rows)) return { audit: 'no-fresh' };
+  const issues = [];
+  if (oldP && Array.isArray(oldP.rows)) {
+    const nm = new Map(fresh.rows.map(r => [r.ticker, r]));
+    for (const o of oldP.rows) {
+      if (o.date < todayA || o.date > toA) continue;
+      const n = nm.get(o.ticker);
+      if (!n) issues.push(`${o.ticker}: dropped off the calendar (was ${o.date} ${o.when})`);
+      else if (n.date !== o.date) issues.push(`${o.ticker}: MOVED ${o.date} → ${n.date}`);
+      else if (n.when !== o.when && n.when !== 'UNKNOWN' && o.when !== 'UNKNOWN') issues.push(`${o.ticker}: time ${o.when} → ${n.when}`);
+    }
+  }
+  const wkA = new Date(etA); wkA.setDate(wkA.getDate() + 7);
+  const soonISO = isoDateET(wkA);
+  const cands = fresh.rows.filter(r => r.date <= soonISO && (r.base_rate ?? 0) >= 0.5).slice(0, 15);
+  const MONA = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+  let checked = 0;
+  for (const c of cands) {
+    try {
+      const r = await fetch(`https://api.nasdaq.com/api/analyst/${encodeURIComponent(c.ticker)}/earnings-date`,
+        { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Accept': 'application/json' } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const txt = String((j && j.data && (j.data.announcement || j.data.reportText)) || '');
+      const m = txt.match(/([A-Z][a-z]{2})[a-z]*\s+(\d{1,2}),\s+(\d{4})/);
+      if (!m || !MONA[m[1]]) continue;                      // unparseable → skip, never false-alarm
+      checked++;
+      const tDate = `${m[3]}-${MONA[m[1]]}-${String(+m[2]).padStart(2, '0')}`;
+      if (tDate !== c.date) issues.push(`${c.ticker}: calendar ${c.date} vs ticker page ${tDate} ⚠ VERIFY`);
+    } catch (_) { /* per-ticker flake — skip, never alarm on the checker's own failure */ }
+  }
+  try {
+    await githubUpsertResearchFile(env, 'data/earnings_pipeline.json',
+      () => fresh, `auto: weekend calendar audit ${todayA} (${fresh.rows.length} rows)`);
+  } catch (e) { console.warn('[earn-cal-audit] mirror:', e.message); }
+  if (issues.length) {
+    try {
+      const dcRaw = await env.SIGNAL_KV.get('discord_config');
+      const dc = dcRaw ? JSON.parse(dcRaw) : null;
+      if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
+        `📅 **Earnings calendar audit** — ${issues.length} change(s) in the next 2 weeks:\n` +
+        issues.slice(0, 20).map(x => `• ${x}`).join('\n'), dc.proxyUrl);
+    } catch (_) {}
+  }
+  return { audit: 'done', issues: issues.length, crossChecked: checked, rows: fresh.rows.length };
+}
+
 async function earnVixOK(env, token) {
   // prior-day VIX close vs mean of last 100 closes (incl. prior day)
   const end = Date.now(), start = end - 220 * 86400_000;
@@ -7060,6 +7124,28 @@ async function handleScheduledInner(env) {
           await env.SIGNAL_KV.put(fwKey, 'ok', { expirationTtl: 86400 });
         }
       } catch (e) { console.warn('[fresh-watch]', e.message); }
+    }
+  }
+
+  // ── Weekend earnings-calendar audit trigger (owner 2026-08-03) ──
+  // Weekend crons tick at ~11:07 and ~15:07 ET Sat+Sun. One audit per
+  // weekend, keyed to that weekend's Saturday; Sunday retries a failed
+  // Saturday run. Claim-gated; failure releases the claim.
+  if (etNow.getDay() === 6 || etNow.getDay() === 0) {
+    const satISO = etNow.getDay() === 6 ? todayISO : isoDateET(new Date(etNow.getTime() - 86400000));
+    const auditKey = `earn_cal_audit_${satISO}`;
+    const auditDone = await env.SIGNAL_KV.get(auditKey);
+    if (!auditDone || auditDone.startsWith('claim:')) {
+      if (await claimSendSlot(env, auditKey)) {
+        try {
+          const res = await earnCalendarAudit(env);
+          await env.SIGNAL_KV.put(auditKey, 'done', { expirationTtl: 6 * 86400 });
+          console.log('[earn-cal-audit]', JSON.stringify(res));
+        } catch (e) {
+          console.warn('[earn-cal-audit]', e.message);
+          try { const c = await env.SIGNAL_KV.get(auditKey); if (c && c.startsWith('claim:')) await env.SIGNAL_KV.delete(auditKey); } catch (_) {}
+        }
+      }
     }
   }
 

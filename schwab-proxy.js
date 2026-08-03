@@ -1456,17 +1456,30 @@ async function earnFinalJob(env, etNow, token) {
   const key = `earn_done_${iso}_final`;
   if (await env.SIGNAL_KV.get(key)) return;
   const h = etNow.getHours(), m = etNow.getMinutes();
-  if (!(h === 15 && m >= 30 && m <= 45)) return;
+  // Window widened to :58 (owner 2026-08-03): the FINAL must reach him NO
+  // MATTER THE RESULT — failed delivery releases the marker so every
+  // remaining tick retries until Discord confirms.
+  if (!(h === 15 && m >= 30 && m <= 58)) return;
   await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
   try {
     const b = await earnBuildBoard(env, token, iso, { withIntraday: true });
     b.final = true;
     await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 7 * 86400 });
     const mode = (await env.SIGNAL_KV.get('earnings_mode')) || 'paper';
-    await earnSendCard(env, b, 'final');     // card when flag 'on', else text — both fall back to text
     if (b.longs.length) {
       await env.SIGNAL_KV.put(`earn_open_${iso}`, JSON.stringify(
         { date: iso, longs: b.longs.map(l => l.ticker), mode }), { expirationTtl: 7 * 86400 });
+    }
+    // P22 (owner 2026-08-03: the FINAL never confirmed delivery — marker sat
+    // on 'running' while both sinks could fail): mark 'sent' ONLY when at
+    // least one sink confirmed; otherwise release for retry next tick.
+    const sent = await earnSendCard(env, b, 'final');
+    const delivered = !!(sent && (sent.dm || sent.webhook));
+    if (delivered) {
+      await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
+    } else {
+      await env.SIGNAL_KV.delete(key);
+      try { await logEvent(env, 'error', 'earn-final', 'FINAL undelivered on all sinks — retrying', { sinks: sent }); } catch (_) {}
     }
   } catch (e) {
     await env.SIGNAL_KV.delete(key);
@@ -7059,6 +7072,33 @@ async function handleScheduledInner(env) {
       }
     }
   } catch (e) { console.warn('[book-flip]', e.message); }
+  }
+
+  // ── FINAL-card delivery alarm (owner 2026-08-03: "make sure I get the
+  // signal no matter the result") ── 15:59–16:08: if the FINAL's marker is
+  // not 'sent', DM the owner the plain-text board directly so the day's call
+  // ALWAYS arrives, and flag the delivery failure.
+  if ((etHour === 15 && etMin >= 59) || (etHour === 16 && etMin <= 8)) {
+    try {
+      const fKeyA = `earn_done_${todayISO}_final`;
+      const fVal = await env.SIGNAL_KV.get(fKeyA);
+      const alKey = `earn_final_alarm_${todayISO}`;
+      if (fVal !== 'sent' && etNow.getDay() >= 1 && etNow.getDay() <= 5 && !isHol(etNow) && !(await env.SIGNAL_KV.get(alKey))) {
+        if (await claimSendSlot(env, alKey)) {
+          const bRaw = await env.SIGNAL_KV.get(`earn_board_${todayISO}`);
+          let bodyA = '⚠️ **Earnings FINAL failed to deliver through normal sinks.**';
+          if (bRaw) {
+            try { const bA = JSON.parse(bRaw); bA.final = true; bodyA += '\n' + earnBoardMsg(bA, null, 'final').slice(0, 1700); } catch (_) {}
+          } else bodyA += ' No board stored either — the 15:30 job never ran.';
+          const dcRaw = await env.SIGNAL_KV.get('discord_config');
+          const dc = dcRaw ? JSON.parse(dcRaw) : null;
+          if (dc && dc.channelId) {
+            const rA = await sendDiscordDM(env, dc.channelId, bodyA, dc.proxyUrl);
+            if (rA && rA.ok) await env.SIGNAL_KV.put(alKey, 'sent', { expirationTtl: 86400 });
+          }
+        }
+      }
+    } catch (e) { console.warn('[earn-final-alarm]', e.message); }
   }
 
   // ── Evening-book cron backstop (AUDIT FIX 2026-07-31) ──
@@ -13240,6 +13280,29 @@ export default {
         }, 200, publicCors);
       } catch (e) {
         return jsonResp({ error: e.message }, 500, publicCors);
+      }
+    }
+
+    // ── GET /earn-final-resend ── Owner-gated: re-send today's FINAL board
+    // through the delivery-verified path (owner 2026-08-03: "make sure I get
+    // the signal no matter the result"). Reads the stored board — no rebuild.
+    if (url.pathname === '/earn-final-resend' && request.method === 'GET') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN))
+        return new Response('forbidden', { status: 403 });
+      try {
+        const iso = isoDateET(toET(new Date()));
+        const raw = await env.SIGNAL_KV.get(`earn_board_${iso}`);
+        if (!raw) return new Response(JSON.stringify({ error: 'no board for ' + iso }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        const b = JSON.parse(raw);
+        b.final = true;
+        const sent = await earnSendCard(env, b, 'final');
+        const delivered = !!(sent && (sent.dm || sent.webhook));
+        if (delivered) await env.SIGNAL_KV.put(`earn_done_${iso}_final`, 'sent', { expirationTtl: 86400 });
+        return new Response(JSON.stringify({ delivered, sinks: sent, rows: (b.board || []).length, longs: (b.longs || []).length }),
+          { headers: { 'Content-Type': 'application/json' } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
     }
 

@@ -7102,6 +7102,13 @@ async function handleScheduledInner(env) {
         // 3. morning stack — g935 snap must exist by 10:40 on a trading day
         if (!(await env.SIGNAL_KV.get(`g935_snap_${todayISO}`)))
           bad.push('9:35 book snap missing — morning regime stack did not fire');
+        // 3b. gate series — today's 10:30 capture must be in gex1030_series_v1
+        // by 10:40 (a 12-session seam went unnoticed for a month — 2026-08-03)
+        try {
+          const gsRaw = await env.SIGNAL_KV.get('gex1030_series_v1');
+          const gs = gsRaw ? JSON.parse(gsRaw) : {};
+          if (gs[todayISO] == null) bad.push('10:30 gate capture missing — anchor-filter series has a hole forming');
+        } catch (_) { bad.push('gate series: unreadable'); }
         // 4. GitHub write path — the mirrored fallback must be ≤ 3 days old
         try {
           const gh = await fetch('https://raw.githubusercontent.com/rava8989/brave/main/data/earnings_pipeline.json',

@@ -319,10 +319,14 @@ async function captureTailPutSnap(env, etNow, masterChain) {
         const dcRaw = await env.SIGNAL_KV.get('discord_config');
         const dc = dcRaw ? JSON.parse(dcRaw) : null;
         if (dc?.channelId) {
-          await sendDiscordDM(env, dc.channelId,
+          // P34 sweep (2026-08-03): mark 'sent' ONLY on confirmed delivery —
+          // this DM is the ONLY notice that a triggered tail needs manual
+          // placement; losing it silently costs the day's hedge.
+          const rT = await sendDiscordDM(env, dc.channelId,
             `⚠️ **Tail snapshot EMPTY at 9:45** (chain source: ${masterChain._source || '?'} — likely a greeks-less fallback). ` +
             `If COR1M triggered today, the tail put must be placed MANUALLY.`, dc.proxyUrl);
-          await env.SIGNAL_KV.put(`tail_snap_alert_${todayISO}`, 'sent', { expirationTtl: 86400 });
+          if (rT && rT.ok) await env.SIGNAL_KV.put(`tail_snap_alert_${todayISO}`, 'sent', { expirationTtl: 86400 });
+          else console.warn('[tail-snap-alert] undelivered — claim expires for retry');
         }
       } catch (e2) { console.warn('[tail-snap-alert]', e2.message); }
     }
@@ -2516,12 +2520,16 @@ async function enforceRiskCap(env, etNow, strategy, newTradeMaxLossUsd) {
         if (dcRaw) {
           const dc = JSON.parse(dcRaw);
           if (dc.channelId) {
-            await sendDiscordDM(env, dc.channelId,
+            // P34 sweep (2026-08-03): confirmed delivery before the marker —
+            // a blocked/warned strategy the owner never hears about is a
+            // silent trading change.
+            const rR = await sendDiscordDM(env, dc.channelId,
               warnOnly
                 ? `⚠️ **Risk warning — ${strategy.toUpperCase()} still traded** — ${reason}.\nCombined open max-loss is past your comfort line. Consider trimming. (Switch to hard blocking: KV \`risk_config\` → \`{"mode":"block"}\`.)`
                 : `🛑 **Risk cap blocked ${strategy.toUpperCase()}** — ${reason}.\nRaise the cap or set \`{"mode":"warn"}\` via KV \`risk_config\` if intentional.`,
               dc.proxyUrl);
-            await env.SIGNAL_KV.put(alertKey, 'sent', { expirationTtl: 86400 });
+            if (rR && rR.ok) await env.SIGNAL_KV.put(alertKey, 'sent', { expirationTtl: 86400 });
+            else console.warn('[risk-cap-alert] undelivered — claim expires for retry');
           }
         }
       } catch (_) { /* notify is best-effort */ }
@@ -15844,17 +15852,22 @@ export default {
           const alertKey = `collector_alert_${key}`;
           if (await env.SIGNAL_KV.get(alertKey)) continue;   // once per miss
           if (await env.SIGNAL_KV.get(key)) continue;        // collected fine
-          await env.SIGNAL_KV.put(alertKey, 'sent', { expirationTtl: 3 * 86400 });
+          // P34 sweep (2026-08-03): the marker used to be written BEFORE the
+          // DM — a failed send permanently suppressed the alert about a
+          // collector that never ran. Mark only after confirmed delivery.
           const dcRaw = await env.SIGNAL_KV.get('discord_config');
           if (dcRaw) {
             const dc = JSON.parse(dcRaw);
             if (dc.channelId) {
-              await sendDiscordDM(env, dc.channelId,
+              const rC = await sendDiscordDM(env, dc.channelId,
                 `🚨 **${label} did NOT run for ${prevISO}** — no done-marker found this morning.\n${hint}`,
                 dc.proxyUrl);
-              await logEvent(env, 'error', 'collector-watchdog',
-                `${label} missing done-marker for ${prevISO} — Discord alert sent`, {});
-              console.log(`[collector-watchdog] alerted: ${label} missed ${prevISO}`);
+              if (rC && rC.ok) {
+                await env.SIGNAL_KV.put(alertKey, 'sent', { expirationTtl: 3 * 86400 });
+                await logEvent(env, 'error', 'collector-watchdog',
+                  `${label} missing done-marker for ${prevISO} — Discord alert sent`, {});
+                console.log(`[collector-watchdog] alerted: ${label} missed ${prevISO}`);
+              } else console.warn(`[collector-watchdog] alert undelivered for ${label} — will retry`);
             }
           }
         }
@@ -15941,11 +15954,22 @@ export default {
           if (dcRaw) {
             const dc = JSON.parse(dcRaw);
             if (dc.channelId && tokenWarn) {
-              await sendDiscordDM(env, dc.channelId,
-                (tokenDaysLeft != null && tokenDaysLeft <= 1)
-                  ? `🚨 **SCHWAB TOKEN DIES WITHIN 24H** — without re-auth the bot cannot trade tomorrow.\nDashboard → Connect Schwab.`
-                  : tokenWarn,
-                dc.proxyUrl);
+              // P34 sweep (2026-08-03): this is the single most consequential
+              // alert in the system — the 2026-07-12 token death is exactly
+              // what it exists to prevent. It used to ride on the block's
+              // once-per-day marker written BEFORE any send, so one failed DM
+              // silently buried it for the day. Own key, delivery-verified,
+              // retried on every 18:00–18:20 tick until it lands.
+              const tKey = `token_warn_${todayP}`;
+              if (!(await env.SIGNAL_KV.get(tKey))) {
+                const rTk = await sendDiscordDM(env, dc.channelId,
+                  (tokenDaysLeft != null && tokenDaysLeft <= 1)
+                    ? `🚨 **SCHWAB TOKEN DIES WITHIN 24H** — without re-auth the bot cannot trade tomorrow.\nDashboard → Connect Schwab.`
+                    : tokenWarn,
+                  dc.proxyUrl);
+                if (rTk && rTk.ok) await env.SIGNAL_KV.put(tKey, 'sent', { expirationTtl: 86400 });
+                else console.warn('[token-warn] UNDELIVERED — retrying next tick');
+              }
             }
           }
         }

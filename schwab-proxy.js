@@ -820,7 +820,11 @@ async function earnPipeline(env) {
 async function earnRefreshPipeline(env) {
   try {
     const data = await earnPipeline(env);
-    await env.SIGNAL_KV.put('earn_pipeline_cache', JSON.stringify(data), { expirationTtl: 30 * 3600 });
+    // 90h TTL (was 30h): the cache must survive Fri-evening → Mon-9:31 with no
+    // weekday refresh job in between — the 30h TTL died every Saturday night,
+    // and the Monday cold rebuild (~15 Nasdaq fetches) blew the page's 8s
+    // timeout → stale static fallback ("as of 2026-07-08", owner 2026-08-03).
+    await env.SIGNAL_KV.put('earn_pipeline_cache', JSON.stringify(data), { expirationTtl: 90 * 3600 });
     return data;
   } catch (e) { console.warn('[earn] pipeline refresh:', e.message); return null; }
 }

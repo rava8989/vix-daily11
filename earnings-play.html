@@ -355,6 +355,16 @@ function loadPipeline() {
     .catch(()=>fetch('data/earnings_pipeline.json',{cache:'no-store'}).then(r=>r.ok?r.json():null));
   src.then(d=>{
     if(!d||!d.rows) return;
+    // Stale-fallback guard (owner 2026-08-03): a build older than 5 days is
+    // guaranteed junk — every row is past-dated, so the table rendered the
+    // misleading "nothing reporting in the next 2 weeks". Say the truth.
+    const ageDays = (Date.now() - new Date(d.built + 'T12:00:00')) / 86400000;
+    if (!(ageDays < 5)) {
+      document.getElementById('pipeDate').textContent = 'as of ' + d.built + ' — STALE';
+      document.querySelector('#pipe tbody').innerHTML =
+        '<tr><td colspan="6" class="note">live pipeline unreachable and the local fallback is stale — reload to retry</td></tr>';
+      return;
+    }
     document.getElementById('pipeDate').textContent = 'as of ' + d.built;
     const cls = st => st.startsWith('🟢')?'long':(st.startsWith('unlikely')||st.startsWith('crowded'))?'pass':'';
     // guard: never show a name whose report has already happened, even if the

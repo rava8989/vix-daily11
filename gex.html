@@ -674,7 +674,7 @@ const GC_BUCKETS = [
 const GC_RULES =
   '<b style="color:var(--green);">Don\'t-fade rule:</b> a gap ≥ 0.4% through a book over +20B kept going into the close on 61% of 62 nights (+0.14%/day avg) — <b>down-gaps are the real edge</b> (+0.35%/d, t 2.3); up-gaps are only a mild lean (+0.03%/d). ' +
   '<b style="color:var(--red);">No-wall control:</b> the same gap on a negative book is a literal coin flip (50% fade, n=105) — carries no information. ' +
-  '<b style="color:var(--text3);">Below 0.4%</b> (~30 SPX pts): noise either way — ignore the open. ' +
+  '<b style="color:var(--text3);">Below 0.4%</b> (~30 SPX pts): noise either way — trade the day normally. ' +
   '<b style="color:var(--text2);">Domain (VIX-controlled pass, 2026-07-31):</b> these stats hold at VIX &lt; 20 (~83% of nights); above VIX 20 the book goes silent — read VIX, not the ladder. Calm VIX (&lt;15) + negative book: nights usually stay quiet, but a ≥1% open (~75 pts) hits ~1-in-10 — vs 1-in-50 behind a wall.';
 function gcBucketIdx(b) { let i = 0; while (i < GC_CUTS.length && b > GC_CUTS[i]) i++; return i; }
 function gcSet(id, txt, col, sub) {
@@ -753,13 +753,13 @@ async function refreshGapCard() {
     gapEl.querySelector('#gcGapSub').textContent = 'open ' + j.todayOpen + ' vs ' + L.date + ' close ' + L.spx;
     if (highVol) { vixVerdict('this morning'); return; }
     if (Math.abs(gap) < 0.4) {
-      gcSet('gcVerdict', 'NO SIGNAL', 'var(--text3)', 'gap under 0.4% — statistically noise, ignore the open either way.');
+      gcSet('gcVerdict', 'NO SIGNAL', 'var(--text3)', 'gap under 0.4% (~30 pts) — too small to mean anything. Trade the day normally.');
     } else if (L.book > 20) {
       gcSet('gcVerdict', 'DON’T FADE', 'var(--green)',
         up ? 'up-gap through a +20B wall — mild continuation lean (+0.03%/d, weak cell). Don’t fight it, don’t chase it.'
-           : '<b>down-gap through a +20B wall — the strongest cell</b> (+0.35%/d, t 2.3, 64% follow). Don’t fade this one.');
+           : '<b>down-gap through a +20B wall — the strongest cell</b> (+0.35%/d, t 2.3, 64% follow). Don’t bet on a reversal.');
     } else if (L.book <= 0) {
-      gcSet('gcVerdict', 'COIN FLIP', 'var(--red)', 'big gap but no wall behind it — historically 50/50 by the close. The gap tells you nothing.');
+      gcSet('gcVerdict', 'COIN FLIP', 'var(--red)', 'big gap with no wall behind it — historically 50/50 by the close. No lean either way.');
     } else {
       gcSet('gcVerdict', 'BETWEEN CELLS', 'var(--amber, #fbbf24)', 'book +0…+20B — no tested rule for this zone.');
     }
@@ -874,12 +874,12 @@ function stanceWall() {
     return;
   }
   const short = {
-    'WALLED NIGHT': "quiet open likely · don't fade a 30pt+ gap",
-    'NO WALL TONIGHT': 'gappy zone · gaps mean nothing',
-    'BETWEEN CELLS': '~ lean quiet · no gap rule',
-    'DON’T FADE': "don't bet on it coming back",
-    'COIN FLIP': 'gap tells you nothing',
-    'NO SIGNAL': 'ignore the open',
+    'WALLED NIGHT': "quiet open likely · a big gap would be real — don't fade",
+    'NO WALL TONIGHT': 'gappy zone · a gap would carry no signal',
+    'BETWEEN CELLS': 'lean quiet · no gap rule tonight',
+    'DON’T FADE': "real move — don't bet on a reversal",
+    'COIN FLIP': 'big gap, no wall — 50/50, no lean either way',
+    'NO SIGNAL': 'small gap — no signal, trade the day normally',
   };
   const verdict = short[verTxt] || (verTxt.startsWith('VIX REGIME') ? 'book silent — read VIX' : verTxt.toLowerCase());
   const gapMatch = gapTxt.match(/^([+\-])?(\d+\.\d+)%$/);

@@ -1204,7 +1204,17 @@ async function earnMorningJob(env, etNow, token) {
     // now the ONLY earnings message of the day.
     await env.SIGNAL_KV.put(`earnscan_done_${iso}`, 'ok', { expirationTtl: 5 * 86400 });
     try { await earnSleeveRunStamp(env, b.park, token); } catch (e) { console.warn('[earn-sleeve]', e.message); }
-    await earnRefreshPipeline(env);            // refresh 2-week pipeline from live calendar
+    const pipe = await earnRefreshPipeline(env);   // refresh 2-week pipeline from live calendar
+    // P33 (owner 2026-08-03): the page's static fallback self-refreshes daily —
+    // a fallback with no refresh path rotted 26 days and showed "nothing
+    // reporting" mid-earnings-season. Mirror the fresh pipeline to GitHub so
+    // the fallback can never age more than one trading day.
+    if (pipe && Array.isArray(pipe.rows) && pipe.rows.length) {
+      try {
+        await githubUpsertResearchFile(env, 'data/earnings_pipeline.json',
+          () => pipe, `auto: earnings pipeline fallback ${iso} (${pipe.rows.length} rows)`);
+      } catch (e) { console.warn('[earn] pipeline fallback mirror:', e.message); }
+    }
   } catch (e) {
     await env.SIGNAL_KV.delete(key);          // retry next tick in window
     console.warn('[earn] morning job failed:', e.message);
@@ -6994,6 +7004,63 @@ async function handleScheduledInner(env) {
   // compute. Failure releases the claim → next tick retries.
   if ((etHour === 16 && etMin >= 30) || (etHour === 17 && etMin <= 10)) {
     try { await ensureEveningBook(env, etNow); } catch (e) { console.warn('[evening-book] backstop:', e.message); }
+  }
+
+  // ── Freshness watchdog (P33, owner 2026-08-03: "make sure this will not
+  // happen again") ── Once per weekday ~10:40-10:55 ET, verify every feed
+  // that can rot silently; DM the owner ONLY on violations (health checks
+  // stay silent when green). Catches the whole disease family: dead cache
+  // (pipeline weekend TTL), dead write path (btoa era), dead cron backstop
+  // (evening book), dead morning stack (g935 snap).
+  if (etNow.getDay() >= 1 && etNow.getDay() <= 5 && !isHol(etNow) &&
+      etHour === 10 && etMin >= 40 && etMin <= 55) {
+    const fwKey = `fresh_watch_${todayISO}`;
+    if (!(await env.SIGNAL_KV.get(fwKey))) {
+      try {
+        const bad = [];
+        const dayMs = 86400000;
+        // 1. pipeline cache built-date (weekday tolerance 3 days)
+        try {
+          const pRaw = await env.SIGNAL_KV.get('earn_pipeline_cache');
+          const p = pRaw ? JSON.parse(pRaw) : null;
+          if (!p || !p.built) bad.push('earnings pipeline cache: MISSING');
+          else if ((Date.now() - Date.parse(p.built + 'T12:00:00Z')) > 3 * dayMs)
+            bad.push(`earnings pipeline cache stale (built ${p.built})`);
+        } catch (e) { bad.push('earnings pipeline cache: unreadable'); }
+        // 2. evening book — must cover the previous trading day
+        try {
+          const ebRaw = await env.SIGNAL_KV.get('evening_book_latest');
+          const eb = ebRaw ? JSON.parse(ebRaw) : null;
+          const prevT = isoDateET(prevTrade(etNow));
+          if (!eb || !eb.date) bad.push('evening book: MISSING');
+          else if (eb.date < prevT) bad.push(`evening book stale (${eb.date}, need ≥ ${prevT}) — cron backstop failed`);
+        } catch (e) { bad.push('evening book: unreadable'); }
+        // 3. morning stack — g935 snap must exist by 10:40 on a trading day
+        if (!(await env.SIGNAL_KV.get(`g935_snap_${todayISO}`)))
+          bad.push('9:35 book snap missing — morning regime stack did not fire');
+        // 4. GitHub write path — the mirrored fallback must be ≤ 3 days old
+        try {
+          const gh = await fetch('https://raw.githubusercontent.com/rava8989/brave/main/data/earnings_pipeline.json',
+            { headers: { 'User-Agent': 'schwab-proxy-worker/1.0' }, cf: { cacheTtl: 0 } });
+          if (gh.ok) {
+            const gj = await gh.json();
+            if (gj && gj.built && (Date.now() - Date.parse(gj.built + 'T12:00:00Z')) > 3 * dayMs)
+              bad.push(`GitHub fallback mirror stale (built ${gj.built}) — write path may be dead`);
+          }
+        } catch (_) { /* raw fetch flake — never alert on the checker's own failure */ }
+        if (bad.length) {
+          const dcRaw = await env.SIGNAL_KV.get('discord_config');
+          const dc = dcRaw ? JSON.parse(dcRaw) : null;
+          if (dc && dc.channelId) {
+            const r = await sendDiscordDM(env, dc.channelId,
+              `🩺 **Freshness watchdog** — ${bad.length} feed(s) rotting:\n` + bad.map(x => `• ${x}`).join('\n'), dc.proxyUrl);
+            if (r && r.ok) await env.SIGNAL_KV.put(fwKey, 'alerted', { expirationTtl: 86400 });
+          }
+        } else {
+          await env.SIGNAL_KV.put(fwKey, 'ok', { expirationTtl: 86400 });
+        }
+      } catch (e) { console.warn('[fresh-watch]', e.message); }
+    }
   }
 
   // ── GEXMAGNET chain collector: RETIRED 2026-07-04 (owner call — strategy

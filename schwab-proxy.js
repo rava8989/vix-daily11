@@ -7109,6 +7109,12 @@ async function handleScheduledInner(env) {
           const gs = gsRaw ? JSON.parse(gsRaw) : {};
           if (gs[todayISO] == null) bad.push('10:30 gate capture missing — anchor-filter series has a hole forming');
         } catch (_) { bad.push('gate series: unreadable'); }
+        // 3c. earnings morning-after job — must leave SOME terminal marker
+        // (sent / no-board / no-rows / no-webhook) by 10:40. An absent marker
+        // means the 9:40–9:55 window never invoked the job at all (token blip
+        // skipping the earnings block — observed 2026-08-03).
+        if (!(await env.SIGNAL_KV.get(`earn_after_${todayISO}`)))
+          bad.push('9:40 earnings morning-after job never ran (no terminal marker)');
         // 4. GitHub write path — the mirrored fallback must be ≤ 3 days old
         try {
           const gh = await fetch('https://raw.githubusercontent.com/rava8989/brave/main/data/earnings_pipeline.json',
@@ -13234,6 +13240,29 @@ export default {
         }, 200, publicCors);
       } catch (e) {
         return jsonResp({ error: e.message }, 500, publicCors);
+      }
+    }
+
+    // ── GET /earn-after-debug ── Owner-gated: run earnAfterJob NOW with a
+    // synthetic in-window clock and report the terminal marker (2026-08-03:
+    // the 9:40 card left no marker at all — this proves whether the body runs).
+    if (url.pathname === '/earn-after-debug' && request.method === 'GET') {
+      const sec = url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN))
+        return new Response('forbidden', { status: 403 });
+      try {
+        const fake = toET(new Date());
+        fake.setHours(9, 45, 0, 0);
+        const tok = await getAccessToken(env);
+        await earnAfterJob(env, fake, tok);
+        const iso = isoDateET(toET(new Date()));
+        const marker = await env.SIGNAL_KV.get(`earn_after_${iso}`);
+        const board = await env.SIGNAL_KV.get(`earn_board_2026-07-31`);
+        return new Response(JSON.stringify({ marker, boardLen: board ? board.length : null }),
+          { headers: { 'Content-Type': 'application/json' } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message, stack: (e.stack || '').slice(0, 400) }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
     }
 

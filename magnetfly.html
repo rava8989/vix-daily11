@@ -33,7 +33,7 @@
   th:first-child, td:first-child { text-align: left; }
   .g { color: var(--green); } .r { color: var(--red); } .a { color: var(--amber); }
   .banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .banner .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber);
+  .banner .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--amber);
                  flex: none; animation: pulse 2s infinite; }
   @keyframes pulse { 50% { opacity: .35; } }
   .banner.go .dot { background: var(--green); animation: none; }
@@ -41,9 +41,10 @@
   .banner.wait .dot { background: var(--muted); }
   .banner.prego .dot { background: var(--green); }
   .banner.preno .dot { background: var(--amber); }
-  .banner .heads { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--amber);
+  .banner .heads { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--amber);
                    border: 1px solid var(--amber); border-radius: 4px; padding: 1px 6px; }
-  .banner b { font-size: 15px; }
+  .banner b { font-size: 21px; }
+  .banner .note { font-size: 14px; }
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 8px 0 0; }
   .kpi { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
   .kpi .l { color: var(--muted); font-size: 11px; }
@@ -66,7 +67,7 @@
 
   <div class="card" id="todayCard">
     <div class="banner wait" id="banner"><span class="dot"></span><b id="bannerText">Loading today's signal…</b><span class="note" id="bannerSub"></span></div>
-    <div id="mfLiveRow" style="display:none;margin:8px 0 0;padding:8px 12px;background:#161b22;border:1px solid #30363d;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b949e;"></div>
+    <div id="mfLiveRow" style="display:none;margin:12px 0 0;padding:14px 18px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:16px;line-height:1.6;color:#8b949e;"></div>
     <div class="kpis" id="todayKpis" style="display:none"></div>
   </div>
 

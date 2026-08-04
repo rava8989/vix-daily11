@@ -11656,7 +11656,9 @@ const SAMPLE_MORNING_CARD = {
   rows: [
     { n: 'GXBF', det: 'fires 9:36 AM · gate: pos fly / neg strad', yes: true, state: 'possible' }, { n: 'M8BF', det: 'window 11:00–11:30', yes: true },
     { n: 'Straddle', det: 'if GXBF gamma-gates at 9:35', yes: true, state: 'possible' }, { n: 'BOBF', det: 'OPEX', yes: false },
-    { n: 'Diagonal', det: 'COR1M 6.79 < 10', yes: false }, { n: 'Tail Hedge', det: '9:45 · 0DTE put Δ-0.10', yes: true },
+    { n: 'Diagonal', det: 'COR1M 6.79 < 10', yes: false },
+    // Tail Hedge row removed 2026-08-03 — strategy retired; the live builder
+    // omits it via `if (tailLine)` since getTailHedgeStatusLine returns null.
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },
   ],
   tiles: [['SPX GAP', '+0.91%', '#4ade80']],

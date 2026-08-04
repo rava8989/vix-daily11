@@ -2174,15 +2174,29 @@ async function loadHeat() {
     }
   } catch (_) { /* heatmap is best-effort */ }
 }
+// SPY forces all-expiry (no SPY 0DTE capture); remember the SPX mode so the
+// round trip SPX→SPY→SPX lands back on the book the user was reading. Without
+// this, returning to SPX silently stayed on 'all' and the total read ~4× the
+// familiar 0DTE number (owner bug report 2026-08-04).
+let spxModeMemo = null;
 document.getElementById('gexSymToggle').addEventListener('click', e => {
   const b = e.target.closest('.gex-mode-btn');
   if (!b || b.dataset.gs === gexSym) return;
+  const prevMode = gexMode;
+  if (gexSym === 'spx' && b.dataset.gs !== 'spx') spxModeMemo = gexMode;
   gexSym = b.dataset.gs;
   document.querySelectorAll('#gexSymToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.gs === gexSym));
   // SPY is captured all-expiry only — reflect that in the mode toggle
-  if (gexSym !== 'spx' && gexMode === '0dte') {
-    gexMode = 'all';
-    document.querySelectorAll('#gexModeToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === 'all'));
+  if (gexSym !== 'spx' && gexMode === '0dte') gexMode = 'all';
+  // Back on SPX: restore whatever mode was active before the SPY detour
+  if (gexSym === 'spx' && spxModeMemo) { gexMode = spxModeMemo; spxModeMemo = null; }
+  if (gexMode !== prevMode) {
+    document.querySelectorAll('#gexModeToggle .gex-mode-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === gexMode));
+    // Clean axis transition, same as the mode toggle's own handler
+    if (gexChart) { gexChart.destroy(); gexChart = null; }
+    if (gammaCurveChart) { gammaCurveChart.destroy(); gammaCurveChart = null; }
+    if (flowChart) { flowChart.destroy(); flowChart = null; }
+    if (flow0dteChart) { flow0dteChart.destroy(); flow0dteChart = null; }
   }
   guardedFetch();
 });
@@ -2436,8 +2450,14 @@ async function tryLoadCached() {
 
 // ── Main fetch + render ──
 async function fetchAndRender() {
+  // Snapshot the book selection at request time — if the user flips SPX/SPY or
+  // 0DTE/ALL while this request is airborne, the late response must NOT paint
+  // (it would render the OTHER book under the current toggle labels).
+  const symAt = gexSym, modeAt = gexMode;
+  const staleSel = () => (symAt !== gexSym || modeAt !== gexMode);
   try {
     const resp = await fetch(GEX_ENDPOINT());
+    if (staleSel()) return;
     if (!resp.ok) {
       if (resp.status === 404) {
         // During market hours, try triggering an update if we haven't already
@@ -2452,8 +2472,10 @@ async function fetchAndRender() {
                 // Wait a moment then retry fetch
                 await new Promise(r => setTimeout(r, 3000));
                 const retry = await fetch(GEX_ENDPOINT());
+                if (staleSel()) return;
                 if (retry.ok) {
                   const data = await retry.json();
+                  if (staleSel()) return;
                   renderTopBar(data); renderCards(data); renderChart(data);
                   renderGammaCurve(data);
                   renderFlowChart(data); renderFlow0dteChart(data); renderNetPremChart(data);
@@ -2475,6 +2497,7 @@ async function fetchAndRender() {
       throw new Error('HTTP ' + resp.status);
     }
     const data = await resp.json();
+    if (staleSel()) return;
 
     // Warn if 0DTE was requested but server fell back to all-expiry
     const modeWarn = document.getElementById('gexModeFallback');
@@ -2532,10 +2555,14 @@ async function fetchAndRender() {
 // ── Polling (only during market hours) ──
 let currentPollMs = 0;
 let fetchInFlight = false; // prevent concurrent fetch stacking
+let fetchQueued = false;   // a toggle arrived mid-flight — run once more after
 async function guardedFetch() {
-  if (fetchInFlight) return;
+  // Never DROP a request made while one is airborne (dropping left the screen
+  // showing the pre-toggle book until the next poll) — queue exactly one rerun.
+  if (fetchInFlight) { fetchQueued = true; return; }
   fetchInFlight = true;
   try { await fetchAndRender(); } finally { fetchInFlight = false; }
+  if (fetchQueued) { fetchQueued = false; await guardedFetch(); }
 }
 function startPolling() {
   const ms = getPollMs();

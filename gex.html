@@ -675,7 +675,8 @@ const GC_RULES =
   '<b style="color:var(--green);">Don\'t-fade rule:</b> a gap ≥ 0.4% through a book over +20B kept going into the close on 61% of 62 nights (+0.14%/day avg) — <b>down-gaps are the real edge</b> (+0.35%/d, t 2.3); up-gaps are only a mild lean (+0.03%/d). ' +
   '<b style="color:var(--red);">No-wall control:</b> the same gap on a negative book is a literal coin flip (50% fade, n=105) — carries no information. ' +
   '<b style="color:var(--text3);">Below 0.4%</b> (~30 SPX pts): noise either way — trade the day normally. ' +
-  '<b style="color:var(--text2);">Domain (VIX-controlled pass, 2026-07-31):</b> these stats hold at VIX &lt; 20 (~83% of nights); above VIX 20 the book goes silent — read VIX, not the ladder. Calm VIX (&lt;15) + negative book: nights usually stay quiet, but a ≥1% open (~75 pts) hits ~1-in-10 — vs 1-in-50 behind a wall.';
+  '<b style="color:var(--text2);">Domain (VIX-controlled pass, 2026-07-31):</b> these stats hold at VIX &lt; 20 (~83% of nights); above VIX 20 the book goes silent — read VIX, not the ladder. Calm VIX (&lt;15) + negative book: nights usually stay quiet, but a ≥1% open (~75 pts) hits ~1-in-10 — vs 1-in-50 behind a wall. ' +
+  '<b style="color:var(--amber, #fbbf24);">Unbelieved up-gap (2026-08-05):</b> an up-gap ≥0.4% with VIX also UP overnight = the market gapped but insurance got MORE expensive — 6 such mornings in 500 days, all dead-flat (median |move| 0.13% vs 0.51% normal), every fly trade lost (0-for-6, −$4.9k). Sign held at every threshold tested. Chop cell, n small.';
 function gcBucketIdx(b) { let i = 0; while (i < GC_CUTS.length && b > GC_CUTS[i]) i++; return i; }
 function gcSet(id, txt, col, sub) {
   const el = document.getElementById(id), v = el.querySelector('.gcVal');
@@ -763,7 +764,34 @@ async function refreshGapCard() {
     } else {
       gcSet('gcVerdict', 'BETWEEN CELLS', 'var(--amber, #fbbf24)', 'book +0…+20B — no tested rule for this zone.');
     }
+    // Unbelieved up-gap check (owner-approved 2026-08-05): up-gap ≥0.4% while
+    // VIX ALSO rose overnight → historically a dead-flat chop day (6/500, every
+    // fly lost). Warning-only line — believed gaps (VIX down) stay silent.
+    if (up) gcUnbelievedGapCheck(j, L);
   } catch (e) { console.warn('[gap-card]', e.message); }
+}
+// Lazy per-day fetch of today's vixOpen (written ~9:31); appends one amber line
+// to the verdict sub-text ONLY when the chop cell is live. L.vix = prior close.
+let _gcVixOpenCache = { date: null, vixOpen: null };
+async function gcUnbelievedGapCheck(j, L) {
+  try {
+    if (L.vix == null) return;
+    if (_gcVixOpenCache.date !== j.date) {
+      const h = await (await fetch('https://schwab-proxy.ravamt4.workers.dev/history', { cache: 'no-store' })).json();
+      const rows = Array.isArray(h) ? h : (h.data || h.rows || []);
+      const row = rows.find(r => r.date === j.date);
+      _gcVixOpenCache = { date: j.date, vixOpen: row && row.vixOpen != null ? row.vixOpen : null };
+    }
+    const vo = _gcVixOpenCache.vixOpen;
+    if (vo == null) return;                      // pre-9:31 — no read yet
+    const von = vo - L.vix;
+    if (von <= 0) return;                        // believed gap — stay silent
+    const sub = document.getElementById('gcVerdict').querySelector('div:last-child');
+    if (sub && !sub.innerHTML.includes('UNBELIEVED')) {
+      sub.innerHTML += '<br><b style="color:var(--amber, #fbbf24);">⚠ UNBELIEVED GAP — VIX up overnight (+' + von.toFixed(2) +
+        ') into this up-gap. 6 prior cases: all dead-flat (median |move| 0.13%), every fly trade lost. Expect chop, not trend (n=6).</b>';
+    }
+  } catch (e) { console.warn('[gap-vix]', e.message); }
 }
 setInterval(refreshGapCard, 300000);
 setTimeout(refreshGapCard, 900);

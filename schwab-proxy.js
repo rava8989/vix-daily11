@@ -1016,7 +1016,12 @@ async function earnParkingSleeve(env, token) {
   try{ const v=await fetchSchwabJSON(`https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=%24VIX&periodType=year&frequencyType=daily&frequency=1&startDate=${end-20*86400_000}&endDate=${end}`,token,env);
        const vc=(v.candles||[]).map(x=>x.close).filter(x=>x>0); vixPrior=vc[vc.length-2]??vc[vc.length-1]; }catch(_){}
   let sleeve='SPY';
-  if(spot<=sma) sleeve=(vixPrior!=null&&vixPrior>25)?'CASH':'GLD';
+  // Owner ratification 2026-08-05 ("match what backtesting is showing"):
+  // below the 200-day SMA the sleeve is GLD, ALWAYS — the VIX>25→CASH branch
+  // was an untested build-time overlay (audit A2) and is removed. The
+  // backtested ladder explicitly chose GLD over cash for down-regime carry.
+  // CASH render branches downstream are kept (harmless, never selected).
+  if(spot<=sma) sleeve='GLD';
   return {sleeve, spot:+spot.toFixed(2), sma:+sma.toFixed(2), vix:vixPrior?+vixPrior.toFixed(1):null};
 }
 
@@ -1258,10 +1263,14 @@ function earnBoardMsg(b, mode, stage) {
 async function earnMorningJob(env, etNow, token) {
   const iso = isoDateET(etNow);
   const key = `earn_done_${iso}_morning`;
-  if (await env.SIGNAL_KV.get(key)) return;
+  // P39 (audit D2, bit live 2026-08-05: isolate died mid-build at 9:10, the
+  // 'running' marker blocked every retry, the site served yesterday's board
+  // all morning): claim-gate with 300s self-healing expiry instead.
+  const cur = await env.SIGNAL_KV.get(key);
+  if (cur && !cur.startsWith('claim:')) return;
   const h = etNow.getHours(), m = etNow.getMinutes();
   if (!(h === 9 && m >= 10 && m <= 25)) return;
-  await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
+  if (!(await claimSendSlot(env, key))) return;
   try {
     const b = await earnBuildBoard(env, token, iso, { withIntraday: false });
     await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 3 * 86400 });
@@ -1283,6 +1292,7 @@ async function earnMorningJob(env, etNow, token) {
           () => pipe, `auto: earnings pipeline fallback ${iso} (${pipe.rows.length} rows)`);
       } catch (e) { console.warn('[earn] pipeline fallback mirror:', e.message); }
     }
+    await env.SIGNAL_KV.put(key, 'done', { expirationTtl: 86400 });   // terminal (P39)
   } catch (e) {
     await env.SIGNAL_KV.delete(key);          // retry next tick in window
     console.warn('[earn] morning job failed:', e.message);
@@ -1299,7 +1309,9 @@ async function earnResolveJob(env, etNow, token) {
   if (!(h === 9 && m >= 35 && m <= 55)) return;
   const iso = isoDateET(etNow);
   const key = `earn_resolve_${iso}`;
-  if (await env.SIGNAL_KV.get(key)) return;
+  // P39 (audit D2): claim-gated — a crashed run self-heals in 300s.
+  const curR = await env.SIGNAL_KV.get(key);
+  if (curR && !curR.startsWith('claim:')) return;
   // previous trading day (skip weekends/holidays, up to a week back)
   let prev = null;
   for (let back = 1; back <= 7 && !prev; back++) {
@@ -1327,9 +1339,10 @@ async function earnResolveJob(env, etNow, token) {
     }
   } catch (_) {}
   if (!longs.length) { await env.SIGNAL_KV.put(key, 'no-longs', { expirationTtl: 86400 }); return; }
-  await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
+  if (!(await claimSendSlot(env, key))) return;   // P39: crash-safe claim
   try {
     const rows = [];
+    const unresolved = [];
     for (const r of longs) {
       try {
         const end = Date.now();
@@ -1345,8 +1358,31 @@ async function earnResolveJob(env, etNow, token) {
                       deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
                       base_rate: r.base_rate ?? null, verdict: 'LONG',
                       move_24h: +((xO / eC - 1).toFixed(4)), pl_r: null, live: true });
+        } else {
+          unresolved.push(r);
         }
-      } catch (e) { console.warn('[earn-resolve]', r.ticker, e.message); }
+      } catch (e) { console.warn('[earn-resolve]', r.ticker, e.message); unresolved.push(r); }
+    }
+    // Audit C1 (owner 'fix 1', 2026-08-05): a LONG with no resolvable candles —
+    // halted, delisted, symbol change — used to vanish from the track record
+    // silently, biasing it on exactly the disaster nights. Log it VISIBLY with
+    // a null move + note, and DM the owner so it gets investigated by hand.
+    for (const r of unresolved) {
+      rows.push({ date: prev, ticker: r.ticker, pw_ratio: r.pw_ratio ?? null,
+                  deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
+                  base_rate: r.base_rate ?? null, verdict: 'LONG',
+                  move_24h: null, pl_r: null, live: true,
+                  note: 'UNRESOLVED — no candles (halted/delisted?); fix by hand' });
+    }
+    if (unresolved.length) {
+      try {
+        const dcRaw = await env.SIGNAL_KV.get('discord_config');
+        const dc = dcRaw ? JSON.parse(dcRaw) : null;
+        if (dc?.channelId) await sendDiscordDM(env, dc.channelId,
+          `⚠️ **Earnings resolve — ${unresolved.length} LONG(s) from ${prev} UNRESOLVED** ` +
+          `(${unresolved.map(r => r.ticker).join(', ')}): no candles — halted/delisted? ` +
+          `Logged with null move so the record shows the hole; fill by hand.`, dc.proxyUrl);
+      } catch (e2) { console.warn('[earn-resolve] unresolved DM:', e2.message); }
     }
     if (rows.length) {
       await githubUpsertResearchFile(env, 'data/earnings_play_today.json',
@@ -1458,22 +1494,34 @@ async function earnRescoreJob(env, etNow, token) {
 async function earnFinalJob(env, etNow, token) {
   const iso = isoDateET(etNow);
   const key = `earn_done_${iso}_final`;
-  if (await env.SIGNAL_KV.get(key)) return;
+  // P39 (owner 'fix 1', 2026-08-05 — audit D2): the old put('running') wedged
+  // the FINAL for 24h if the isolate died mid-build (no catch runs on a CPU
+  // kill; the 2026-08-05 morning board was lost to exactly this class).
+  // claimSendSlot claims expire in 300s, so a crashed run self-heals and a
+  // later tick inside the 15:30–15:58 window retries.
+  const cur = await env.SIGNAL_KV.get(key);
+  if (cur && !cur.startsWith('claim:')) return;
   const h = etNow.getHours(), m = etNow.getMinutes();
   // Window widened to :58 (owner 2026-08-03): the FINAL must reach him NO
   // MATTER THE RESULT — failed delivery releases the marker so every
   // remaining tick retries until Discord confirms.
   if (!(h === 15 && m >= 30 && m <= 58)) return;
-  await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
+  if (!(await claimSendSlot(env, key))) return;
   try {
-    const b = await earnBuildBoard(env, token, iso, { withIntraday: true });
-    b.final = true;
-    await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 7 * 86400 });
-    const mode = (await env.SIGNAL_KV.get('earnings_mode')) || 'paper';
-    if (b.longs.length) {
-      await env.SIGNAL_KV.put(`earn_open_${iso}`, JSON.stringify(
-        { date: iso, longs: b.longs.map(l => l.ticker), mode }), { expirationTtl: 7 * 86400 });
+    // Audit C3: a delivery retry must resend the SAME board, not rebuild —
+    // two rebuilds minutes apart can disagree (flow moved) and the owner
+    // gets contradictory FINALs. First attempt in the window stores the
+    // board; every retry reuses it.
+    let b = null;
+    const storedRaw = await env.SIGNAL_KV.get(`earn_final_board_${iso}`);
+    if (storedRaw) { try { b = JSON.parse(storedRaw); } catch (_) { b = null; } }
+    if (!b) {
+      b = await earnBuildBoard(env, token, iso, { withIntraday: true });
+      b.final = true;
+      await env.SIGNAL_KV.put(`earn_final_board_${iso}`, JSON.stringify(b), { expirationTtl: 86400 });
+      await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 7 * 86400 });
     }
+    const mode = (await env.SIGNAL_KV.get('earnings_mode')) || 'paper';
     // P22 (owner 2026-08-03: the FINAL never confirmed delivery — marker sat
     // on 'running' while both sinks could fail): mark 'sent' ONLY when at
     // least one sink confirmed; otherwise release for retry next tick.
@@ -1481,6 +1529,21 @@ async function earnFinalJob(env, etNow, token) {
     const delivered = !!(sent && (sent.dm || sent.webhook));
     if (delivered) {
       await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
+      // Audit C2: pin what subscribers were actually TOLD, automatically —
+      // the resolve/exit jobs read this, so a later board rebuild can never
+      // change the track record (the FTAI 2026-07-29 loss mode). earn_open
+      // is written from the DELIVERED board only, and cleared when that
+      // board has no longs (a stale earlier-attempt list must not survive).
+      try {
+        await env.SIGNAL_KV.put(`earn_actual_longs_${iso}`,
+          JSON.stringify((b.longs || []).map(l => l.ticker)), { expirationTtl: 7 * 86400 });
+        if (b.longs && b.longs.length) {
+          await env.SIGNAL_KV.put(`earn_open_${iso}`, JSON.stringify(
+            { date: iso, longs: b.longs.map(l => l.ticker), mode }), { expirationTtl: 7 * 86400 });
+        } else {
+          await env.SIGNAL_KV.delete(`earn_open_${iso}`);
+        }
+      } catch (e2) { console.warn('[earn-final] pin/open bookkeeping:', e2.message); }
     } else {
       await env.SIGNAL_KV.delete(key);
       try { await logEvent(env, 'error', 'earn-final', 'FINAL undelivered on all sinks — retrying', { sinks: sent }); } catch (_) {}
@@ -1500,8 +1563,10 @@ async function earnExitJob(env, etNow, token) {
   const raw = await env.SIGNAL_KV.get(`earn_open_${prevISO}`);
   if (!raw) return;
   const key = `earn_done_${iso}_exit`;
-  if (await env.SIGNAL_KV.get(key)) return;
-  await env.SIGNAL_KV.put(key, 'running', { expirationTtl: 86400 });
+  // P39 (audit D2): claim-gated — a crashed run self-heals in 300s.
+  const curX = await env.SIGNAL_KV.get(key);
+  if (curX && !curX.startsWith('claim:')) return;
+  if (!(await claimSendSlot(env, key))) return;
   try {
     const open_ = JSON.parse(raw);
     const outs = [];
@@ -1517,14 +1582,28 @@ async function earnExitJob(env, etNow, token) {
         outs.push(`${sym} ${ret >= 0 ? '+' : ''}${(ret * 100).toFixed(1)}%`);
         const logRaw = await env.SIGNAL_KV.get('earn_log');
         const log = logRaw ? JSON.parse(logRaw) : [];
-        log.unshift({ date: prevISO, ticker: sym, mode: open_.mode,
-                      move_24h: +ret.toFixed(4), recorded: iso });
-        await env.SIGNAL_KV.put('earn_log', JSON.stringify(log.slice(0, 500)));
+        // dedup by night+ticker — a delivery-failed retry re-runs this loop (P39)
+        if (!log.some(x => x.date === prevISO && x.ticker === sym)) {
+          log.unshift({ date: prevISO, ticker: sym, mode: open_.mode,
+                        move_24h: +ret.toFixed(4), recorded: iso });
+          await env.SIGNAL_KV.put('earn_log', JSON.stringify(log.slice(0, 500)));
+        }
       } catch (e) { outs.push(`${sym} (quote failed)`); }
     }
     const mode = open_.mode || 'paper';
-    await earnSend(env, `🌙 **[EARNINGS] SELL AT OPEN — now.** ` +
+    // P39: the success path never wrote a terminal marker — it leaned on the
+    // old 'running' value. With the self-expiring claim that would DOUBLE-SEND
+    // the SELL reminder, so: mark 'sent' only on confirmed delivery; on a
+    // failed send release the claim and KEEP earn_open so the retry has data.
+    const sentX = await earnSend(env, `🌙 **[EARNINGS] SELL AT OPEN — now.** ` +
       `Overnight results: ${outs.join(' · ')}. Green or red — out.`);
+    const okX = !!(sentX && (sentX.dm || sentX.webhook));
+    if (!okX) {
+      await env.SIGNAL_KV.delete(key);
+      try { await logEvent(env, 'error', 'earn-exit', 'SELL reminder undelivered — retrying', {}); } catch (_) {}
+      return;
+    }
+    await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
     await env.SIGNAL_KV.delete(`earn_open_${prevISO}`);
     // Basket sold → money re-enters the sleeve NOW: force-restart the
     // "since we entered" clock at this morning's prices (owner 2026-07-14).
@@ -6836,6 +6915,32 @@ async function handleScheduledInner(env) {
   const etNow = toET();
   const dow = etNow.getDay();
 
+  // ── Weekend earnings-calendar audit trigger (owner 2026-08-03) ──
+  // P39 (audit D1, owner 'fix 1' 2026-08-05): this block previously lived
+  // AFTER the weekend early-return below and therefore NEVER ran — dead code
+  // since it shipped. It must execute before that return.
+  // Weekend crons tick at ~11:07 and ~15:07 ET Sat+Sun. One audit per
+  // weekend, keyed to that weekend's Saturday; Sunday retries a failed
+  // Saturday run. Claim-gated; failure releases the claim.
+  if (etNow.getDay() === 6 || etNow.getDay() === 0) {
+    const satISO = etNow.getDay() === 6 ? isoDateET(etNow) : isoDateET(new Date(etNow.getTime() - 86400000));
+    const auditKey = `earn_cal_audit_${satISO}`;
+    const auditDone = await env.SIGNAL_KV.get(auditKey);
+    if (!auditDone || auditDone.startsWith('claim:')) {
+      if (await claimSendSlot(env, auditKey)) {
+        try {
+          const res = await earnCalendarAudit(env);
+          await env.SIGNAL_KV.put(auditKey, 'done', { expirationTtl: 6 * 86400 });
+          console.log('[earn-cal-audit]', JSON.stringify(res));
+        } catch (e) {
+          console.warn('[earn-cal-audit]', e.message);
+          try { const c = await env.SIGNAL_KV.get(auditKey); if (c && c.startsWith('claim:')) await env.SIGNAL_KV.delete(auditKey); } catch (_) {}
+        }
+      }
+    }
+  }
+
+
   // Not a weekday → skip
   if (dow === 0 || dow === 6) return { status: 'skipped', reason: 'weekend' };
 
@@ -7231,28 +7336,6 @@ async function handleScheduledInner(env) {
           await env.SIGNAL_KV.put(fwKey, 'ok', { expirationTtl: 86400 });
         }
       } catch (e) { console.warn('[fresh-watch]', e.message); }
-    }
-  }
-
-  // ── Weekend earnings-calendar audit trigger (owner 2026-08-03) ──
-  // Weekend crons tick at ~11:07 and ~15:07 ET Sat+Sun. One audit per
-  // weekend, keyed to that weekend's Saturday; Sunday retries a failed
-  // Saturday run. Claim-gated; failure releases the claim.
-  if (etNow.getDay() === 6 || etNow.getDay() === 0) {
-    const satISO = etNow.getDay() === 6 ? todayISO : isoDateET(new Date(etNow.getTime() - 86400000));
-    const auditKey = `earn_cal_audit_${satISO}`;
-    const auditDone = await env.SIGNAL_KV.get(auditKey);
-    if (!auditDone || auditDone.startsWith('claim:')) {
-      if (await claimSendSlot(env, auditKey)) {
-        try {
-          const res = await earnCalendarAudit(env);
-          await env.SIGNAL_KV.put(auditKey, 'done', { expirationTtl: 6 * 86400 });
-          console.log('[earn-cal-audit]', JSON.stringify(res));
-        } catch (e) {
-          console.warn('[earn-cal-audit]', e.message);
-          try { const c = await env.SIGNAL_KV.get(auditKey); if (c && c.startsWith('claim:')) await env.SIGNAL_KV.delete(auditKey); } catch (_) {}
-        }
-      }
     }
   }
 

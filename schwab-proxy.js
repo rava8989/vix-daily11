@@ -947,7 +947,15 @@ function earnFlowFromDays(days, todayISO) {
     p += (days[iso].p || 0) * w;
     deep += (days[iso].di || 0) * w;
   }
-  return { pw: p > 0 ? c / p : (c > 0 ? Infinity : null), deep, callSum: c, putSum: p, nDays: isos.length };
+  // nDays counts days with ACTUAL flow (owner-approved 2026-08-05): zero-volume
+  // entry rows used to count as "weekly presence", so a name with listed-but-
+  // dead weeklies (TPL) routed down the weekly path and dashed out while its
+  // real footprint sat unread in the monthly store. Routing now follows flow,
+  // not listings — matching the ratified doc wording "5 weekly-FLOW days".
+  // Forward-only: the backtest never contained this routing. Monthly-path
+  // LONGs are flowSrc-tagged; band audit scheduled after the first ~10.
+  const nzDays = isos.filter(d => ((days[d].c || 0) + (days[d].p || 0)) > 0).length;
+  return { pw: p > 0 ? c / p : (c > 0 ? Infinity : null), deep, callSum: c, putSum: p, nDays: nzDays };
 }
 
 async function earnFlowWindow(env, sym, todayISO, intradayDays) {

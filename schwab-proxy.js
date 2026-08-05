@@ -7438,28 +7438,6 @@ async function handleScheduledInner(env) {
           if (filled > 1) { try { await logEvent(env, 'info', 'gexgate', `series self-heal: backfilled ${filled - 1} hole(s) beyond today`, {}); } catch (_) {} }
           try { await mirrorGexSeriesToGitHub(env, trimmed); } catch (e) { console.warn('[gexgate-mirror]', e.message); }
         }
-        // First-hour VIX series (2026-08-05, research bank): VIX + SPX read at
-        // this same ~10:30 tick, keyed by day. Motivation: "spot up + VIX up in
-        // the first hour" (the hedged-rally tell, Aug 4) is untestable
-        // historically — Schwab minute data only reaches ~6 weeks back and the
-        // pattern fired ONCE in that window. Bank it now, test when n exists.
-        try {
-          {
-            const fvRaw = await env.SIGNAL_KV.get('vix1030_series_v1');
-            const fv = fvRaw ? JSON.parse(fvRaw) : {};
-            if (!fv[dG]) {
-              const qj = await fetchSchwabJSON(
-                'https://api.schwabapi.com/marketdata/v1/quotes?symbols=%24VIX,%24SPX&fields=quote', schwabToken, env);
-              const vq = qj?.['$VIX']?.quote?.lastPrice, sq = qj?.['$SPX']?.quote?.lastPrice;
-              if (vq > 0 && sq > 0) {
-                fv[dG] = { v: vq, s: sq, at: `${hG}:${String(mG).padStart(2, '0')}` };
-                const fk = Object.keys(fv).sort();
-                const fvT = {}; for (const k of fk.slice(-1000)) fvT[k] = fv[k];
-                await env.SIGNAL_KV.put('vix1030_series_v1', JSON.stringify(fvT));
-              }
-            }
-          }
-        } catch (e) { console.warn('[vix1030-series]', e.message); }
         // Dealer-liquidity daily series (2026-07-28, informational): one row/day
         // [medC, fly30] from today's 10:30 slot (10:00 fallback). No TTL — small.
         try {
@@ -14209,10 +14187,7 @@ export default {
           const cc = (dd.candles || []).filter(c => c.close > 0);
           const bars = cc.map(c => { const d = toET(new Date(c.datetime)); return { t: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`, o: c.open, c: c.close }; });
           const at = hhmm => bars.find(b => b.t === hhmm) || null;
-          // ?at=HH:MM — return one extra named bar (research: first-hour VIX/SPX reads)
-          const atQ = url.searchParams.get('at');
-          const extra = atQ && /^\d{2}:\d{2}$/.test(atQ) ? { atBar: at(atQ) } : {};
-          return new Response(JSON.stringify({ symbol: sym, minuteDay: md, n: cc.length, ...extra,
+          return new Response(JSON.stringify({ symbol: sym, minuteDay: md, n: cc.length,
             open0930: at('09:30'), close1559: at('15:59'), close1600: at('16:00'), close1615: at('16:15'), last: bars[bars.length - 1] ?? null }),
             { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
         }

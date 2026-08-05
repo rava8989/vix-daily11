@@ -408,8 +408,16 @@ function renderLiveBoard(b) {
   // messages (owner 2026-07-15). One muted count line keeps the audit trail.
   const scored = b.board.filter(r => !(r.notes || []).some(n => n.startsWith('outside universe')));
   const outside = b.board.length - scored.length;
+  // Notes made visible (audit D4, owner batch 2026-08-05): a dash must explain
+  // itself — 'flow fetch failed' vs a genuinely optionless name look identical
+  // otherwise. flowSrc 'monthly' is badged for the same reason.
+  const noteTxt = r => {
+    const bits = (r.notes || []).filter(n => !n.startsWith('outside universe'));
+    if (r.flowSrc === 'monthly') bits.unshift('monthly-flow name');
+    return bits.length ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${bits.join(' · ')}</div>` : '';
+  };
   document.querySelector('#board tbody').innerHTML = (scored.length ? scored.map(r =>
-    `<tr><td>${r.ticker}</td><td>${r.when}</td><td>${r.pw_ratio ?? '—'}${r.pw_ratio ? '×' : ''}</td>` +
+    `<tr><td>${r.ticker}${noteTxt(r)}</td><td>${r.when}</td><td>${r.pw_ratio ?? '—'}${r.pw_ratio ? '×' : ''}</td>` +
     `<td>${r.deep_itm_usd ? '$' + (r.deep_itm_usd/1e6).toFixed(1) + 'M' : '—'}</td>` +
     `<td>${r.runup_2w != null ? (r.runup_2w*100).toFixed(1) + '%' : '—'}</td>` +
     `<td>${r.ath_dist != null ? (r.ath_dist*100).toFixed(0) + '%' : '—'}</td>` +

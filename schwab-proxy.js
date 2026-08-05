@@ -903,7 +903,14 @@ async function earnVixOK(env, token) {
   const d = await fetchSchwabJSON(
     `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=%24VIX&periodType=year&frequencyType=daily&frequency=1&startDate=${start}&endDate=${end}`,
     token, env);
-  const closes = (d.candles || []).map(c => c.close).filter(x => x > 0);
+  // Audit A1 (owner batch 2026-08-05): during the session Schwab's last daily
+  // candle is TODAY'S PARTIAL — the 15:30 FINAL was gating on live intraday
+  // VIX while the locked spec (and the 35-night backtest) say PRIOR-DAY CLOSE.
+  // Drop any candle dated today (ET) before taking "prior".
+  const todayISO_v = isoDateET(toET());
+  const closes = (d.candles || [])
+    .filter(c => c.close > 0 && isoDateET(toET(new Date(c.datetime))) < todayISO_v)
+    .map(c => c.close);
   if (closes.length < 101) throw new Error('VIX history too short');
   const prior = closes[closes.length - 1];
   const last100 = closes.slice(-100);
@@ -1161,13 +1168,26 @@ async function earnBuildBoard(env, token, boardISO, opts = {}) {
     // (2026-07-29: BUD/BMY/RACE cut while REIT filler held slots).
     if (!uniset.has(ev.ticker)) continue;
     const isTonight = ev.report_date === boardISO && ev.when !== 'BMO';
-    const isTomorrowAM = ev.report_date === nextISO && ev.when === 'BMO';
+    // Audit B2 (owner batch 2026-08-05): an UNKNOWN-time name dated tomorrow
+    // used to be dropped silently — a real BMO-tomorrow reporter never reached
+    // the board. Include it, labeled 'BMO?', non-tradeable (see B1 below).
+    const isTomorrowAM = ev.report_date === nextISO && (ev.when === 'BMO' || ev.when === 'UNKNOWN');
     if (!isTonight && !isTomorrowAM) continue;
     seen.add(ev.ticker);
-    cands.push({ ticker: ev.ticker, when: ev.when === 'UNKNOWN' ? 'AMC?' : ev.when,
+    cands.push({ ticker: ev.ticker,
+                 when: ev.when === 'UNKNOWN' ? (isTonight ? 'AMC?' : 'BMO?') : ev.when,
                  report_date: ev.report_date, inUniverse: true });
   }
-  const vix = await earnVixOK(env, token);
+  // Audit D3 (owner batch): the ONLY unguarded await in the build — a VIX
+  // history hiccup used to throw every FINAL attempt until the window closed,
+  // silently. Fail CLOSED but DELIVERED: vix.ok=false skips every night and
+  // the board says why, instead of no board at all.
+  let vix;
+  try { vix = await earnVixOK(env, token); }
+  catch (eV) {
+    vix = { ok: false, prior: null, ratio: null, err: 'VIX check unavailable — all nights skipped (fail-closed)' };
+    console.warn('[earn] VIX gate unavailable:', eV.message);
+  }
   let park=null; try{ park=await earnParkingSleeve(env, token); }catch(e){ console.warn('[earn] parking:',e.message); }
   const seed = uniRaw;
   const board = [];
@@ -1214,6 +1234,15 @@ async function earnBuildBoard(env, token, boardISO, opts = {}) {
         if (fwm.nDays < 3) row.notes.push(`thin monthly window (${fwm.nDays}d)`);
       }
     } catch (e) { row.notes.push('flow fetch failed'); }
+    // Audit B1 (owner batch 2026-08-05): a name with an UNKNOWN report time
+    // ('AMC?' / 'BMO?') can be a dead catalyst — it may have ALREADY reported
+    // this morning. It stays on the board for visibility but can never trade.
+    if (row.when === 'AMC?' || row.when === 'BMO?') {
+      if (row.g1 && row.g2 && row.g3 && row.g4) row.notes.push('would be LONG — report time unknown, skipped');
+      row.verdict = row.verdict === 'CROWDED' ? 'CROWDED' : 'PASS';
+      board.push(row);
+      continue;
+    }
     if (row.g1 && row.g2 && row.g3 && row.g4) row.verdict = 'LONG';
     board.push(row);
   }
@@ -1357,6 +1386,7 @@ async function earnResolveJob(env, etNow, token) {
           rows.push({ date: prev, ticker: r.ticker, pw_ratio: r.pw_ratio ?? null,
                       deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
                       base_rate: r.base_rate ?? null, verdict: 'LONG',
+                      flowSrc: r.flowSrc ?? null,   // '14d' | 'monthly' — makes the monthly band auditable (owner batch 2026-08-05)
                       move_24h: +((xO / eC - 1).toFixed(4)), pl_r: null, live: true });
         } else {
           unresolved.push(r);
@@ -1371,6 +1401,7 @@ async function earnResolveJob(env, etNow, token) {
       rows.push({ date: prev, ticker: r.ticker, pw_ratio: r.pw_ratio ?? null,
                   deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
                   base_rate: r.base_rate ?? null, verdict: 'LONG',
+                  flowSrc: r.flowSrc ?? null,
                   move_24h: null, pl_r: null, live: true,
                   note: 'UNRESOLVED — no candles (halted/delisted?); fix by hand' });
     }
@@ -1559,8 +1590,18 @@ async function earnExitJob(env, etNow, token) {
   const iso = isoDateET(etNow);
   const h = etNow.getHours(), m = etNow.getMinutes();
   if (!(h === 9 && m >= 32 && m <= 45)) return;
-  const prevISO = isoDateET(prevTrade(etNow));
-  const raw = await env.SIGNAL_KV.get(`earn_open_${prevISO}`);
+  // Audit D5 (owner batch 2026-08-05): if the whole 9:32–9:45 window was
+  // missed (token outage), the basket was stranded FOREVER — prevTrade never
+  // matched again and the owner got no SELL reminder and no outcomes. Scan
+  // back up to 4 trading days for any un-exited basket (keys carry 7d TTL).
+  let prevISO = null, raw = null, lateDays = 0;
+  { let d = etNow;
+    for (let back = 1; back <= 4 && !raw; back++) {
+      d = prevTrade(d);
+      const cand = isoDateET(d);
+      const r2 = await env.SIGNAL_KV.get(`earn_open_${cand}`);
+      if (r2) { prevISO = cand; raw = r2; lateDays = back - 1; }
+    } }
   if (!raw) return;
   const key = `earn_done_${iso}_exit`;
   // P39 (audit D2): claim-gated — a crashed run self-heals in 300s.
@@ -1595,7 +1636,8 @@ async function earnExitJob(env, etNow, token) {
     // old 'running' value. With the self-expiring claim that would DOUBLE-SEND
     // the SELL reminder, so: mark 'sent' only on confirmed delivery; on a
     // failed send release the claim and KEEP earn_open so the retry has data.
-    const sentX = await earnSend(env, `🌙 **[EARNINGS] SELL AT OPEN — now.** ` +
+    const lateTag = lateDays > 0 ? ` ⚠️ LATE — this basket is from ${prevISO}, the exit window was missed ${lateDays} session(s) ago.` : '';
+    const sentX = await earnSend(env, `🌙 **[EARNINGS] SELL AT OPEN — now.**${lateTag} ` +
       `Overnight results: ${outs.join(' · ')}. Green or red — out.`);
     const okX = !!(sentX && (sentX.dm || sentX.webhook));
     if (!okX) {
@@ -7324,6 +7366,20 @@ async function handleScheduledInner(env) {
               bad.push(`history mirror drift on ${prevT}: GitHub differs on ${drift.join(', ')} — run /remirror-history`);
           }
         } catch (_) { /* checker flake must not alert */ }
+        // 6. Earnings flow coverage (owner batch 2026-08-05): a dead flow
+        // collector produces a normal-LOOKING all-dash board (fail-closed =
+        // no bad LONG, but also no possible LONG — a quiet outage). Alert
+        // when under half the universe rows have a computed PW.
+        try {
+          const bRaw6 = await env.SIGNAL_KV.get(`earn_board_${todayISO}`);
+          if (bRaw6) {
+            const b6 = JSON.parse(bRaw6);
+            const rows6 = (b6.board || []).filter(r => !(r.notes || []).some(n => String(n).startsWith('outside universe')));
+            const withPw = rows6.filter(r => r.pw_ratio != null).length;
+            if (rows6.length >= 8 && withPw / rows6.length < 0.5)
+              bad.push(`earnings flow coverage low: ${withPw}/${rows6.length} rows have a PW — collector may be dead (dashes ≠ quiet)`);
+          }
+        } catch (_) { /* checker flake must not alert */ }
         if (bad.length) {
           const dcRaw = await env.SIGNAL_KV.get('discord_config');
           const dc = dcRaw ? JSON.parse(dcRaw) : null;
@@ -11265,6 +11321,10 @@ async function renderMorningCardPng(d) {
 // ════════════════════════════════════════════════════════════════════
 function _earnDotColor(g) { return g === true ? '#4ade80' : g === false ? '#f87171' : '#4a4d54'; }
 function _earnReason(r) {
+  // Degradation surfaces first (audit D4, owner batch 2026-08-05): a fetch
+  // failure or unknown report time must never render as a generic 'pass'.
+  const n = (r.notes || []).find(x => /fetch failed|time unknown|would be LONG/.test(String(x)));
+  if (n) return String(n).replace('would be LONG — report time unknown, skipped', 'qualifies — time unknown, skipped');
   if (r.verdict === 'LONG') return `flow ${r.pw_ratio ?? '—'}`;
   if (r.verdict === 'CROWDED') return `crowded · flow ${r.pw_ratio ?? '—'}`;
   if (r.g1 === false) return r.pw_ratio != null ? `flow light ${r.pw_ratio}` : 'no flow';
@@ -11296,7 +11356,7 @@ function buildEarningsCardSvg(b) {
   const header = (bg) => {
     let h = `<rect x="0" y="0" width="${W}" height="__H__" rx="16" fill="${bg}"/>`;
     h += `<text x="${P}" y="34" font-family="${F}" font-size="16" font-weight="600" fill="${C.accent}">Σ3 earnings</text>`;
-    h += `<text x="${W - P}" y="34" text-anchor="end" font-family="${F}" font-size="12" fill="${C.mute}">${_cardEsc(_earnCardDate(b.date))}</text>`;
+    h += `<text x="${W - P}" y="34" text-anchor="end" font-family="${F}" font-size="12" fill="${C.mute}">${_cardEsc((b.calSrc && b.calSrc !== 'nasdaq' ? '⚠ ' + b.calSrc + ' calendar · ' : '') + _earnCardDate(b.date))}</text>`;
     // Stage label so a morning PREVIEW is never mistaken for the final call
     // (user 2026-07-13: banks all "pass" at 9am — that's provisional, 3:30 decides).
     const stageTxt = b.after ? 'morning after — how the board opened (close → next open)'

@@ -6854,8 +6854,14 @@ async function handleScheduledInner(env) {
   // makes it through) rescues the EOD write without needing a browser hit.
   const afterEOD = (etHour === 16 && etMin >= 16) || etHour >= 17;
   const eodKey = `eod_done_${todayISO}`;
+  // P37 (2026-08-05): the old `!eodAlreadyDone` check-then-act let the 16:16
+  // minute tick and the 16:17 dedicated cron BOTH run handleEOD — 'done' is
+  // only written at the END of a full run, so the second tick raced past the
+  // check. The duplicate's history mirror then pushed a pre-settle snapshot
+  // LAST and erased stradPL/bobfPL from GitHub (Aug 4 triple-settle day).
+  // Claim-gate the whole EOD run instead (same P22 pattern as sends).
   const eodAlreadyDone = afterEOD ? await env.SIGNAL_KV.get(eodKey) : null;
-  const isEOD = afterEOD && !eodAlreadyDone;
+  const isEOD = afterEOD && (!eodAlreadyDone || eodAlreadyDone.startsWith('claim:'));
 
   const isMarket  = (etHour > 9 || (etHour === 9 && etMin >= 30)) && etHour < 16;
 
@@ -6905,13 +6911,16 @@ async function handleScheduledInner(env) {
   }
 
   // EOD cron: capture vixClose + spxClose + m8bfPL + backfill any missing m8bfWR
-  if (isEOD) {
+  // P37: claim before running — exactly ONE tick may execute the EOD sequence.
+  if (isEOD && await claimSendSlot(env, eodKey)) {
     const eodResult = await handleEOD(env, etNow);
     // Only mark eod_done after real write. If Schwab token expired AND Stooq
-    // failed, fields object is empty — leaving the flag unset lets the next
-    // cron tick (or /gex hit) retry instead of silently giving up.
+    // failed, fields object is empty — DELETE the claim so the next cron tick
+    // (or /gex hit) retries instead of silently giving up.
     if (eodResult.wroteFields) {
       await env.SIGNAL_KV.put(eodKey, 'done', { expirationTtl: 86400 });
+    } else {
+      await env.SIGNAL_KV.delete(eodKey);
     }
     // Orphan sweep (lessons P18): settle prior-session trades stranded by a
     // missed EOD — ALL strategies, not just tail. Runs BEFORE the backfills so
@@ -7192,6 +7201,24 @@ async function handleScheduledInner(env) {
               bad.push(`GitHub fallback mirror stale (built ${gj.built}) — write path may be dead`);
           }
         } catch (_) { /* raw fetch flake — never alert on the checker's own failure */ }
+        // 5. History mirror parity (P37, owner 2026-08-05: Aug 4 triple-settle
+        // day — GitHub dropped stradPL+bobfPL while KV kept them; the OWNER was
+        // the alarm). Compare the previous trading day's row field-by-field:
+        // KV (truth) vs the GitHub mirror. Any KV field absent or different on
+        // GitHub = drift → name the fields so /remirror-history is a one-click heal.
+        try {
+          const prevT = isoDateET(prevTrade(etNow));
+          const kvHist = await getHistory(env);
+          const kvRow = Array.isArray(kvHist) ? kvHist.find(r => r.date === prevT) : null;
+          const ghH = await fetch('https://raw.githubusercontent.com/rava8989/brave/main/history_data.json',
+            { headers: { 'User-Agent': 'schwab-proxy-worker/1.0' }, cf: { cacheTtl: 0 } });
+          if (kvRow && ghH.ok) {
+            const ghRow = (await ghH.json()).find(r => r.date === prevT) || {};
+            const drift = Object.keys(kvRow).filter(k => JSON.stringify(kvRow[k]) !== JSON.stringify(ghRow[k]));
+            if (drift.length)
+              bad.push(`history mirror drift on ${prevT}: GitHub differs on ${drift.join(', ')} — run /remirror-history`);
+          }
+        } catch (_) { /* checker flake must not alert */ }
         if (bad.length) {
           const dcRaw = await env.SIGNAL_KV.get('discord_config');
           const dc = dcRaw ? JSON.parse(dcRaw) : null;
@@ -10007,10 +10034,14 @@ async function mirrorHistoryToGitHub(env, contentArray, message) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       let body = contentArray;
-      if (attempt > 1) {
-        await new Promise(r => setTimeout(r, 250 * (attempt - 1)));
-        try { const fresh = await getHistory(env); if (Array.isArray(fresh) && fresh.length) body = fresh; } catch (_) {}
-      }
+      if (attempt > 1) await new Promise(r => setTimeout(r, 250 * (attempt - 1)));
+      // P37 (2026-08-05): re-read KV on EVERY attempt, not only retries. A sha
+      // conflict is not the only clobber path — a mirror that merely STARTS
+      // early and lands LAST gets a legitimately fresh sha and pushes its stale
+      // in-memory array cleanly (Aug 4: duplicate-EOD mirror erased stradPL +
+      // bobfPL from GitHub with zero 409s). Sha freshness ≠ content freshness;
+      // pushing current KV makes every mirror convergent no matter the order.
+      try { const fresh = await getHistory(env); if (Array.isArray(fresh) && fresh.length) body = fresh; } catch (_) {}
       const getResp = await fetch(apiUrl, { headers: ghHeaders });
       if (!getResp.ok) throw new Error(`GH GET ${getResp.status}`);
       const meta = await getResp.json();

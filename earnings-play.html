@@ -414,6 +414,9 @@ function renderLiveBoard(b) {
   // can never gate to LONG, so they're noise here just like in the Discord
   // messages (owner 2026-07-15). One muted count line keeps the audit trail.
   const scored = b.board.filter(r => !(r.notes || []).some(n => n.startsWith('outside universe')));
+  // LONGs float to the top (owner 2026-08-05) — same ordering as the Discord
+  // card. Stable sort: everything else keeps its calendar order.
+  scored.sort((a2, b2) => (a2.verdict === 'LONG' ? 0 : 1) - (b2.verdict === 'LONG' ? 0 : 1));
   const outside = b.board.length - scored.length;
   // Notes made visible (audit D4, owner batch 2026-08-05): a dash must explain
   // itself — 'flow fetch failed' vs a genuinely optionless name look identical

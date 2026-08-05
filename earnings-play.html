@@ -21,6 +21,13 @@
   h1 { font-size: 20px; font-weight: 600; }
   h1 .tag { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 8px; }
   .sub { color: var(--muted); margin: 4px 0 20px; }
+  /* Section identity tints (owner 2026-08-05): same tables, different rooms —
+     board = violet (tonight, act), pipeline = teal (coming, watch),
+     log = amber (past, judge). Faint wash + left edge + title dot. */
+  .zone-board  { background: #191627 !important; border-left: 3px solid #7c6cd9 !important; }
+  .zone-pipe   { background: #12201f !important; border-left: 3px solid #2f9e8f !important; }
+  .zone-log    { background: #201b12 !important; border-left: 3px solid #c9973f !important; }
+  .zdot { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; vertical-align:1px; }
   .card { background: var(--card); border: 1px solid var(--border);
           border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
   .banner { display: flex; align-items: center; gap: 12px; }
@@ -67,8 +74,8 @@
     <div class="note">loading current position…</div>
   </div>
 
-  <div class="section-h">Today's board <span class="badge" id="boardDate"></span></div>
-  <div class="card" style="overflow-x:auto"><table id="board"><thead><tr>
+  <div class="section-h"><span class='zdot' style='background:#7c6cd9'></span>Today's board <span class="badge" id="boardDate"></span></div>
+  <div class="card zone-board" style="overflow-x:auto"><table id="board"><thead><tr>
     <th>Ticker</th><th>Reports</th><th>PW ratio</th><th>Deep-ITM $</th>
     <th>Run-up 2w</th><th>ATH dist</th><th>Base rate</th>
     <th>G1</th><th>G2</th><th>G3</th><th>Verdict</th>
@@ -82,17 +89,17 @@
     Gate 2 (v2.2): 2-week run-up must be negative AND ≥5% below ATH — rising into the print = PASS, no override.
     Gate 3: 4–8 quarters of overnight reactions (close → next open) — beat-fade names PASS regardless of flow. Gate 4 (v2.4): prior-day VIX must be under 1.2× its own 100-day average — when fear is spiking above its own recent normal, the night is skipped.</div>
 
-  <div class="section-h">📅 Pipeline — earnings coming in the next 2 weeks <span class="badge" id="pipeDate"></span></div>
-  <div class="card" style="overflow-x:auto"><table id="pipe"><thead><tr>
+  <div class="section-h"><span class='zdot' style='background:#2f9e8f'></span>Pipeline — earnings coming in the next 2 weeks <span class="badge" id="pipeDate"></span></div>
+  <div class="card zone-pipe" style="overflow-x:auto"><table id="pipe"><thead><tr>
     <th>Date</th><th>Ticker</th><th>When</th><th>Track record</th><th>Flow so far</th><th>Read</th>
   </tr></thead><tbody>
     <tr><td colspan="6" class="note">loading pipeline…</td></tr>
   </tbody></table></div>
   <div class="note">Forward look at every universe name reporting soon. <b style="color:var(--text)">Track record</b> (does it pay on beats) and <b style="color:var(--text)">flow so far</b> (call-vs-put ratio building in the window) are knowable now; the falling-in and calm-tape gates finalize on report day. 🟢 = trending toward a LONG. Not a signal — the final call comes in the 3:30 board.</div>
 
-  <div class="section-h">The log <span class="badge">trades AND passes — this is the edge</span></div>
-  <div class="card" id="logSummary" style="display:none"></div>
-  <div class="card" style="overflow-x:auto"><table id="log"><thead><tr>
+  <div class="section-h"><span class='zdot' style='background:#c9973f'></span>The log <span class="badge">trades AND passes — this is the edge</span></div>
+  <div class="card zone-log" id="logSummary" style="display:none"></div>
+  <div class="card zone-log" style="overflow-x:auto"><table id="log"><thead><tr>
     <th>Date</th><th>Ticker</th><th>PW</th><th>Deep-ITM $</th><th>Run-up</th>
     <th>Base rate</th><th>Verdict</th><th title="prior close → next open">O/N move</th><th>P/L (R)</th>
   </tr></thead><tbody>

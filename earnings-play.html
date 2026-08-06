@@ -423,7 +423,7 @@ function renderLiveBoard(b) {
   // otherwise. flowSrc 'monthly' is badged for the same reason.
   const noteTxt = r => {
     const bits = (r.notes || []).filter(n => !n.startsWith('outside universe'));
-    if (r.flowSrc === 'monthly') bits.unshift('monthly-flow name');
+    if (r.flowSrc === 'monthly') bits.unshift('flow from monthly options');
     return bits.length ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${bits.join(' · ')}</div>` : '';
   };
   document.querySelector('#board tbody').innerHTML = (scored.length ? scored.map(r =>

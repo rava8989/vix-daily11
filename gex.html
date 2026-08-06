@@ -868,7 +868,7 @@ function stanceCone() {
     for (const s of CONE_SLOTS) if (path[s] != null) { latest = path[s]; slot = s; }
   } catch (_) {}
   if (!bands || latest == null || slot == null) {
-    stSlot('stCone','GEX Cone', stGauge('c','',zones,ticks,0,true), 'WAITING', ST_COL.grey, 'waiting for readings', 'var(--text3)');
+    stSlot('stCone','GEX Cone', stGauge('c','',zones,ticks,0,true), 'WAITING', ST_COL.grey, 'first reading at 10:00 · updates every 30 min', 'var(--text3)');
     return;
   }
   const i = bands.times.indexOf(slot);

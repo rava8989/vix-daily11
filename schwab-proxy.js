@@ -10585,61 +10585,63 @@ async function putScrapedCsv(env, content, sha, message) {
 // data/oc_calibration.json. After ~10 sessions the scorecard decides whether
 // the freshness tag ships (deal: ≥70% directional accuracy on loud strikes).
 // Schwab-only. Display/strategy code untouched — pure research collection.
-async function ocNoonSnap(env, etNow, token) {
-  // Noon volume checkpoint for the open/close calibration (early/late split).
-  const todayISO = isoDateET(etNow);
+async function ocFetchSyms(env, token, todayISO) {
+  // SPX + SPY + QQQ, expiries 1–7 calendar days out, strikes within ±4% of
+  // spot. Breadth is the sample-rate lever: ~2–3k scorable contract-days/day.
   const toD = new Date(new Date(todayISO + 'T12:00:00Z').getTime() + 7 * 86400_000).toISOString().slice(0, 10);
-  const chain = await fetchSchwabJSON(
-    `https://api.schwabapi.com/marketdata/v1/chains?symbol=%24SPX&strikeCount=90&fromDate=${todayISO}&toDate=${toD}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`,
-    token, env);
-  const spot = chain.underlyingPrice || chain.underlying?.last;
-  if (!spot) throw new Error('no spot');
   const out = {};
-  const grab = (map, side) => {
-    for (const [expKey, strikes] of Object.entries(map || {})) {
-      const expISO = expKey.split(':')[0];
-      if (expISO === todayISO) continue;
-      for (const [k, arr] of Object.entries(strikes)) {
-        const c = arr && arr[0];
-        if (!c) continue;
-        if (Math.abs(parseFloat(k) - spot) / spot > 0.025) continue;
-        out[expISO] = out[expISO] || {};
-        out[expISO][k] = out[expISO][k] || {};
-        out[expISO][k][side] = c.totalVolume ?? 0;
+  for (const sym of ['%24SPX', 'SPY', 'QQQ']) {
+    try {
+      const chain = await fetchSchwabJSON(
+        `https://api.schwabapi.com/marketdata/v1/chains?symbol=${sym}&strikeCount=90&fromDate=${todayISO}&toDate=${toD}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`,
+        token, env);
+      const spot = chain.underlyingPrice || chain.underlying?.last;
+      if (!spot) continue;
+      const S = { spot: +spot.toFixed(2), exp: {} };
+      const grab = (map, side) => {
+        for (const [expKey, strikes] of Object.entries(map || {})) {
+          const expISO = expKey.split(':')[0];
+          if (expISO === todayISO) continue;              // 0DTE: no next-day OI ever
+          for (const [k, arr] of Object.entries(strikes)) {
+            const c = arr && arr[0];
+            if (!c) continue;
+            if (Math.abs(parseFloat(k) - spot) / spot > 0.04) continue;
+            S.exp[expISO] = S.exp[expISO] || {};
+            S.exp[expISO][k] = S.exp[expISO][k] || {};
+            S.exp[expISO][k][side] = { v: c.totalVolume ?? 0, oi: c.openInterest ?? 0 };
+          }
+        }
+      };
+      grab(chain.callExpDateMap, 'c'); grab(chain.putExpDateMap, 'p');
+      out[sym.replace('%24','')] = S;
+    } catch (e) { console.warn('[oc-fetch]', sym, e.message); }
+  }
+  return out;
+}
+
+async function ocNoonSnap(env, etNow, token) {
+  // Noon volume checkpoint (early/late split for the time-of-day prior).
+  const todayISO = isoDateET(etNow);
+  const syms = await ocFetchSyms(env, token, todayISO);
+  const out = {};
+  for (const [sym, S] of Object.entries(syms)) {
+    out[sym] = {};
+    for (const [expISO, strikes] of Object.entries(S.exp)) {
+      out[sym][expISO] = {};
+      for (const [k, sides] of Object.entries(strikes)) {
+        out[sym][expISO][k] = { c: sides.c ? sides.c.v : null, p: sides.p ? sides.p.v : null };
       }
     }
-  };
-  grab(chain.callExpDateMap, 'c'); grab(chain.putExpDateMap, 'p');
+  }
   await env.SIGNAL_KV.put(`oc_noon_${todayISO}`, JSON.stringify(out), { expirationTtl: 2 * 86400 });
-  return { exps: Object.keys(out).length };
+  return { syms: Object.keys(out).length };
 }
 
 async function ocCalibJob(env, etNow, token) {
   const todayISO = isoDateET(etNow);
-  const toD = new Date(new Date(todayISO + 'T12:00:00Z').getTime() + 7 * 86400_000).toISOString().slice(0, 10);
-  const chain = await fetchSchwabJSON(
-    `https://api.schwabapi.com/marketdata/v1/chains?symbol=%24SPX&strikeCount=90&fromDate=${todayISO}&toDate=${toD}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`,
-    token, env);
-  const spot = chain.underlyingPrice || chain.underlying?.last;
-  if (!spot) throw new Error('no spot');
-  const snap = { date: todayISO, spot: +spot.toFixed(2), exp: {} };
-  const grab = (map, side) => {
-    for (const [expKey, strikes] of Object.entries(map || {})) {
-      const expISO = expKey.split(':')[0];
-      if (expISO === todayISO) continue;                    // 0DTE: no next-day OI ever — excluded
-      for (const [k, arr] of Object.entries(strikes)) {
-        const c = arr && arr[0];
-        if (!c) continue;
-        const K = parseFloat(k);
-        if (Math.abs(K - spot) / spot > 0.025) continue;
-        snap.exp[expISO] = snap.exp[expISO] || {};
-        snap.exp[expISO][k] = snap.exp[expISO][k] || {};
-        snap.exp[expISO][k][side] = { v: c.totalVolume ?? 0, oi: c.openInterest ?? 0 };
-      }
-    }
-  };
-  grab(chain.callExpDateMap, 'c'); grab(chain.putExpDateMap, 'p');
-  // noon volume checkpoint (captured by the 12:0x mini-snap, if present)
+  const syms = await ocFetchSyms(env, token, todayISO);
+  if (!Object.keys(syms).length) throw new Error('no chains');
+  const snap = { date: todayISO, syms };
   try {
     const noonRaw = await env.SIGNAL_KV.get(`oc_noon_${todayISO}`);
     if (noonRaw) snap.noon = JSON.parse(noonRaw);
@@ -10653,26 +10655,32 @@ async function ocCalibJob(env, etNow, token) {
     const yRaw = await env.SIGNAL_KV.get(`oc_snap_${yISO}`);
     if (yRaw) {
       const y = JSON.parse(yRaw);
+      const ySyms = y.syms || (y.exp ? { SPX: { spot: y.spot, exp: y.exp } } : {});
       const rows = [];
-      for (const [expISO, strikes] of Object.entries(y.exp || {})) {
-        const tExp = snap.exp[expISO];
-        if (!tExp) continue;                               // expired since — unscorable
-        for (const [k, sides] of Object.entries(strikes)) {
-          for (const side of ['c', 'p']) {
-            const a = sides[side], b = tExp[k] && tExp[k][side];
-            if (!a || !b || !(a.v > 0)) continue;          // no volume = nothing to classify
-            const noonV = y.noon && y.noon[expISO] && y.noon[expISO][k] ? (y.noon[expISO][k][side] ?? null) : null;
-            rows.push({ d: yISO, exp: expISO, k: +k, s: side, v: a.v, oi: a.oi,
-                        dOI: b.oi - a.oi, noonV,
-                        spotDist: +((+k - y.spot) / y.spot * 100).toFixed(2) });
+      for (const [sym, Y] of Object.entries(ySyms)) {
+        const T = syms[sym];
+        if (!T) continue;
+        for (const [expISO, strikes] of Object.entries(Y.exp || {})) {
+          const tExp = T.exp[expISO];
+          if (!tExp) continue;                            // expired since — unscorable
+          for (const [k, sides] of Object.entries(strikes)) {
+            for (const side of ['c', 'p']) {
+              const a = sides[side], b = tExp[k] && tExp[k][side];
+              if (!a || !b || !(a.v > 0)) continue;       // no volume = nothing to classify
+              const nv = y.noon && y.noon[sym] && y.noon[sym][expISO] && y.noon[sym][expISO][k]
+                ? y.noon[sym][expISO][k][side] : null;
+              rows.push({ d: yISO, sym, exp: expISO, k: +k, s: side, v: a.v, oi: a.oi,
+                          dOI: b.oi - a.oi, noonV: nv,
+                          spotDist: +((+k - Y.spot) / Y.spot * 100).toFixed(2) });
+            }
           }
         }
       }
       if (rows.length) {
         await githubUpsertResearchFile(env, 'data/oc_calibration.json', cur => {
           cur.rows = cur.rows || [];
-          if (!cur.rows.some(r => r.d === yISO)) cur.rows.push(...rows);
-          cur.rows = cur.rows.slice(-20000);
+          if (!cur.rows.some(r => r.d === yISO && r.sym === rows[0].sym)) cur.rows.push(...rows);
+          cur.rows = cur.rows.slice(-60000);
           cur.updated = todayISO;
           return cur;
         }, `auto: open/close calibration ${yISO} (${rows.length} rows)`);
@@ -10680,7 +10688,7 @@ async function ocCalibJob(env, etNow, token) {
       }
     }
   } catch (e) { console.warn('[oc-calib] scoring:', e.message); }
-  return { snapped: Object.keys(snap.exp).length, scored };
+  return { snapped: Object.keys(syms).length, scored };
 }
 
 // Runs in the 16:25 aux tick (its own subrequest budget). Was previously in the

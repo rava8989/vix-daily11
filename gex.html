@@ -640,7 +640,7 @@ async function refreshMorningBook() {
     if (g935 == null) { st.textContent = 'waiting for 9:35'; st.style.color = 'var(--text3)'; stats.innerHTML = ''; return; }
     const s935 = g935 > 0;
     if (g1000 == null) {
-      st.textContent = s935 ? 'POSITIVE morning — 10:00 confirms' : 'NEGATIVE morning — 10:00 confirms';
+      st.textContent = s935 ? 'POSITIVE morning — waiting for the 10:00 read' : 'NEGATIVE morning — waiting for the 10:00 read';
       st.style.color = s935 ? 'var(--green)' : 'var(--red)';
       stats.innerHTML = mbTable(s935 ? 'pos' : 'neg');
       return;

@@ -12862,6 +12862,81 @@ export default {
       return jsonResp(JSON.parse(cached), 200, { 'Access-Control-Allow-Origin': '*' });
     }
 
+    // ── GET /earn-spotlight?symbol=T ── Candidate deep-dive card data (owner
+    // 2026-08-06): company profile + analyst targets/ratings (Nasdaq API, same
+    // source as the calendar audit) + fundamentals/price/implied move (Schwab).
+    // Public read-only; slow parts cached 6h per ticker, price always fresh.
+    if (url.pathname === '/earn-spotlight' && request.method === 'GET') {
+      const pub = { 'Access-Control-Allow-Origin': '*' };
+      const sym = (url.searchParams.get('symbol') || '').toUpperCase().replace(/[^A-Z.]/g, '');
+      if (!sym) return jsonResp({ error: 'symbol required' }, 400, pub);
+      try {
+        const ck = `spotlight_${sym}`;
+        let slow = null;
+        try { const cRaw = await env.SIGNAL_KV.get(ck); if (cRaw) slow = JSON.parse(cRaw); } catch (_) {}
+        if (!slow || (Date.now() - (slow.ts || 0)) > 6 * 3600 * 1000) {
+          slow = { ts: Date.now() };
+          const nh = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Accept': 'application/json' };
+          try {
+            const r = await fetch(`https://api.nasdaq.com/api/analyst/${sym}/targetprice`, { headers: nh });
+            const j = r.ok ? await r.json() : null;
+            const c = j?.data?.consensusOverview;
+            if (c) Object.assign(slow, { tLow: c.lowPriceTarget, tAvg: c.priceTarget, tHigh: c.highPriceTarget,
+                                         buy: c.buy, hold: c.hold, sell: c.sell });
+          } catch (_) {}
+          try {
+            const r = await fetch(`https://api.nasdaq.com/api/analyst/${sym}/ratings`, { headers: nh });
+            const j = r.ok ? await r.json() : null;
+            if (j?.data) { slow.rating = j.data.meanRatingType || null;
+              const m = String(j.data.ratingsSummary || '').match(/(\d+) analysts/); if (m) slow.nAnalysts = +m[1]; }
+          } catch (_) {}
+          try {
+            const r = await fetch(`https://api.nasdaq.com/api/company/${sym}/company-profile`, { headers: nh });
+            const j = r.ok ? await r.json() : null;
+            if (j?.data) Object.assign(slow, { name: j.data.CompanyName?.value || null,
+              industry: j.data.Industry?.value || null, sector: j.data.Sector?.value || null });
+          } catch (_) {}
+          try {
+            const tk = await getAccessToken(env);
+            slow._tk = 1;
+            const r = await fetchSchwabJSON(`https://api.schwabapi.com/marketdata/v1/instruments?symbol=${sym}&projection=fundamental`, tk, env);
+            const f = r?.instruments?.[0]?.fundamental;
+            if (f) Object.assign(slow, { cap: f.marketCap ?? null, pe: f.peRatio ?? null,
+                                         w52hi: f.high52 ?? null, w52lo: f.low52 ?? null });
+          } catch (_) {}
+          await env.SIGNAL_KV.put(ck, JSON.stringify(slow), { expirationTtl: 6 * 3600 });
+        }
+        // fresh price + implied move (nearest post-tonight expiry ATM straddle)
+        let price = null, impMove = null;
+        try {
+          const tk = await getAccessToken(env);
+          const q = await fetchSchwabJSON(`https://api.schwabapi.com/marketdata/v1/quotes?symbols=${sym}&fields=quote`, tk, env);
+          price = q?.[sym]?.quote?.lastPrice ?? null;
+          const iso = isoDateET(toET());
+          const toD = new Date(new Date(iso).getTime() + 55 * 86400_000).toISOString().slice(0, 10);
+          const ch = await fetchSchwabJSON(`https://api.schwabapi.com/marketdata/v1/chains?symbol=${sym}&strikeCount=40&fromDate=${iso}&toDate=${toD}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`, tk, env);
+          if (url.searchParams.get('debug')) slow._chKeys = { c: Object.keys(ch.callExpDateMap || {}).length, p: Object.keys(ch.putExpDateMap || {}).length, status: ch.status || null };
+          const spot = ch.underlyingPrice || price;
+          const pick = (map) => {
+            const exps = Object.keys(map || {}).sort();
+            for (const e of exps) { if (e.split(':')[0] > iso) return map[e]; }
+            return exps.length ? map[exps[0]] : null;
+          };
+          const ce = pick(ch.callExpDateMap), pe2 = pick(ch.putExpDateMap);
+          if (ce && pe2 && spot) {
+            const near = (o) => Object.entries(o).reduce((b, [k, v]) =>
+              (!b || Math.abs(+k - spot) < Math.abs(+b[0] - spot)) ? [k, v] : b, null);
+            const [ck2, cArr] = near(ce) || []; const pArr = ck2 && pe2[ck2] ? pe2[ck2] : (near(pe2) || [])[1];
+            const mid = (a) => a && a[0] ? ((a[0].bid + a[0].ask) / 2 || a[0].mark || 0) : 0;
+            const straddle = mid(cArr) + mid(pArr);
+            if (straddle > 0) impMove = +(straddle / spot * 100).toFixed(1);
+          }
+        } catch (eIM) { if (url.searchParams.get('debug')) slow._impErr = eIM.message; console.warn('[spotlight] impMove:', eIM.message); }
+        const { ts, _tk, ...pubSlow } = slow;
+        return jsonResp({ sym, price, impMove, ...pubSlow }, 200, pub);
+      } catch (e) { return jsonResp({ error: e.message }, 500, pub); }
+    }
+
     if (url.pathname === '/earnings-board' && request.method === 'GET') {
       const iso = isoDateET(toET());
       const raw = await env.SIGNAL_KV.get(`earn_board_${iso}`)

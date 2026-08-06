@@ -50,6 +50,23 @@
   .badge { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 10px;
            border: 1px solid var(--border); color: var(--muted); margin-left: 6px; }
   .updated { font-family: 'JetBrains Mono', monospace; color: var(--muted); font-size: 11px; }
+  .spot-card { display:grid; grid-template-columns: 1.1fr 1.4fr 1fr; gap:18px; align-items:start; }
+  @media (max-width:800px){ .spot-card{ grid-template-columns:1fr; } }
+  .spot-t { font-size:20px; font-weight:700; letter-spacing:.02em; }
+  .spot-sub { color:var(--muted); font-size:12px; margin-top:2px; line-height:1.5; }
+  .spot-kv { font-family:'JetBrains Mono',monospace; font-size:12px; margin-top:8px; line-height:1.7; }
+  .spot-kv b { color:var(--text); font-weight:600; }
+  .tgt-wrap { padding-top:26px; }
+  .tgt-bar { position:relative; height:6px; border-radius:3px;
+             background:linear-gradient(90deg,#30363d,#3d5a80); margin:0 8px; }
+  .tgt-pt { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px;
+            border-radius:50%; background:#8b949e; }
+  .tgt-pt.avg { background:var(--accent); width:12px; height:12px; }
+  .tgt-pt.cur { background:var(--text); border:2px solid var(--bg); width:14px; height:14px; z-index:2; }
+  .tgt-lbl { position:absolute; transform:translateX(-50%); font-family:'JetBrains Mono',monospace;
+             font-size:10.5px; color:var(--muted); white-space:nowrap; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:10px; font-size:11px;
+          font-family:'JetBrains Mono',monospace; margin-right:6px; margin-top:6px; border:1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -75,6 +92,7 @@
   </div>
 
   <div class="section-h"><span class='zdot' style='background:#7c6cd9'></span>Today's board <span class="badge" id="boardDate"></span></div>
+  <div id="spotlight"></div>
   <div class="card zone-board" style="overflow-x:auto"><table id="board"><thead><tr>
     <th>Ticker</th><th>Reports</th><th>PW ratio</th><th>Deep-ITM $</th>
     <th>Run-up 2w</th><th>ATH dist</th><th>Base rate</th>
@@ -349,6 +367,57 @@
 
 <script>
 const fmt = (x, d=1) => x == null ? '—' : (+x).toFixed(d);
+
+const fmtCap = c => c == null ? '—' : c >= 1e12 ? '$' + (c/1e12).toFixed(2) + 'T' : c >= 1e9 ? '$' + (c/1e9).toFixed(1) + 'B' : c >= 1e6 ? '$' + (c/1e6).toFixed(0) + 'M' : '$' + Math.round(c/1e3) + 'K';
+async function renderSpotlights(longs) {
+  const host = document.getElementById('spotlight');
+  if (!host) return;
+  if (!longs.length) { host.innerHTML = ''; return; }
+  host.innerHTML = longs.map(r => `<div class="card zone-board" id="spot-${r.ticker}"><div class="note">loading ${r.ticker} deep-dive…</div></div>`).join('');
+  for (const r of longs) {
+    try {
+      const d = await (await fetch(`${WORKER}/earn-spotlight?symbol=${r.ticker}`, { cache: 'no-store' })).json();
+      const el = document.getElementById(`spot-${r.ticker}`);
+      if (!el) continue;
+      const lo = d.tLow, hi = d.tHigh, avg = d.tAvg, cur = d.price;
+      let slider = '<div class="note">no analyst targets available</div>';
+      if (lo != null && hi != null && hi > lo) {
+        const pos = v => Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
+        const up = cur && avg ? ((avg / cur - 1) * 100) : null;
+        slider = `<div class="tgt-wrap"><div class="tgt-bar">
+          ${avg != null ? `<span class="tgt-lbl" style="left:${pos(avg)}%;top:-22px;color:var(--accent)">avg ${avg}</span><span class="tgt-pt avg" style="left:${pos(avg)}%"></span>` : ''}
+          ${cur != null ? `<span class="tgt-pt cur" style="left:${pos(cur)}%"></span><span class="tgt-lbl" style="left:${pos(cur)}%;top:14px;color:var(--text)">now ${cur}</span>` : ''}
+        </div>
+        <div style="display:flex;justify-content:space-between;margin:26px 8px 0;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted)"><span>low ${lo}</span><span>high ${hi}</span></div>
+        ${up != null ? `<div class="spot-kv">avg target vs now: <b style="color:${up >= 0 ? 'var(--green)' : 'var(--red)'}">${up >= 0 ? '+' : ''}${up.toFixed(0)}%</b></div>` : ''}</div>`;
+      }
+      const pills = [];
+      if (d.buy != null) pills.push(`<span class="pill" style="color:var(--green);border-color:#2ea04366">buy ${d.buy}</span>`);
+      if (d.hold != null) pills.push(`<span class="pill" style="color:var(--amber)">hold ${d.hold}</span>`);
+      if (d.sell != null) pills.push(`<span class="pill" style="color:var(--red)">sell ${d.sell}</span>`);
+      if (d.rating) pills.push(`<span class="pill">consensus: ${d.rating}${d.nAnalysts ? ' · ' + d.nAnalysts + ' analysts' : ''}</span>`);
+      const w52 = (d.w52lo != null && d.w52hi != null && cur != null && d.w52hi > d.w52lo)
+        ? `${Math.round((cur - d.w52lo) / (d.w52hi - d.w52lo) * 100)}% of 52w range` : null;
+      el.innerHTML = `<div class="spot-card">
+        <div>
+          <div class="spot-t">${r.ticker} <span style="font-size:11px;color:var(--green);font-weight:600">LONG · reports ${r.when}</span></div>
+          <div class="spot-sub">${d.name || ''}${d.industry ? '<br>' + d.industry : ''}${d.sector ? ' · ' + d.sector : ''}</div>
+          <div class="spot-kv">mkt cap <b>${fmtCap(d.cap)}</b>${d.pe ? ' · P/E <b>' + (+d.pe).toFixed(1) + '</b>' : ''}${w52 ? '<br>' + w52 : ''}</div>
+        </div>
+        <div>${slider}<div>${pills.join('')}</div></div>
+        <div class="spot-kv">tonight&apos;s setup:<br>
+          implied move <b>${d.impMove != null ? '±' + d.impMove + '%' : '—'}</b><br>
+          flow ${r.pw_ratio != null ? '<b>' + r.pw_ratio + '×</b> calls' : '—'}${r.flowSrc === 'monthly' ? ' (monthly)' : ''}<br>
+          pays on beats <b>${r.base_rate != null ? Math.round(r.base_rate * 100) + '%' : '—'}</b>${r.base_n ? ' (' + r.base_n + 'q)' : ''}<br>
+          2w run-up <b>${r.runup_2w != null ? (r.runup_2w * 100).toFixed(1) + '%' : '—'}</b></div>
+      </div>`;
+    } catch (e) {
+      const el = document.getElementById(`spot-${r.ticker}`);
+      if (el) el.innerHTML = `<div class="note">${r.ticker}: deep-dive unavailable (${e.message})</div>`;
+    }
+  }
+}
+
 const pct = x => x == null ? '—' : (x*100).toFixed(1) + '%';
 const g = ok => ok == null ? '—' : ok ? '<span class="g-ok">✓</span>' : '<span class="g-no">✗</span>';
 
@@ -435,6 +504,9 @@ function renderLiveBoard(b) {
     `<td>${g(r.g1)}</td><td>${g(r.g2)}</td><td>${g(r.g3)}</td>` +
     `<td class="${vcls(r.verdict)}">${r.verdict}</td></tr>`).join('')
     : `<tr><td colspan="11" class="note" style="padding:14px">no in-universe reporters in this window</td></tr>`);
+  // Candidate spotlight cards (owner 2026-08-06): deep-dive card per LONG —
+  // profile + analyst targets (Nasdaq) + fundamentals/implied move (Schwab).
+  renderSpotlights(scored.filter(r => r.verdict === 'LONG').slice(0, 3));
   document.getElementById('boardDate').textContent =
     `${b.date} · live${b.final ? ' · FINAL' : ''} · VIX ${b.vix && b.vix.ratio != null ? b.vix.ratio : '—'}×`;
   _liveBoardPainted = true;

@@ -27,6 +27,7 @@
   .zone-board  { background: #191627 !important; border-left: 3px solid #7c6cd9 !important; }
   .zone-pipe   { background: #12201f !important; border-left: 3px solid #2f9e8f !important; }
   .zone-log    { background: #201b12 !important; border-left: 3px solid #c9973f !important; }
+  .zone-spot   { background: #101c30 !important; border: 1px solid #2a4a7f !important; border-left: 3px solid #58a6ff !important; }
   .zdot { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; vertical-align:1px; }
   .card { background: var(--card); border: 1px solid var(--border);
           border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
@@ -373,7 +374,7 @@ async function renderSpotlights(longs) {
   const host = document.getElementById('spotlight');
   if (!host) return;
   if (!longs.length) { host.innerHTML = ''; return; }
-  host.innerHTML = longs.map(r => `<div class="card zone-board" id="spot-${r.ticker}"><div class="note">loading ${r.ticker} deep-dive…</div></div>`).join('');
+  host.innerHTML = longs.map(r => `<div class="card zone-spot" id="spot-${r.ticker}"><div class="note">loading ${r.ticker} deep-dive…</div></div>`).join('');
   for (const r of longs) {
     try {
       const d = await (await fetch(`${WORKER}/earn-spotlight?symbol=${r.ticker}`, { cache: 'no-store' })).json();

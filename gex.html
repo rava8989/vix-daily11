@@ -584,18 +584,18 @@ const MB_URL = 'https://schwab-proxy.ravamt4.workers.dev/morning-book';
 const MB_COLS = {
   // 9:35 sign only (10:00 pending) — full-history sign split
   pos:  { label: 'positive-book days', port: ['+$1,675/d', '71%', 'n=251 · t 7.7'],
-          rows: [['M8BF','+$471 · 72% (137)'],['Straddle','+$688 · 55% (56)'],['GXBF','+$999 · 70% (56) — fly ON'],['BOBF','+$616 · 69% (83)'],['Diagonal','+$469 · 81% (119)'],['Tail','+$851 · 10% (51)'],['PNBF','+$1,609 · 83% (69)']] },
+          rows: [['M8BF','+$471 · 72% (137)'],['Straddle','+$688 · 55% (56)'],['GXBF','+$999 · 70% (56) — fly ON'],['BOBF','+$616 · 69% (83)'],['Diagonal','+$469 · 81% (119)'],['PNBF','+$1,609 · 83% (69)']] },
   neg:  { label: 'negative-book days', port: ['+$1,209/d', '69%', 'n=177 · t 4.2'],
-          rows: [['M8BF','+$543 · 67% (84)'],['Straddle','+$1,741 · 74% (34)'],['GXBF','stands down → GATED STRADDLE'],['BOBF','+$226 · 51% (35)'],['Diagonal','+$234 · 65% (105)'],['Tail','+$1,374 · 12% (26)'],['PNBF','+$2,158 · 89% (19)']] },
+          rows: [['M8BF','+$543 · 67% (84)'],['Straddle','+$1,741 · 74% (34)'],['GXBF','stands down → GATED STRADDLE'],['BOBF','+$226 · 51% (35)'],['Diagonal','+$234 · 65% (105)'],['PNBF','+$2,158 · 89% (19)']] },
   // 9:35 → 10:00 endpoint cells
   PP:   { label: 'stayed-positive days', port: ['+$1,753/d', '73%', 'n=238 · t 7.9'],
-          rows: [['M8BF','+$449 · 71% (133)'],['Straddle','+$644 · 53% (51)'],['GXBF','+$1,130 · 73% (51)'],['BOBF','+$628 · 69% (78)'],['Diagonal','+$532 · 82% (120)'],['Tail','+$1,056 · 10% (42)'],['PNBF','+$1,667 · 83% (66)']] },
+          rows: [['M8BF','+$449 · 71% (133)'],['Straddle','+$644 · 53% (51)'],['GXBF','+$1,130 · 73% (51)'],['BOBF','+$628 · 69% (78)'],['Diagonal','+$532 · 82% (120)'],['PNBF','+$1,667 · 83% (66)']] },
   NN:   { label: 'stayed-negative days', port: ['+$1,318/d', '72%', 'n=159 · t 4.3'],
-          rows: [['M8BF','+$614 · 68% (77)'],['Straddle','+$1,801 · 74% (31)'],['GXBF','stands down → GATED STRADDLE'],['BOBF','+$264 · 55% (22)'],['Diagonal','+$287 · 68% (99)'],['Tail','+$1,858 · 15% (20)'],['PNBF','+$2,059 · 88% (17)']] },
+          rows: [['M8BF','+$614 · 68% (77)'],['Straddle','+$1,801 · 74% (31)'],['GXBF','stands down → GATED STRADDLE'],['BOBF','+$264 · 55% (22)'],['Diagonal','+$287 · 68% (99)'],['PNBF','+$2,059 · 88% (17)']] },
   NP:   { label: 'neg→pos flip days', port: ['+$349/d', '50%', 'n=24 · t 0.8'],
-          rows: [['M8BF','−$112 · 58% (12)'],['Straddle','+$1,120 (3)'],['GXBF','—'],['BOBF','+$163 · 46% (13)'],['Diagonal','−$28 · 45% (11)'],['Tail','−$241 · 0% (6)'],['PNBF','+$3,000 (2)']] },
+          rows: [['M8BF','−$112 · 58% (12)'],['Straddle','+$1,120 (3)'],['GXBF','—'],['BOBF','+$163 · 46% (13)'],['Diagonal','−$28 · 45% (11)'],['PNBF','+$3,000 (2)']] },
   PN:   { label: 'pos→neg flip days', port: ['+$394/d', '54%', 'n=24 · t 0.9'],
-          rows: [['M8BF','+$424 · 64% (11)'],['Straddle','+$1,134 (5)'],['GXBF','−$337 (5)'],['BOBF','+$420 (5)'],['Diagonal','−$165 · 62% (8)'],['Tail','−$109 (9)'],['PNBF','+$333 (3)']] },
+          rows: [['M8BF','+$424 · 64% (11)'],['Straddle','+$1,134 (5)'],['GXBF','−$337 (5)'],['BOBF','+$420 (5)'],['Diagonal','−$165 · 62% (8)'],['PNBF','+$333 (3)']] },
 };
 const MB_FLIP_NOTE = '<div style="margin-top:8px;color:var(--amber,#fbbf24);font-weight:600;">⚠ Endpoint flip — historically ~¼-strength, coin-flip tape · size easy.</div>' +
   '<div style="margin-top:4px;color:var(--text3);font-size:11px;">A mid-morning dip through zero that recovered is NOT a flip — those were the best days (+$2,921/d). Only the 10:00 endpoint counts.</div>';

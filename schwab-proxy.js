@@ -7119,6 +7119,12 @@ async function handleScheduledInner(env) {
         await env.SIGNAL_KV.put('scrape_append_last', JSON.stringify({ error: e.message, ts: Date.now() }));
         console.warn('[scrape-append]', e.message);
       }
+      // Open/close calibration snapshot + yesterday scoring (2026-08-06)
+      try {
+        const tokC = await getAccessToken(env);
+        const oc = await ocCalibJob(env, etNow, tokC);
+        await env.SIGNAL_KV.put('oc_calib_last', JSON.stringify({ ...oc, d: todayISO, ts: Date.now() }));
+      } catch (e) { console.warn('[oc-calib]', e.message); }
       if (etNow.getDay() === 5) {
         try { await cotWeeklyRefresh(env); } catch (e) { console.warn('[cot]', e.message); }
       }
@@ -7508,6 +7514,13 @@ async function handleScheduledInner(env) {
   if (isMarket && schwabToken) {
     try { await captureCor1mVvix(env, etNow, schwabToken); }
     catch (e) { console.warn('[cor1m] capture failed:', e.message || e); }
+    // Noon open/close-calibration volume checkpoint (2026-08-06): once/day 12:00–12:15
+    try {
+      const _oh = etNow.getHours(), _om = etNow.getMinutes();
+      if (_oh === 12 && _om <= 15 && !(await env.SIGNAL_KV.get(`oc_noon_${isoDateET(etNow)}`))) {
+        await ocNoonSnap(env, etNow, schwabToken);
+      }
+    } catch (e) { console.warn('[oc-noon]', e.message); }
     // Research capture: morning (~10:00) GEX snapshot → gex_daily_<date>.am
     // (EOD persist pairs it with the close snapshot into data/gex_daily/)
     try {
@@ -10563,6 +10576,113 @@ async function putScrapedCsv(env, content, sha, message) {
 }
 
 // ── Append ONE day's full Discord signals to scraped_signals.csv on GitHub ──
+// ── Open/Close calibration collector (owner 'build it and calibrate it',
+// 2026-08-06) ── Ground-truth study for the wall-freshness estimator: each
+// day at ~16:25 snapshot SPXW strikes 1–3 trading days from expiry
+// ({vol, OI} per side, ±2.5% of spot, plus the noon volume checkpoint if one
+// was captured), AND score YESTERDAY's snapshot against today's real ΔOI for
+// the same still-alive contracts. Scored rows append to GitHub
+// data/oc_calibration.json. After ~10 sessions the scorecard decides whether
+// the freshness tag ships (deal: ≥70% directional accuracy on loud strikes).
+// Schwab-only. Display/strategy code untouched — pure research collection.
+async function ocNoonSnap(env, etNow, token) {
+  // Noon volume checkpoint for the open/close calibration (early/late split).
+  const todayISO = isoDateET(etNow);
+  const toD = new Date(new Date(todayISO + 'T12:00:00Z').getTime() + 7 * 86400_000).toISOString().slice(0, 10);
+  const chain = await fetchSchwabJSON(
+    `https://api.schwabapi.com/marketdata/v1/chains?symbol=%24SPX&strikeCount=90&fromDate=${todayISO}&toDate=${toD}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`,
+    token, env);
+  const spot = chain.underlyingPrice || chain.underlying?.last;
+  if (!spot) throw new Error('no spot');
+  const out = {};
+  const grab = (map, side) => {
+    for (const [expKey, strikes] of Object.entries(map || {})) {
+      const expISO = expKey.split(':')[0];
+      if (expISO === todayISO) continue;
+      for (const [k, arr] of Object.entries(strikes)) {
+        const c = arr && arr[0];
+        if (!c) continue;
+        if (Math.abs(parseFloat(k) - spot) / spot > 0.025) continue;
+        out[expISO] = out[expISO] || {};
+        out[expISO][k] = out[expISO][k] || {};
+        out[expISO][k][side] = c.totalVolume ?? 0;
+      }
+    }
+  };
+  grab(chain.callExpDateMap, 'c'); grab(chain.putExpDateMap, 'p');
+  await env.SIGNAL_KV.put(`oc_noon_${todayISO}`, JSON.stringify(out), { expirationTtl: 2 * 86400 });
+  return { exps: Object.keys(out).length };
+}
+
+async function ocCalibJob(env, etNow, token) {
+  const todayISO = isoDateET(etNow);
+  const toD = new Date(new Date(todayISO + 'T12:00:00Z').getTime() + 7 * 86400_000).toISOString().slice(0, 10);
+  const chain = await fetchSchwabJSON(
+    `https://api.schwabapi.com/marketdata/v1/chains?symbol=%24SPX&strikeCount=90&fromDate=${todayISO}&toDate=${toD}&includeUnderlyingQuote=true&strategy=SINGLE&contractType=ALL`,
+    token, env);
+  const spot = chain.underlyingPrice || chain.underlying?.last;
+  if (!spot) throw new Error('no spot');
+  const snap = { date: todayISO, spot: +spot.toFixed(2), exp: {} };
+  const grab = (map, side) => {
+    for (const [expKey, strikes] of Object.entries(map || {})) {
+      const expISO = expKey.split(':')[0];
+      if (expISO === todayISO) continue;                    // 0DTE: no next-day OI ever — excluded
+      for (const [k, arr] of Object.entries(strikes)) {
+        const c = arr && arr[0];
+        if (!c) continue;
+        const K = parseFloat(k);
+        if (Math.abs(K - spot) / spot > 0.025) continue;
+        snap.exp[expISO] = snap.exp[expISO] || {};
+        snap.exp[expISO][k] = snap.exp[expISO][k] || {};
+        snap.exp[expISO][k][side] = { v: c.totalVolume ?? 0, oi: c.openInterest ?? 0 };
+      }
+    }
+  };
+  grab(chain.callExpDateMap, 'c'); grab(chain.putExpDateMap, 'p');
+  // noon volume checkpoint (captured by the 12:0x mini-snap, if present)
+  try {
+    const noonRaw = await env.SIGNAL_KV.get(`oc_noon_${todayISO}`);
+    if (noonRaw) snap.noon = JSON.parse(noonRaw);
+  } catch (_) {}
+  await env.SIGNAL_KV.put(`oc_snap_${todayISO}`, JSON.stringify(snap), { expirationTtl: 6 * 86400 });
+
+  // score yesterday: ΔOI(today − yesterday) vs yesterday's volume
+  let scored = 0;
+  try {
+    const yISO = isoDateET(prevTrade(etNow));
+    const yRaw = await env.SIGNAL_KV.get(`oc_snap_${yISO}`);
+    if (yRaw) {
+      const y = JSON.parse(yRaw);
+      const rows = [];
+      for (const [expISO, strikes] of Object.entries(y.exp || {})) {
+        const tExp = snap.exp[expISO];
+        if (!tExp) continue;                               // expired since — unscorable
+        for (const [k, sides] of Object.entries(strikes)) {
+          for (const side of ['c', 'p']) {
+            const a = sides[side], b = tExp[k] && tExp[k][side];
+            if (!a || !b || !(a.v > 0)) continue;          // no volume = nothing to classify
+            const noonV = y.noon && y.noon[expISO] && y.noon[expISO][k] ? (y.noon[expISO][k][side] ?? null) : null;
+            rows.push({ d: yISO, exp: expISO, k: +k, s: side, v: a.v, oi: a.oi,
+                        dOI: b.oi - a.oi, noonV,
+                        spotDist: +((+k - y.spot) / y.spot * 100).toFixed(2) });
+          }
+        }
+      }
+      if (rows.length) {
+        await githubUpsertResearchFile(env, 'data/oc_calibration.json', cur => {
+          cur.rows = cur.rows || [];
+          if (!cur.rows.some(r => r.d === yISO)) cur.rows.push(...rows);
+          cur.rows = cur.rows.slice(-20000);
+          cur.updated = todayISO;
+          return cur;
+        }, `auto: open/close calibration ${yISO} (${rows.length} rows)`);
+        scored = rows.length;
+      }
+    }
+  } catch (e) { console.warn('[oc-calib] scoring:', e.message); }
+  return { snapped: Object.keys(snap.exp).length, scored };
+}
+
 // Runs in the 16:25 aux tick (its own subrequest budget). Was previously in the
 // EOD invocation and silently starved on the subrequest budget after handleEOD +
 // backfillWR/PL — leaving a gap from 2026-06-04 onward (lesson P17).

@@ -1812,12 +1812,23 @@ function renderLiveTotal() {
 
   // Tail Hedge retired 2026-08-03 — excluded from the portfolio row.
 
+  // PNBF — companion paper scalp (10 lots, same math as renderScalp):
+  // open today → unrealized (lastMid − entry) × 100 × lots; closed today →
+  // realized per-lot pnl × lots. No trade today → dash like the others.
+  let pnbfPL = null;
+  const mfT = (scalp && scalp.status === 'GO' && scalp.trade && scalp.trade.openDate === today) ? scalp.trade : null;
+  if (mfT) {
+    if (mfT.status === 'closed' && mfT.pnl != null) pnbfPL = mfT.pnl * SCALP_LOTS;
+    else if (mfT.lastMid != null && mfT.entry != null) pnbfPL = Math.round((mfT.lastMid - mfT.entry) * 100) * SCALP_LOTS;
+  }
+
   const parts = [
     { name: 'M8BF',     pl: m8bfPL },
     { name: 'BOBF',     pl: bobfPL },
     { name: 'GXBF',     pl: gxbfPL },
     { name: 'Straddle', pl: stradPL },
     { name: 'Diagonal', pl: diagPL  },
+    { name: 'PNBF',     pl: pnbfPL },
   ];
   const total = parts.reduce((s, p) => s + (p.pl ?? 0), 0);
   const anyData = parts.some(p => p.pl != null);

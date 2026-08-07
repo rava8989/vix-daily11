@@ -156,19 +156,19 @@
   <div class="section-h" style="font-size:13px;color:var(--muted)">The validated edge underneath — the 4 gates vs 8 years</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px">
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">LONG verdicts</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">229</div>
-      <div class="note">~0.7/week in season · ex-Industrials (ban 2026-08-07)</div></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600" id="btN">229</div>
+      <div class="note" id="btNsub">~0.7/week in season · ex-Industrials (ban 2026-08-07)</div></div>
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Avg trade, net of SPY</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+3.16%</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)" id="btAvg">+3.16%</div>
       <div class="note">PASS group ≈ +0.8% · was +2.65% pre-ban</div></div>
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Hit rate</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">66%</div>
-      <div class="note">t = 5.25 across 7 tradeable years</div></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600" id="btWr">66%</div>
+      <div class="note" id="btWrSub">t = 5.25 across 7 tradeable years</div></div>
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">t-stat</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">5.25</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600" id="btT">5.25</div>
       <div class="note">edge vs zero — strongest we found</div></div>
   </div>
-  <div class="card"><table><thead><tr><th>Year</th><th>LONGs</th><th>Avg net/night</th><th>Hit</th></tr></thead><tbody>
+  <div class="card"><table><thead><tr><th>Year</th><th>LONGs</th><th>Avg net/night</th><th>Hit</th></tr></thead><tbody id="btYears">
     <tr><td>2019</td><td>6</td><td class="crowded">-1.20%</td><td>33%</td></tr>
     <tr><td>2020</td><td>16</td><td class="long">+2.06%</td><td>56%</td></tr>
     <tr><td>2021</td><td>43</td><td class="long">+2.09%</td><td>70%</td></tr>
@@ -622,6 +622,24 @@ function render(d) {
     `<td class="${r.move_24h > 0 ? 'g-ok' : r.move_24h < 0 ? 'g-no' : ''}">${pct(r.move_24h)}</td><td>${r.pl_r == null ? '—' : fmt(r.pl_r, 2)}</td></tr>`).join('') ||
     '<tr><td colspan="9" class="note">no history yet</td></tr>';
 }
+// Rolling backtest tiles (owner 2026-08-07): the validated-edge stats above are
+// recomputed by the worker every morning after new LONGs resolve (post-ban,
+// net of SPY). Fetch and overwrite the baked numbers; baked = fallback.
+(async function(){
+  try {
+    const r = await fetch('https://schwab-proxy.ravamt4.workers.dev/earn-bt-stats', {cache:'no-store'});
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d || !d.n) return;
+    document.getElementById('btN').textContent = d.n;
+    document.getElementById('btAvg').textContent = (d.avg>0?'+':'')+d.avg.toFixed(2)+'%';
+    document.getElementById('btWr').textContent = d.wr+'%';
+    document.getElementById('btWrSub').textContent = 't = '+d.t.toFixed(2)+' across '+d.yearly.length+' years · as of '+d.asOf;
+    document.getElementById('btT').textContent = d.t.toFixed(2);
+    document.getElementById('btYears').innerHTML = d.yearly.map(y =>
+      `<tr><td>${y.y}</td><td>${y.n}</td><td class="${y.avg>=0?'long':'crowded'}">${y.avg>0?'+':''}${y.avg.toFixed(2)}%</td><td>${y.hit}%</td></tr>`).join('');
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>

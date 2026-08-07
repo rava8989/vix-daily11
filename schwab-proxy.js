@@ -1148,6 +1148,13 @@ async function earnSend(env, msg) {
 // null on any fetch/parse problem so a Nasdaq hiccup can never block a trade.
 // Used by the Industrials ban (owner rule 2026-08-07) + resolve-log tagging.
 async function earnSectorOf(env, sym) {
+  // 1st stop: the bulk map (earn_sector_map, seeded with all historical log
+  // tickers 2026-08-07) — one KV read covers every known name.
+  try {
+    const mRaw = await env.SIGNAL_KV.get('earn_sector_map');
+    const m = mRaw ? JSON.parse(mRaw) : null;
+    if (m && m[sym]) return m[sym];
+  } catch (_) {}
   const ck = `earn_sector_${sym}`;
   const hit = await env.SIGNAL_KV.get(ck);
   if (hit) return hit === '?' ? null : hit;
@@ -1158,9 +1165,67 @@ async function earnSectorOf(env, sym) {
     const j = r.ok ? await r.json() : null;
     sec = j?.data?.Sector?.value || null;
   } catch (_) {}
-  // cache misses for a day only (Nasdaq flakes); real sectors forever
+  // cache misses for a day only (Nasdaq flakes); real sectors forever — and
+  // fold real answers into the bulk map so the stats job sees them too.
   await env.SIGNAL_KV.put(ck, sec || '?', sec ? {} : { expirationTtl: 86400 });
+  if (sec) {
+    try {
+      const mRaw = await env.SIGNAL_KV.get('earn_sector_map');
+      const m = mRaw ? JSON.parse(mRaw) : {};
+      if (m[sym] !== sec) { m[sym] = sec; await env.SIGNAL_KV.put('earn_sector_map', JSON.stringify(m)); }
+    } catch (_) {}
+  }
   return sec;
+}
+
+// Rolling backtest tiles (owner 2026-08-07: "every new trade updates the
+// backtest result"): recompute the page's validated-edge stats — post-ban,
+// net of SPY — over the FULL log (2019-07 → today, live rows included).
+// Runs at the end of earnResolveJob (so each morning's resolved trades roll
+// straight into the record) and on GET /earn-bt-stats?force=1.
+async function earnComputeBtStats(env, token) {
+  const lg = await fetch('https://raw.githubusercontent.com/rava8989/brave/main/data/earnings_play_today.json',
+    { headers: { 'User-Agent': 'sigma3-worker' } });
+  if (!lg.ok) throw new Error(`log fetch ${lg.status}`);
+  const log = (await lg.json()).log || [];
+  const spyJ = await fetchSchwabJSON(
+    'https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=SPY&periodType=year&period=10&frequencyType=daily&frequency=1',
+    token, env);
+  const days = []; const px = {};
+  for (const c of (spyJ?.candles || [])) {
+    const iso = isoDateET(toET(new Date(c.datetime)));
+    days.push(iso); px[iso] = { o: c.open, c: c.close };
+  }
+  const nxt = {}; for (let i = 0; i < days.length - 1; i++) nxt[days[i]] = days[i + 1];
+  const mRaw = await env.SIGNAL_KV.get('earn_sector_map');
+  const smap = mRaw ? JSON.parse(mRaw) : {};
+  const rows = [];
+  for (const r of log) {
+    if (r.verdict !== 'LONG' || r.move_24h == null) continue;
+    const sec = r.sector ?? smap[r.ticker] ?? null;
+    if (sec === 'Industrials') continue;               // the ban, applied historically
+    const d0 = r.date;
+    if (!px[d0] || !nxt[d0]) continue;
+    const spyMove = px[nxt[d0]].o / px[d0].c - 1;
+    rows.push({ y: d0.slice(0, 4), net: 100 * (r.move_24h - spyMove) });
+  }
+  if (rows.length < 50) throw new Error(`only ${rows.length} rows — refusing to overwrite stats`);
+  const n = rows.length, mean = rows.reduce((s, r) => s + r.net, 0) / n;
+  const sd = Math.sqrt(rows.reduce((s, r) => s + (r.net - mean) ** 2, 0) / (n - 1));
+  const wr = 100 * rows.filter(r => r.net > 0).length / n;
+  const t = mean / (sd / Math.sqrt(n));
+  const years = {};
+  for (const r of rows) {
+    (years[r.y] = years[r.y] || []).push(r.net);
+  }
+  const yearly = Object.keys(years).sort().map(y => {
+    const v = years[y];
+    return { y, n: v.length, avg: +(v.reduce((s, x) => s + x, 0) / v.length).toFixed(2),
+             hit: Math.round(100 * v.filter(x => x > 0).length / v.length) };
+  });
+  const out = { asOf: isoDateET(toET()), n, avg: +mean.toFixed(2), wr: Math.round(wr), t: +t.toFixed(2), yearly };
+  await env.SIGNAL_KV.put('earn_bt_stats', JSON.stringify(out));
+  return out;
 }
 
 async function earnBuildBoard(env, token, boardISO, opts = {}) {
@@ -1466,6 +1531,11 @@ async function earnResolveJob(env, etNow, token) {
           return cur;
         }, `auto: earnings results ${prev}`);
       await logEvent(env, 'info', 'earnings', `resolved ${rows.length} LONG(s) from ${prev}`, {});
+      // Rolling backtest tiles (owner 2026-08-07): fresh rows just landed in
+      // the log — recompute the page's validated-edge stats so the backtest
+      // is always current. Best-effort: a stats failure never blocks resolve.
+      try { await earnComputeBtStats(env, token); }
+      catch (e2) { console.warn('[earn-bt-stats]', e2.message); }
     }
     await env.SIGNAL_KV.put(key, 'done', { expirationTtl: 86400 });
   } catch (e) {
@@ -13025,6 +13095,25 @@ export default {
         const { ts, _tk, ...pubSlow } = slow;
         return jsonResp({ sym, price, impMove, ...pubSlow }, 200, pub);
       } catch (e) { return jsonResp({ error: e.message }, 500, pub); }
+    }
+
+    // Rolling backtest tiles for earnings-play.html (owner 2026-08-07).
+    // Public read; ?force=1 recomputes (owner-token gated).
+    if (url.pathname === '/earn-bt-stats' && request.method === 'GET') {
+      const cors = { 'Access-Control-Allow-Origin': '*' };
+      if (url.searchParams.get('force') === '1') {
+        const secret = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+        if (!secret || (secret !== env.SYNC_SECRET && secret !== env.GEXM_TRIGGER_TOKEN)) {
+          return jsonResp({ error: 'Unauthorized' }, 401, cors);
+        }
+        try {
+          const token = await getAccessToken(env);
+          return jsonResp(await earnComputeBtStats(env, token), 200, cors);
+        } catch (e) { return jsonResp({ error: e.message }, 500, cors); }
+      }
+      const raw = await env.SIGNAL_KV.get('earn_bt_stats');
+      return raw ? new Response(raw, { headers: { 'Content-Type': 'application/json', ...cors } })
+                 : jsonResp({ error: 'not computed yet' }, 404, cors);
     }
 
     if (url.pathname === '/earnings-board' && request.method === 'GET') {

@@ -8533,6 +8533,22 @@ async function handleScheduledInner(env) {
     // Footer rides as the message content (renders ABOVE the image in Discord)
     // so the live link + disclaimer sit on top of the card, link clickable.
     result = await sendDiscordImage(env, dc.channelId, png, dc.proxyUrl, 'morning.png', DISCORD_FOOTER);
+    // Owner order 2026-08-07: the Plan card ALSO posts to the Σ3 SIGNALS
+    // channel (same webhook as trade signals). Claim-gated (P22), marked
+    // 'sent' only on confirmed delivery; image falls back to the text plan.
+    // A channel failure never blocks the owner DM path.
+    try {
+      if (result && result.ok) {
+        const whS = await env.SIGNAL_KV.get('signals_webhook_url');
+        const pcKey = `plan_channel_${todayISO}`;
+        if (whS && await claimSendSlot(env, pcKey)) {
+          let chOk = await postWebhookImage(whS, png, DISCORD_FOOTER, 'plan.png');
+          if (!chOk) { const t = await postSignalsChannel(env, message.slice(0, 1800) + FANOUT_DISCLAIMER); chOk = !!(t && t.ok); }
+          if (chOk) await env.SIGNAL_KV.put(pcKey, 'sent', { expirationTtl: 86400 });
+          else { await env.SIGNAL_KV.delete(pcKey); try { await logEvent(env, 'error', 'morning', 'plan card CHANNEL post failed (DM ok)', {}); } catch (_) {} }
+        }
+      }
+    } catch (eCh) { console.warn('[plan-channel]', eCh.message); }
   } catch (e) {
     await logEvent(env, 'warn', 'morning', 'card image failed — text fallback', { msg: e && (e.message || String(e)) });
     result = null;
@@ -14657,6 +14673,24 @@ export default {
     // dashboard reads, healing any silent mirror drift (e.g. a settle whose
     // KV→GitHub PUT lost a sha race, as 2026-06-23 tailPL did). Read-only on
     // KV — never the reverse. Auth: SYNC_SECRET via the guard above.
+    // ── GET /pages-kick ── Owner-gated: manually request a GitHub Pages build
+    // (2026-08-06: Pages auto-builds silently stalled after ~10 builds/hour;
+    // four pushes went undeployed. Uses the worker's GITHUB_TOKEN.)
+    if (url.pathname === '/pages-kick' && request.method === 'GET') {
+      const secret = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!secret || (secret !== env.SYNC_SECRET && secret !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      try {
+        const r = await fetch('https://api.github.com/repos/rava8989/brave/pages/builds', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.GITHUB_TOKEN}`, 'Accept': 'application/vnd.github+json',
+                     'User-Agent': 'schwab-proxy-worker/1.0', 'X-GitHub-Api-Version': '2022-11-28' } });
+        const body = await r.json().catch(() => ({}));
+        return jsonResp({ status: r.status, body }, 200, {});
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+
     if (url.pathname === '/remirror-history' && request.method === 'GET') {
       let result;
       try {

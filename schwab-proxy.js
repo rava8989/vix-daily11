@@ -6930,6 +6930,11 @@ async function refreshMagnetFlyLiveQuotes(env, token, etNow, preChain) {
   const tr = JSON.parse(raw);
   const todayISO = isoDateET(etNow);
   if (tr.status !== 'open' || tr.openDate !== todayISO) return;
+  // P41 (3× TP spam 2026-08-07): a same-day exit marker means some tick already
+  // closed this trade — an 'open' read here is KV eventual consistency, not a
+  // live trade. Never process it, and NEVER write the stale copy back (the
+  // blind write-back below is what resurrected the closed trade).
+  if (await env.SIGNAL_KV.get(`mf_exit_${todayISO}`)) return;
   const chain = preChain || await fetchMasterSpxChain(token, env);
   const q = mfFlyQuote(chain, todayISO, tr.magnet);
   if (!q) return;
@@ -6942,9 +6947,19 @@ async function refreshMagnetFlyLiveQuotes(env, token, etNow, preChain) {
   if (exit) {
     tr.status = 'closed'; tr.exit = exit; tr.pnl = Math.round(pnl);
     tr.exitTime = `${etNow.getHours()}:${String(etNow.getMinutes()).padStart(2, '0')}`;
+    // Terminal state + marker BEFORE the post (P27): worst case the message is
+    // lost once (claim self-heals and resends nothing — trade shows on page),
+    // never duplicated to subscribers.
+    await env.SIGNAL_KV.put('mf_open_trade', JSON.stringify(tr));
+    await env.SIGNAL_KV.put(`mf_exit_${todayISO}`, exit, { expirationTtl: 86400 });
     await mfAppendClosed(env, tr);
-    const dollars = tr.pnl * MF_LOTS;
-    await postMagnetFly(env, `🧲 **PNBF** ${todayISO} — **${exit === 'TP' ? '✅ TP hit' : '🛑 stopped'}** ${dollars >= 0 ? '+' : '−'}$${Math.abs(dollars).toLocaleString()} (${MF_LOTS} lots) @ ${tr.exitTime} ET (fly ${tr.lastMid.toFixed(2)})`);
+    const msgKey = `mf_exit_msg_${todayISO}`;
+    if (await claimSendSlot(env, msgKey)) {
+      const dollars = tr.pnl * MF_LOTS;
+      const ok = await postMagnetFly(env, `🧲 **PNBF** ${todayISO} — **${exit === 'TP' ? '✅ TP hit' : '🛑 stopped'}** ${dollars >= 0 ? '+' : '−'}$${Math.abs(dollars).toLocaleString()} (${MF_LOTS} lots) @ ${tr.exitTime} ET (fly ${tr.lastMid.toFixed(2)})`);
+      if (ok) await env.SIGNAL_KV.put(msgKey, 'sent', { expirationTtl: 86400 });
+    }
+    return;
   }
   await env.SIGNAL_KV.put('mf_open_trade', JSON.stringify(tr));
 }
@@ -6954,17 +6969,24 @@ async function settleMagnetFlyEod(env, etNow, preChain) {
   const raw = await env.SIGNAL_KV.get('mf_open_trade');
   if (!raw) return;
   const tr = JSON.parse(raw);
-  if (tr.status !== 'open' || tr.openDate !== isoDateET(etNow)) return;
+  const dISO = isoDateET(etNow);
+  if (tr.status !== 'open' || tr.openDate !== dISO) return;
+  if (await env.SIGNAL_KV.get(`mf_exit_${dISO}`)) return;   // P41: stale-open guard
   const spot = preChain?.spot;
   if (!spot) return;
   const intr = Math.max(0, MF_WIDTH - Math.abs(spot - tr.magnet));
   tr.status = 'closed'; tr.exit = 'SETTLE';
   tr.pnl = Math.round((intr - tr.entry) * 100);
   tr.exitTime = '16:15';
+  await env.SIGNAL_KV.put('mf_open_trade', JSON.stringify(tr));   // terminal BEFORE post (P27)
+  await env.SIGNAL_KV.put(`mf_exit_${dISO}`, 'SETTLE', { expirationTtl: 86400 });
   await mfAppendClosed(env, tr);
-  await env.SIGNAL_KV.put('mf_open_trade', JSON.stringify(tr));
-  const dollars = tr.pnl * MF_LOTS;
-  await postMagnetFly(env, `🧲 **PNBF** ${tr.openDate} — settled ${dollars >= 0 ? '+' : '−'}$${Math.abs(dollars).toLocaleString()} (${MF_LOTS} lots, rare: bracket never filled)`);
+  const msgKey = `mf_exit_msg_${dISO}`;
+  if (await claimSendSlot(env, msgKey)) {
+    const dollars = tr.pnl * MF_LOTS;
+    const ok = await postMagnetFly(env, `🧲 **PNBF** ${tr.openDate} — settled ${dollars >= 0 ? '+' : '−'}$${Math.abs(dollars).toLocaleString()} (${MF_LOTS} lots, rare: bracket never filled)`);
+    if (ok) await env.SIGNAL_KV.put(msgKey, 'sent', { expirationTtl: 86400 });
+  }
 }
 
 async function mfAppendClosed(env, tr) {
@@ -7057,6 +7079,25 @@ async function handleScheduledInner(env) {
   let discordResult = {};
   if (isMarket && env.DISCORD_USER_TOKEN) {
     discordResult = await pollDiscordSignals(env);
+    // P42 (M8BF relay 2 min late, 2026-08-07): the subscriber message rides the
+    // skipper's OWN cron — scrape tick N ingests the signal, skipper tick N+1
+    // relays it, so the fanout always trails the source post by up to ~2 min.
+    // Kick the skipper the moment NEW signals ingest so both stages land in
+    // this tick. Same /api/poll the heartbeat prosthesis drives; dup-safe:
+    // skipper claims its day-key before sending + /link-notify hashes fanout
+    // text for 30 min (the 2026-07-10 spam fix).
+    if (discordResult && discordResult.newSignals > 0 && env.LINK_SECRET) {
+      try {
+        const kickReq = new Request('https://skipper.internal/api/poll', {
+          method: 'POST', headers: { 'X-Link-Secret': env.LINK_SECRET },
+        });
+        const kr = env.SKIPPER_WORKER
+          ? await env.SKIPPER_WORKER.fetch(kickReq)
+          : await fetch('https://skipper.ravamt4.workers.dev/api/poll', {
+              method: 'POST', headers: { 'X-Link-Secret': env.LINK_SECRET } });
+        console.log('[signal-kick] skipper poked →', kr.status, `(${discordResult.newSignals} new signals)`);
+      } catch (e) { console.warn('[signal-kick]', e.message); }
+    }
   }
 
   // ── 17:05–17:25 ET: M8BF GEX-gate verdict for the NEXT session (owner DM).

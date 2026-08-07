@@ -766,7 +766,10 @@ async function refreshGapCard() {
     // Unbelieved up-gap check (owner-approved 2026-08-05): up-gap ≥0.4% while
     // VIX ALSO rose overnight → historically a dead-flat chop day (6/500, every
     // fly lost). Warning-only line — believed gaps (VIX down) stay silent.
-    if (up) gcUnbelievedGapCheck(j, L);
+    // Only the TESTED cell: up-gap >= 0.4% (the quoted n=6 stats are that cell;
+    // a sub-0.4 gap is 'no signal' and must not carry a chop warning — owner
+    // caught the contradiction 2026-08-07).
+    if (up && gap >= 0.4) gcUnbelievedGapCheck(j, L);
   } catch (e) { console.warn('[gap-card]', e.message); }
 }
 // Lazy per-day fetch of today's vixOpen (written ~9:31); appends one amber line

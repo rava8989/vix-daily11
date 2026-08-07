@@ -1144,6 +1144,25 @@ async function earnSend(env, msg) {
   return results;
 }
 
+// Nasdaq-profile sector, KV-cached forever (sectors are static). Fail-open:
+// null on any fetch/parse problem so a Nasdaq hiccup can never block a trade.
+// Used by the Industrials ban (owner rule 2026-08-07) + resolve-log tagging.
+async function earnSectorOf(env, sym) {
+  const ck = `earn_sector_${sym}`;
+  const hit = await env.SIGNAL_KV.get(ck);
+  if (hit) return hit === '?' ? null : hit;
+  let sec = null;
+  try {
+    const nh = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Accept': 'application/json' };
+    const r = await fetch(`https://api.nasdaq.com/api/company/${sym}/company-profile`, { headers: nh });
+    const j = r.ok ? await r.json() : null;
+    sec = j?.data?.Sector?.value || null;
+  } catch (_) {}
+  // cache misses for a day only (Nasdaq flakes); real sectors forever
+  await env.SIGNAL_KV.put(ck, sec || '?', sec ? {} : { expirationTtl: 86400 });
+  return sec;
+}
+
 async function earnBuildBoard(env, token, boardISO, opts = {}) {
   // Board = boardISO's AMC reporters + next-trading-day BMO reporters.
   // UNKNOWN report time = treated as AMC (enter boardISO close), flagged.
@@ -1252,6 +1271,18 @@ async function earnBuildBoard(env, token, boardISO, opts = {}) {
       continue;
     }
     if (row.g1 && row.g2 && row.g3 && row.g4) row.verdict = 'LONG';
+    // Sector ban (owner rule 2026-08-07): Nasdaq-profile 'Industrials' never
+    // trades — restated backtest without them: n 269→231, avg +2.72%→+3.19%.
+    // Checked only on would-be LONGs (a handful/night). Fail-open: unknown
+    // sector counts as NOT Industrials, so a Nasdaq outage can't block trades.
+    if (row.verdict === 'LONG') {
+      const secName = await earnSectorOf(env, row.ticker).catch(() => null);
+      row.sector = secName || null;
+      if (secName === 'Industrials') {
+        row.verdict = 'PASS';
+        row.notes.push('sector ban: Industrials');
+      }
+    }
     board.push(row);
   }
   const longs = board.filter(b => b.verdict === 'LONG');
@@ -1395,6 +1426,7 @@ async function earnResolveJob(env, etNow, token) {
                       deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
                       base_rate: r.base_rate ?? null, verdict: 'LONG',
                       flowSrc: r.flowSrc ?? null,   // '14d' | 'monthly' — makes the monthly band auditable (owner batch 2026-08-05)
+                      sector: r.sector ?? null,     // Nasdaq profile — makes the Industrials ban auditable (owner rule 2026-08-07)
                       move_24h: +((xO / eC - 1).toFixed(4)), pl_r: null, live: true });
         } else {
           unresolved.push(r);
@@ -1410,6 +1442,7 @@ async function earnResolveJob(env, etNow, token) {
                   deep_itm_usd: r.deep_itm_usd ?? 0, runup_2w: r.runup_2w ?? null,
                   base_rate: r.base_rate ?? null, verdict: 'LONG',
                   flowSrc: r.flowSrc ?? null,
+                  sector: r.sector ?? null,
                   move_24h: null, pl_r: null, live: true,
                   note: 'UNRESOLVED — no candles (halted/delisted?); fix by hand' });
     }

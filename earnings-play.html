@@ -75,7 +75,7 @@
   <h1>Earnings Play <span class="tag">v2.4 — LONG stock only · one overnight, sell at open</span></h1>
   <div class="sub">Board = tonight after-close + tomorrow before-open reporters, one list.
     Gate 1 flow rescored every 30 min during RTH; Gates 2–4 frozen daily.
-    All four gates must pass — no overrides.</div>
+    All four gates must pass — no overrides. Sector ban (2026-08-07): Nasdaq-profile <b>Industrials</b> names never trade — would-be LONGs show as PASS with a note.</div>
 
   <div class="card banner" id="banner">
     <div class="dot"></div>
@@ -104,7 +104,7 @@
   <div class="note">Gate 1: bull/bear premium ratio must sit in-band — <b>2.33×–5×</b> for weekly-option names (14-DTE flow),
     <b>2.5×–6×</b> for monthly-only names (earnings-monthly flow). Under the floor = lukewarm,
     over the cap = crowded (the AVGO/MU air pocket), both PASS. Deep-ITM = stock-replacement prints,
-    strike &lt; spot × 0.92 — strengthens, absence doesn't kill.
+    strike &lt; spot × 0.92 — strengthens, absence doesn't kill. <b>Sector ban:</b> Nasdaq-profile Industrials excluded outright (owner rule 2026-08-07; that basket netted −0.14%/trade over 38 nights).
     Gate 2 (v2.2): 2-week run-up must be negative AND ≥5% below ATH — rising into the print = PASS, no override.
     Gate 3: 4–8 quarters of overnight reactions (close → next open) — beat-fade names PASS regardless of flow. Gate 4 (v2.4): prior-day VIX must be under 1.2× its own 100-day average — when fear is spiking above its own recent normal, the night is skipped.</div>
 
@@ -156,27 +156,27 @@
   <div class="section-h" style="font-size:13px;color:var(--muted)">The validated edge underneath — the 4 gates vs 8 years</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px">
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">LONG verdicts</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">260</div>
-      <div class="note">~0.7/week in season</div></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">229</div>
+      <div class="note">~0.7/week in season · ex-Industrials (ban 2026-08-07)</div></div>
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Avg trade, net of SPY</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+2.71%</div>
-      <div class="note">PASS group ≈ +0.8%</div></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+3.16%</div>
+      <div class="note">PASS group ≈ +0.8% · was +2.65% pre-ban</div></div>
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Hit rate</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">64%</div>
-      <div class="note">t = 4.82 across 7 tradeable years</div></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">66%</div>
+      <div class="note">t = 5.25 across 7 tradeable years</div></div>
     <div class="card" style="margin:0"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">t-stat</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">4.82</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600">5.25</div>
       <div class="note">edge vs zero — strongest we found</div></div>
   </div>
   <div class="card"><table><thead><tr><th>Year</th><th>LONGs</th><th>Avg net/night</th><th>Hit</th></tr></thead><tbody>
-    <tr><td>2019</td><td>7</td><td class="crowded">-1.12%</td><td>43%</td></tr>
-    <tr><td>2020</td><td>17</td><td class="long">+1.21%</td><td>53%</td></tr>
-    <tr><td>2021</td><td>50</td><td class="long">+1.68%</td><td>68%</td></tr>
-    <tr><td>2022</td><td>10</td><td class="long">+4.59%</td><td>70%</td></tr>
-    <tr><td>2023</td><td>40</td><td class="long">+5.04%</td><td>65%</td></tr>
-    <tr><td>2024</td><td>39</td><td class="long">+1.55%</td><td>64%</td></tr>
-    <tr><td>2025</td><td>65</td><td class="long">+3.32%</td><td>65%</td></tr>
-    <tr><td>2026</td><td>32</td><td class="long">+2.61%</td><td>56%</td></tr>
+    <tr><td>2019</td><td>6</td><td class="crowded">-1.20%</td><td>33%</td></tr>
+    <tr><td>2020</td><td>16</td><td class="long">+2.06%</td><td>56%</td></tr>
+    <tr><td>2021</td><td>43</td><td class="long">+2.09%</td><td>70%</td></tr>
+    <tr><td>2022</td><td>8</td><td class="long">+3.14%</td><td>62%</td></tr>
+    <tr><td>2023</td><td>29</td><td class="long">+6.45%</td><td>69%</td></tr>
+    <tr><td>2024</td><td>35</td><td class="long">+2.10%</td><td>66%</td></tr>
+    <tr><td>2025</td><td>57</td><td class="long">+3.84%</td><td>67%</td></tr>
+    <tr><td>2026</td><td>35</td><td class="long">+2.93%</td><td>66%</td></tr>
   </tbody></table></div>
   <div class="note">v2.4 FINAL (2026-07-06): Gate 4 = skip when prior-day VIX > 1.2× its own 100-day average — fear acceleration, not fear level. The 35 nights it removes averaged −1.7% and are spread across all eight years (it is not a bear-market patch; it also dodged 2024/2025 vol spikes). With it, both bear episodes turn positive (2020 +20%, 2022 +62%); only the thin-flow 2019 era stays red — disclosed, not hidden. Absolute-VIX and 200-day-trend brakes were tested and REJECTED (each fixed one bear and broke the other). What you see is the whole truth.
     Report nights inferred from gap data — 95% agreement on the 59 labeled events. Gates only work TOGETHER:
@@ -186,7 +186,7 @@
     Sizing (owner rule, 2026-07-04): 100% of account deployed on every signal night, split equally
     across all qualifying names — no ranking, no picking, no per-name cap. Backtest at this sizing
     (v2.4 gates, 7 years): <b>+91%/yr, max drawdown −29%</b> for the earnings sleeve alone
-    (+124%/yr, −35% with the full SPY/GLD/cash parking model); single-name nights are full-account bets by design.
+    (+124%/yr, −35% with the full SPY/GLD/cash parking model); single-name nights are full-account bets by design. The +91%/+124% package figures predate the Industrials ban — the banned basket contributed −5.3% total over 7 years, so the sleeve-level restatement can only move up; per-trade stats above are post-ban.
     Exit: sell into the morning move, green or red.
   </div>
 

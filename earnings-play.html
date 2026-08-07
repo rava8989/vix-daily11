@@ -129,9 +129,9 @@
   <div class="card" style="border-color:#3d5a80">
     <div style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Operating model — four regimes: SPY↑ / GLD↓ / cash (VIX&gt;25) + earnings hybrid</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px">
-      <div><div style="font-size:11px;color:var(--muted)">RETURN / YR</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--green)">+124%</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">MAX DRAWDOWN</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--red)">−35%</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">$10k → 7 yrs</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600">$2.7M</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">RETURN / YR</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--green)">+131%</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">MAX DRAWDOWN</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--red)">−30%</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">$10k → 7 yrs</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600">$3.3M</div></div>
       <div><div style="font-size:11px;color:var(--muted)">SPY benchmark</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--muted)">+14%/yr</div></div>
     </div>
     <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Where your money sits — % of all days</div>
@@ -141,15 +141,15 @@
       <div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>Cash &nbsp;<span style="color:var(--muted)">below 200-day + VIX&gt;25</span></span><span style="font-family:'JetBrains Mono',monospace">11.5%</span></div><div style="height:15px;background:#8b949e;width:11.5%;border-radius:3px"></div></div>
       <div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>GLD &nbsp;<span style="color:var(--muted)">below 200-day, calm</span></span><span style="font-family:'JetBrains Mono',monospace">7.3%</span></div><div style="height:15px;background:#eda100;width:7.3%;border-radius:3px"></div></div>
     </div>
-    <table style="font-size:12px"><thead><tr><th>Year</th><th>Operating-model return</th></tr></thead><tbody>
-    <tr><td>2019</td><td class="crowded">-7%</td></tr>
-    <tr><td>2020</td><td class="long">+25%</td></tr>
-    <tr><td>2021</td><td class="long">+174%</td></tr>
-    <tr><td>2022</td><td class="long">+56%</td></tr>
-    <tr><td>2023</td><td class="long">+297%</td></tr>
-    <tr><td>2024</td><td class="long">+184%</td></tr>
-    <tr><td>2025</td><td class="long">+300%</td></tr>
-    <tr><td>2026</td><td class="long">+21%</td></tr>
+    <div class="note" style="margin-bottom:6px">Restated 2026-08-07 for the Industrials ban (survivors reweighted to 100%, banned-only nights parked in the sleeve). Reconstruction engine — its pre-ban run was +113%/yr vs the original engine's +124%; same-engine lift from the ban: +113% → +131%/yr.</div><table style="font-size:12px"><thead><tr><th>Year</th><th>Operating-model return</th></tr></thead><tbody>
+    <tr><td>2019</td><td class="crowded">-5%</td></tr>
+    <tr><td>2020</td><td class="long">+67%</td></tr>
+    <tr><td>2021</td><td class="long">+146%</td></tr>
+    <tr><td>2022</td><td class="long">+58%</td></tr>
+    <tr><td>2023</td><td class="long">+366%</td></tr>
+    <tr><td>2024</td><td class="long">+132%</td></tr>
+    <tr><td>2025</td><td class="long">+238%</td></tr>
+    <tr><td>2026</td><td class="long">+45%</td></tr>
     </tbody></table>
     <div class="note">260 LONG trades across the signal nights (weekly-name 14-DTE flow + monthly-name earnings flow, per-name band). Two-thirds of the time you simply hold SPY; you touch the earnings basket about one night in seven; cash and gold split the downtrends. <b style="color:var(--text)">The regime/parking layer is portfolio construction</b> — tuned on the same window, not independently proven. The validated earnings edge is below.</div>
   </div>
@@ -185,8 +185,8 @@
   <div class="note" style="margin-top:18px">
     Sizing (owner rule, 2026-07-04): 100% of account deployed on every signal night, split equally
     across all qualifying names — no ranking, no picking, no per-name cap. Backtest at this sizing
-    (v2.4 gates, 7 years): <b>+91%/yr, max drawdown −29%</b> for the earnings sleeve alone
-    (+124%/yr, −35% with the full SPY/GLD/cash parking model); single-name nights are full-account bets by design. The +91%/+124% package figures predate the Industrials ban — the banned basket contributed −5.3% total over 7 years, so the sleeve-level restatement can only move up; per-trade stats above are post-ban.
+    (v2.4 gates + Industrials ban, 7 years): <b>+79%/yr, max drawdown −30%</b> for the earnings sleeve alone
+    (+131%/yr, −30% with the full SPY/GLD/cash parking model — reconstruction engine, restated 2026-08-07); single-name nights are full-account bets by design. Pre-ban on the same engine: +64%/yr sleeve, +113%/yr package (the originally published +91%/+124% came from the original one-off engine).
     Exit: sell into the morning move, green or red.
   </div>
 
@@ -197,24 +197,24 @@
       <div class="card" style="margin:0;border-color:#3d5a80">
         <div style="font-weight:600;color:var(--text)">SPY <span style="font-size:11px;color:var(--accent)">· default</span></div>
         <div class="note" style="margin:2px 0 10px">plain S&amp;P 500</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+113%/yr</div>
-        <div class="note">$10k → $1.9M · vol 39%</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+131%/yr</div>
+        <div class="note">$10k → $3.3M · vol 39%</div>
         <div class="note" style="margin-top:6px">whole-package max drawdown <b style="color:var(--text)">−30%</b></div>
         <div class="note" style="margin-top:2px">parking days alone <b style="color:var(--text)">−10%</b></div>
       </div>
       <div class="card" style="margin:0">
         <div style="font-weight:600;color:var(--text)">SSO</div>
         <div class="note" style="margin:2px 0 10px">2× S&amp;P 500</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+151%/yr</div>
-        <div class="note">$10k → $5.9M · vol 43%</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+171%/yr</div>
+        <div class="note">$10k → $10.2M · vol 43%</div>
         <div class="note" style="margin-top:6px">whole-package max drawdown <b style="color:var(--text)">−31%</b></div>
         <div class="note" style="margin-top:2px">parking days alone <b style="color:var(--amber)">−19%</b></div>
       </div>
       <div class="card" style="margin:0">
         <div style="font-weight:600;color:var(--text)">QLD</div>
         <div class="note" style="margin:2px 0 10px">2× Nasdaq-100</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+181%/yr</div>
-        <div class="note">$10k → $13M · vol 48%</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--green)">+205%/yr</div>
+        <div class="note">$10k → $22.9M · vol 48%</div>
         <div class="note" style="margin-top:6px">whole-package max drawdown <b style="color:var(--text)">−33%</b></div>
         <div class="note" style="margin-top:2px">parking days alone <b style="color:var(--red)">−26%</b></div>
       </div>

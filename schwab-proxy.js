@@ -744,32 +744,46 @@ async function earnCalendar(env, fromISO, toISO) {
   if (hit) return JSON.parse(hit);
   const out = [];
   let src = 'nasdaq';
-  try {
-    for (let d = new Date(fromISO); d <= new Date(toISO); d.setDate(d.getDate() + 1)) {
-      const iso = d.toISOString().slice(0, 10);
-      const dow = new Date(iso + 'T12:00:00Z').getUTCDay();
-      if (dow === 0 || dow === 6) continue;
-      const r = await fetch(`https://api.nasdaq.com/api/calendar/earnings?date=${iso}`,
-        { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Accept': 'application/json' } });
-      if (!r.ok) throw new Error(`nasdaq ${r.status}`);
-      const j = await r.json();
-      for (const row of ((j.data || {}).rows || [])) {
-        out.push({ ticker: (row.symbol || '').trim().toUpperCase(), report_date: iso,
-                   when: row.time === 'time-after-hours' ? 'AMC'
-                       : row.time === 'time-pre-market' ? 'BMO' : 'UNKNOWN' });
-      }
+  // P43 (2026-08-08: whole pipeline showed UNKNOWN times): one flaky day-fetch
+  // used to throw the ENTIRE live pull away and cache the stale time-less seed
+  // for 20h. Now each day fails independently (with one retry); seed only if
+  // EVERY day failed — and a degraded result is cached briefly, not 20h.
+  let okDays = 0, failDays = 0;
+  for (let d = new Date(fromISO); d <= new Date(toISO); d.setDate(d.getDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const dow = new Date(iso + 'T12:00:00Z').getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    let j = null;
+    for (let attempt = 0; attempt < 2 && !j; attempt++) {
+      try {
+        const r = await fetch(`https://api.nasdaq.com/api/calendar/earnings?date=${iso}`,
+          { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Accept': 'application/json' } });
+        if (r.ok) j = await r.json();
+      } catch (_) {}
     }
-  } catch (e) {
-    console.warn('[earn] nasdaq calendar failed, using seed fallback:', e.message);
+    if (!j) { failDays++; console.warn('[earn] calendar day failed:', iso); continue; }
+    okDays++;
+    for (const row of ((j.data || {}).rows || [])) {
+      out.push({ ticker: (row.symbol || '').trim().toUpperCase(), report_date: iso,
+                 when: row.time === 'time-after-hours' ? 'AMC'
+                     : row.time === 'time-pre-market' ? 'BMO' : 'UNKNOWN' });
+    }
+  }
+  if (okDays === 0) {
+    console.warn('[earn] nasdaq calendar fully failed, using seed fallback');
     src = 'seed';
     const seed = await earnSeed(env);
     for (const ev of (seed.forward_calendar || [])) {
       const rd = String(ev.report_date).slice(0, 10);
       if (rd >= fromISO && rd <= toISO) out.push({ ticker: ev.ticker, report_date: rd, when: ev.when });
     }
+  } else if (failDays > 0) {
+    src = `nasdaq (${failDays} day${failDays > 1 ? 's' : ''} missing)`;
   }
   const res = { src, events: out };
-  await env.SIGNAL_KV.put(ck, JSON.stringify(res), { expirationTtl: 20 * 3600 });
+  // full clean pull → 20h; anything degraded → 30 min so recovery is fast
+  await env.SIGNAL_KV.put(ck, JSON.stringify(res),
+    { expirationTtl: (src === 'nasdaq') ? 20 * 3600 : 1800 });
   return res;
 }
 

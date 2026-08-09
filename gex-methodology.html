@@ -122,6 +122,12 @@ GEXvol = Γ · (−side · volume) · S² · 100 · 0.01
     which strategy paid, but the class is only known at the close.</li>
   </ul>
 
+  <h2>6b · Open/close layer (2026-08-09) — forced-open badges + projected walls</h2>
+  <p>Two display-only features calibrated on a 2.17M contract-day ThetaData bank (SPXW/SPX/SPY/QQQ, Aug 2018 → Aug 2026; guesses graded against next-morning OI prints):</p>
+  <p><b>⚡ Forced-open badge (Level Map).</b> When a wall strike's day volume exceeds 2× its morning OI, net NEW positions are an arithmetic certainty (each traded contract can at most consume two existing open sides). Verified 97.7% on 379k cases. The badge shows the minimum net-new contracts (volume − 2×OI). It appears on the trapdoor (put wall) and, on no-flip books, the reclaim level (call wall). No badge = nothing forced, not "nothing opening".</p>
+  <p><b>Projected walls (Gap card).</b> Last session's per-strike volume × a calibrated conversion curve (median ΔOI/V by v/oi bucket: 0.18 below 0.15 → 0.50 above 5) projects tomorrow morning's OI at the nearest expiry before it prints. ⚡ marks forced-open strikes. Computed by the evening-book job; ±3.5% of close; top-3 per side.</p>
+  <p><b>What was tested and rejected:</b> a volume-ratio <i>sign</i> classifier ("fresh vs unwinding") loses to the naive "assume opening" baseline on every underlying and every era (near-dated OI rises ~85–90% of days; unwind recall from volume alone: 8%). Unwind detection would require trade-level aggressor data — deliberately NOT shipped.</p>
+
   <h2>7 · Limitations</h2>
   <ul class="plain">
     <li>The dealer-sign convention (long calls / short puts) is an assumption, standard but unproven

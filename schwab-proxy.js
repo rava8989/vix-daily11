@@ -500,6 +500,10 @@ async function computeEveningBook(env, token, etNow) {
     if (vx && vx > 5 && vx < 150) vixClose = Math.round(vx * 100) / 100;
   } catch (e) { console.warn('[evening-book] quote close failed, chain fallback:', e.message); }
   const seenExp = new Set();
+  // Projected-walls collector (2026-08-09): nearest expiry's per-strike day
+  // volume + morning OI → tomorrow-morning OI projection via the calibrated
+  // ThetaData conversion curve (2.17M contract-days). Display-only.
+  let near = null;   // { exp, dte, rows: Map key K|side -> {oi, v} }
   for (let off = 1; off <= 46; off += 7) {
     const from = new Date(etNow); from.setDate(from.getDate() + off);
     const to = new Date(etNow); to.setDate(to.getDate() + Math.min(off + 6, 46));
@@ -518,6 +522,7 @@ async function computeEveningBook(env, token, etNow) {
       for (const expKey in map) {
         const dte = parseInt(expKey.split(':')[1], 10);
         if (!(dte >= 1 && dte <= 45)) continue;
+        if (!near || dte < near.dte) near = { exp: expKey.split(':')[0], dte, rows: new Map() };
         const expTag = expKey.split(':')[0] + ':' + sign;
         if (seenExp.has(expTag)) continue;          // window overlap guard
         seenExp.add(expTag);
@@ -528,6 +533,10 @@ async function computeEveningBook(env, token, etNow) {
           if (!K || Math.abs(K - S) > S * 0.12) continue;
           const c = Array.isArray(map[expKey][ks]) ? map[expKey][ks][0] : map[expKey][ks];
           const oi = c?.openInterest || 0;
+          if (near && expKey.split(':')[0] === near.exp) {
+            const v = Math.max(c?.totalVolume || 0, 0);
+            if (v > 0 || oi > 0) near.rows.set(ks + '|' + (sign === 1 ? 'C' : 'P'), { oi, v });
+          }
           if (!oi) continue;
           oiSum += oi;
           if (K < kLo) kLo = K; if (K > kHi) kHi = K;
@@ -537,8 +546,29 @@ async function computeEveningBook(env, token, etNow) {
     }
   }
   if (oiSum === 0) throw new Error('dead chain (zero OI everywhere)');
+  // conversion curve: median dOI/V by v/oi bucket (ThetaData calibration 2026-08-09)
+  const conv = (r) => r < 0.15 ? 0.18 : r < 0.3 ? 0.22 : r < 0.5 ? 0.25 : r < 0.8 ? 0.27
+                    : r < 1.2 ? 0.30 : r < 2 ? 0.37 : r < 5 ? 0.44 : 0.50;
+  let projWalls = null;
+  if (near && near.rows.size) {
+    const walls = [];
+    for (const [key, x] of near.rows) {
+      const [ks, side] = key.split('|');
+      const K = parseFloat(ks);
+      if (!K || Math.abs(K - S) > S * 0.035) continue;
+      const r = x.oi > 0 ? x.v / x.oi : (x.v > 0 ? 99 : 0);
+      const proj = Math.round(x.oi + conv(r) * x.v);
+      if (proj < 500) continue;
+      walls.push({ k: K, side, oi: x.oi, v: x.v, proj,
+                   forced: x.v > 2 * x.oi && x.v >= 500,
+                   minNew: Math.max(0, x.v - 2 * x.oi) });
+    }
+    const top = (sd) => walls.filter(w => w.side === sd).sort((a, b) => b.proj - a.proj).slice(0, 3);
+    projWalls = { exp: near.exp, calls: top('C'), puts: top('P') };
+  }
   const h = etNow.getHours(), m = etNow.getMinutes();
   return {
+    projWalls,
     date: isoDateET(etNow), book: Math.round(tot / 1e9 * 100) / 100,
     spx: Math.round(S * 100) / 100, vix: vixClose,
     at: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
@@ -9230,7 +9260,7 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
       const K = parseFloat(strikeStr);
       if (isNaN(K)) continue;
 
-      if (!strikeAccum[strikeStr]) strikeAccum[strikeStr] = { strike: K, callGex: 0, putGex: 0, callOI: 0, putOI: 0, callVex: 0, putVex: 0, callCex: 0, putCex: 0, callGexVol: 0, putGexVol: 0 };
+      if (!strikeAccum[strikeStr]) strikeAccum[strikeStr] = { strike: K, callGex: 0, putGex: 0, callOI: 0, putOI: 0, callVex: 0, putVex: 0, callCex: 0, putCex: 0, callGexVol: 0, putGexVol: 0, callVol: 0, putVol: 0 };
       const acc = strikeAccum[strikeStr];
 
       if (!expGridAccum[expKey]) expGridAccum[expKey] = {};
@@ -9247,6 +9277,7 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
         // INFO-ONLY flow: sum traded volume for ALL contracts (count it even when oi===0).
         const cVol = Math.max(c.totalVolume || 0, 0);
         totalCallVol += cVol;
+        acc.callVol += cVol;
         if (cVol > 0) {
           const lastC = (typeof c.last === 'number') ? c.last : (typeof c.mark === 'number' ? c.mark : null);
           flowContracts.push({ k: expKey + '|' + strikeStr + '|C', v: cVol, l: lastC,
@@ -9278,6 +9309,7 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
         // INFO-ONLY flow: sum traded volume for ALL contracts (count it even when oi===0).
         const pVol = Math.max(p.totalVolume || 0, 0);
         totalPutVol += pVol;
+        acc.putVol += pVol;
         if (pVol > 0) {
           const lastP = (typeof p.last === 'number') ? p.last : (typeof p.mark === 'number' ? p.mark : null);
           flowContracts.push({ k: expKey + '|' + strikeStr + '|P', v: pVol, l: lastP,
@@ -9463,6 +9495,10 @@ function calculateGEX(chainData, spot, onlyNearest = false) {
       cex: Math.round(s.netCex),   // per-strike charm exposure (time-decay hedging pressure)
       netGexVol: Math.round(s.netGexVol),   // per-strike flow GEX (signed volume — today's book)
       oiC: s.callOI, oiP: s.putOI, // raw contracts — the stable positioning map (2026-07-30)
+      // Raw day volume per side (2026-08-09): feeds the forced-open badge —
+      // vol > 2×OI makes net NEW positions a mathematical certainty (verified
+      // 97.7% on 379k contract-days in the ThetaData calibration bank).
+      volC: s.callVol || 0, volP: s.putVol || 0,
     })),
     events: [],
     updatedAt: new Date().toISOString(),

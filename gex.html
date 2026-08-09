@@ -283,6 +283,7 @@
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px;">
       <div id="gcBook" style="flex:1;min-width:170px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">book at close <span id="gcBookDate" style="text-transform:none;"></span></div>
+        <div id="gcProjWalls" style="display:none;font-size:10.5px;color:var(--text2);margin-top:6px;border-top:1px solid var(--border);padding-top:5px;"></div>
         <div class="gcVal" style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:var(--text3);">—</div>
         <div id="gcBucketLbl" style="font-size:11px;color:var(--text2);"></div>
       </div>
@@ -708,6 +709,18 @@ async function refreshGapCard() {
       gcLadder(-1); return;
     }
     const bi = gcBucketIdx(L.book);
+    try {
+      const pw = L.projWalls, el = document.getElementById('gcProjWalls');
+      if (el) {
+        if (pw && ((pw.calls || []).length || (pw.puts || []).length)) {
+          const f = (w) => `${Math.round(w.k)}${w.side} ~${w.proj >= 1000 ? (w.proj / 1000).toFixed(1) + 'k' : w.proj}${w.forced ? ' ⚡' : ''}`;
+          el.style.display = 'block';
+          el.innerHTML = `<b style="color:var(--text);">projected walls ${pw.exp ? 'for ' + pw.exp : ''}</b> (last-session volume × calibrated conversion; ⚡ = forced-open, net-new certain): ` +
+            `<span style="color:var(--green);">${(pw.calls || []).map(f).join(' · ') || '—'}</span> / ` +
+            `<span style="color:var(--red);">${(pw.puts || []).map(f).join(' · ') || '—'}</span>`;
+        } else el.style.display = 'none';
+      }
+    } catch (_) {}
     const bCol = L.book > 20 ? 'var(--green)' : (L.book <= 0 ? 'var(--red)' : 'var(--amber, #fbbf24)');
     document.getElementById('gcBookDate').textContent = '· ' + L.date;
     gcSet('gcBook', (L.book > 0 ? '+' : '') + L.book.toFixed(1) + 'B', bCol);
@@ -1878,19 +1891,34 @@ function renderGammaLevelMap(data) {
     const exTop = pillY - 9, exBot = pillY + 27; // label-center exclusion zone around the pill
     const GAP = 14;
 
+    // Forced-open badge (2026-08-09): today's volume > 2× morning OI at a wall
+    // strike makes net NEW positions arithmetically certain (97.7% on 379k
+    // calibration cases) — tag the wall as being BUILT live. Null-safe: old
+    // snapshots without volC/volP simply show no badge.
+    const foAt = (K, side) => {
+      const st = (data.strikes || []).find(x => x && x.strike === K);
+      if (!st) return null;
+      const v = side === 'C' ? st.volC : st.volP, oi = side === 'C' ? st.oiC : st.oiP;
+      if (!Number.isFinite(v) || v < 500 || !Number.isFinite(oi)) return null;
+      return v > 2 * oi ? (v - 2 * oi) : null;
+    };
     // Collect tick labels (ty = true y at the level's price).
     const ticks = [];
     if (yFloor != null) ticks.push({ ty: yFloor, color: C.darkred, dashed: true,
       text: Math.round(floorLevel) + ' · deepest neg-gamma' });
     if (yTrap != null) {
       const gexB = (maxNegGex != null) ? ('$' + (Math.abs(maxNegGex) / 1e9).toFixed(2) + 'B') : '';
+      const foP = foAt(maxNeg, 'P');
       ticks.push({ ty: yTrap, color: C.red, dashed: false,
-        text: Math.round(maxNeg) + (gexB ? (' · ' + gexB + ' wall') : '') + ' — TRAPDOOR' });
+        text: Math.round(maxNeg) + (gexB ? (' · ' + gexB + ' wall') : '') + ' — TRAPDOOR' +
+              (foP ? ' · ⚡BUILDING +' + (foP >= 1000 ? (foP / 1000).toFixed(1) + 'k' : foP) : '') });
     }
     if (yEscape != null) {
+      const foC = foAt(maxPos, 'C');
       ticks.push({ ty: yEscape, color: C.green, dashed: false,
-        text: hasFlip ? (Math.round(escapeLevel) + ' · gamma flip / pin — ESCAPE HATCH')
-                      : (Math.round(escapeLevel) + ' · reclaim to stabilize (no flip)') });
+        text: (hasFlip ? (Math.round(escapeLevel) + ' · gamma flip / pin — ESCAPE HATCH')
+                       : (Math.round(escapeLevel) + ' · reclaim to stabilize (no flip)')) +
+              (!hasFlip && foC ? ' · ⚡BUILDING +' + (foC >= 1000 ? (foC / 1000).toFixed(1) + 'k' : foC) : '') });
     }
 
     // De-collide: above-spot labels stack upward off the pill, below-spot labels downward.

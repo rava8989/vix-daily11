@@ -295,6 +295,7 @@
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">tomorrow's walls <span id="gcProjExp" style="text-transform:none;"></span> · projected</div>
         <div id="gcProjViz" style="margin-top:6px;"></div>
         <div style="font-size:9.5px;color:var(--text3);margin-top:4px;"><span style="color:var(--green);">■</span> calls · <span style="color:var(--red);">■</span> puts · ⚡ building (net-new certain) · hover for method</div>
+        <div id="gcProjScore" style="display:none;font-size:10px;color:var(--text2);margin-top:5px;border-top:1px solid var(--border);padding-top:4px;"></div>
       </div>
       <div id="gcVerdict" style="flex:2;min-width:230px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">verdict</div>
@@ -713,6 +714,18 @@ async function refreshGapCard() {
       gcLadder(-1); return;
     }
     const bi = gcBucketIdx(L.book);
+    try {
+      const scEl = document.getElementById('gcProjScore'), sc = (j && j.projScore) || null;
+      if (scEl) {
+        if (sc && (sc.morning || sc.magnet)) {
+          const bits = [];
+          if (sc.morning) bits.push(`walls: ${sc.morning.within25}/${sc.morning.n} within 25% of print`);
+          if (sc.magnet) bits.push(`magnet ${Math.round(sc.magnet.k)}: close missed by ${sc.magnet.closeDist}pts${sc.magnet.hit10 ? ' ✓HIT' : ''}`);
+          scEl.style.display = 'block';
+          scEl.innerHTML = `<b style="color:var(--text);">yesterday's grade</b> · ` + bits.join(' · ');
+        } else scEl.style.display = 'none';
+      }
+    } catch (_) {}
     try {
       const pw = L.projWalls, tile = document.getElementById('gcProjTile');
       if (tile) {

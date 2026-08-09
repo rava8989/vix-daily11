@@ -593,6 +593,23 @@ async function ensureEveningBook(env, etNowEb) {
   try {
     const tokEb = await getAccessToken(env);
     const snap = await computeEveningBook(env, tokEb, etNowEb);
+    // Projection scorecard (owner 2026-08-09): before tonight's snap replaces
+    // yesterday's, grade the OLD projWalls — close-magnet distance vs today's
+    // close. Wall-size grading vs the morning OI print happens in the market
+    // tick; both halves merge into proj_score_latest.
+    try {
+      if (latest && latest.projWalls && latest.date < isoEb && snap.spx) {
+        const all = [...(latest.projWalls.calls || []), ...(latest.projWalls.puts || [])];
+        if (all.length) {
+          const topW = all.sort((a, b) => b.proj - a.proj)[0];
+          const scRaw = await env.SIGNAL_KV.get('proj_score_latest');
+          const sc = scRaw ? JSON.parse(scRaw) : {};
+          if (sc.date !== latest.date) { sc.date = latest.date; delete sc.morning; }
+          sc.magnet = { k: topW.k, closeDist: Math.round(Math.abs(snap.spx - topW.k) * 10) / 10, hit10: Math.abs(snap.spx - topW.k) <= 10 };
+          await env.SIGNAL_KV.put('proj_score_latest', JSON.stringify(sc));
+        }
+      }
+    } catch (e) { console.warn('[proj-score] close grade:', e.message); }
     await env.SIGNAL_KV.put('evening_book_latest', JSON.stringify(snap));
     await env.SIGNAL_KV.put(`evening_book_${isoEb}`, 'sent', { expirationTtl: 3 * 86400 });
     try {
@@ -7807,6 +7824,48 @@ async function handleScheduledInner(env) {
     // no page-poll needed) and refresh its intraday P&L every tick.
     try { await freezeTailOpenIfDue(env, etNow, null, true); } catch (e) { console.warn('[tail-freeze]', e.message); }
     try { await refreshTailLiveQuotes(env, etNow, masterChain); } catch (e) { console.warn('[tail-refresh]', e.message); }
+    // Projection scorecard, morning half (owner 2026-08-09): once per day
+    // after the OI print is in the chain, grade last night's projected wall
+    // SIZES against actual 0DTE OI from this tick's masterChain.
+    try {
+      const hP = etNow.getHours(), mP = etNow.getMinutes();
+      if (hP === 9 && mP >= 32 && masterChain) {
+        const ebRaw = await env.SIGNAL_KV.get('evening_book_latest');
+        const eb = ebRaw ? JSON.parse(ebRaw) : null;
+        const todayP = isoDateET(etNow);
+        if (eb && eb.projWalls && eb.projWalls.exp === todayP && !(await env.SIGNAL_KV.get(`proj_ms_${todayP}`))) {
+          const oiAt = (K, side) => {
+            const map = side === 'C' ? masterChain.callExpDateMap : masterChain.putExpDateMap;
+            for (const expKey in (map || {})) {
+              if (expKey.split(':')[0] !== todayP) continue;
+              const strikes = map[expKey] || {};
+              for (const ks in strikes) {
+                if (Math.abs(parseFloat(ks) - K) > 0.01) continue;
+                const arr = strikes[ks];
+                const c = Array.isArray(arr) ? arr[0] : arr;
+                if (c) return c.openInterest || 0;
+              }
+            }
+            return null;
+          };
+          const graded = [];
+          for (const w of [...(eb.projWalls.calls || []), ...(eb.projWalls.puts || [])]) {
+            const act = oiAt(w.k, w.side);
+            if (act == null) continue;
+            graded.push({ k: w.k, side: w.side, proj: w.proj, actual: act,
+                          errPct: act > 0 ? Math.round((w.proj / act - 1) * 100) : null });
+          }
+          if (graded.length) {
+            const scRaw = await env.SIGNAL_KV.get('proj_score_latest');
+            const sc = scRaw ? JSON.parse(scRaw) : {};
+            if (sc.date !== eb.date) { sc.date = eb.date; delete sc.magnet; }
+            sc.morning = { graded, within25: graded.filter(g => g.errPct != null && Math.abs(g.errPct) <= 25).length, n: graded.length };
+            await env.SIGNAL_KV.put('proj_score_latest', JSON.stringify(sc));
+            await env.SIGNAL_KV.put(`proj_ms_${todayP}`, '1', { expirationTtl: 86400 });
+          }
+        }
+      }
+    } catch (e) { console.warn('[proj-score] morning grade:', e.message); }
     // PNBF live strip (2026-07-28, display-only): magnet vs latest M8BF center,
     // refreshed every tick 9:30–16:00. The noon verdict stays the decision —
     // this only feeds the page's live row. Before the 10:30 snap the magnet is
@@ -14000,6 +14059,8 @@ export default {
         // Lazy compute via the shared helper (claim-gated, idempotent) — the
         // cron backstop covers nights with no page hits (audit 2026-07-31).
         const latest = await ensureEveningBook(env, etNowEb);
+        let projScore = null;
+        try { projScore = JSON.parse((await env.SIGNAL_KV.get('proj_score_latest')) || 'null'); } catch (_) {}
         let prev = null;
         try {
           const log = JSON.parse((await env.SIGNAL_KV.get('evening_book_log')) || '[]');
@@ -14011,7 +14072,7 @@ export default {
           const msd = JSON.parse((await env.SIGNAL_KV.get(`morning_signal_data_${isoEb}`)) || 'null');
           if (msd && msd.spxOpen) todayOpen = msd.spxOpen;
         } catch (_) {}
-        return new Response(JSON.stringify({ date: isoEb, latest, prev, todayOpen }), { headers: cors });
+        return new Response(JSON.stringify({ date: isoEb, latest, prev, todayOpen, projScore }), { headers: cors });
       } catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors }); }
     }
 

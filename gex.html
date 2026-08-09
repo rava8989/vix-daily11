@@ -293,9 +293,8 @@
       </div>
       <div id="gcProjTile" style="display:none;flex:1.4;min-width:210px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;" title="Projected from last session's per-strike volume × the calibrated ThetaData conversion curve (2.17M contract-days). ⚡ = forced-open: volume > 2× OI, net-new positions arithmetically certain. Confirmed by the real OI print next morning.">
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">tomorrow's walls <span id="gcProjExp" style="text-transform:none;"></span> · projected</div>
-        <div id="gcProjCalls" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;"></div>
-        <div id="gcProjPuts" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;"></div>
-        <div style="font-size:9.5px;color:var(--text3);margin-top:6px;">⚡ = building, net-new certain · hover for method</div>
+        <div id="gcProjViz" style="margin-top:6px;"></div>
+        <div style="font-size:9.5px;color:var(--text3);margin-top:4px;"><span style="color:var(--green);">■</span> calls · <span style="color:var(--red);">■</span> puts · ⚡ building (net-new certain) · hover for method</div>
       </div>
       <div id="gcVerdict" style="flex:2;min-width:230px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">verdict</div>
@@ -717,13 +716,41 @@ async function refreshGapCard() {
     try {
       const pw = L.projWalls, tile = document.getElementById('gcProjTile');
       if (tile) {
-        if (pw && ((pw.calls || []).length || (pw.puts || []).length)) {
-          const pill = (w, col) =>
-            `<span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:${col};background:var(--bg2,rgba(148,163,184,0.08));border:1px solid var(--border);border-radius:6px;padding:2px 7px;white-space:nowrap;">` +
-            `${Math.round(w.k)}${w.side === 'C' ? '' : ''} <b>${w.proj >= 1000 ? (w.proj / 1000).toFixed(1) + 'k' : w.proj}</b>${w.forced ? ' ⚡' : ''}</span>`;
+        const walls = pw ? [...(pw.calls || []), ...(pw.puts || [])] : [];
+        if (walls.length) {
           document.getElementById('gcProjExp').textContent = pw.exp ? '· ' + pw.exp.slice(5) : '';
-          document.getElementById('gcProjCalls').innerHTML = (pw.calls || []).map(w => pill(w, 'var(--green)')).join('');
-          document.getElementById('gcProjPuts').innerHTML = (pw.puts || []).map(w => pill(w, 'var(--red)')).join('');
+          const close = Number(L.spx) || null;
+          const ks = walls.map(w => w.k).concat(close ? [close] : []);
+          let kMin = Math.min(...ks), kMax = Math.max(...ks);
+          const kPad = Math.max(10, (kMax - kMin) * 0.09); kMin -= kPad; kMax += kPad;
+          const W = 292, H = 26 + walls.length * 21, cx = 118, maxBar = 92;
+          const yOf = (k) => 10 + (kMax - k) / (kMax - kMin) * (H - 20);
+          const maxProj = Math.max(...walls.map(w => w.proj));
+          // de-collide bar rows (min 18px apart, keep strike order top-down)
+          const rows = walls.map(w => ({ ...w, y: yOf(w.k) })).sort((a, b) => a.y - b.y);
+          for (let i = 1; i < rows.length; i++) if (rows[i].y - rows[i-1].y < 18) rows[i].y = rows[i-1].y + 18;
+          const mono = "font-family:'JetBrains Mono',monospace";
+          const p = [];
+          p.push(`<svg viewBox="0 0 ${W} ${Math.max(H, rows[rows.length-1].y + 14)}" width="100%" role="img" aria-label="Projected walls ladder">`);
+          p.push(`<line x1="${cx}" y1="4" x2="${cx}" y2="${Math.max(H, rows[rows.length-1].y + 14) - 4}" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>`);
+          if (close != null && close > kMin && close < kMax) {
+            const yc = yOf(close);
+            p.push(`<line x1="8" y1="${yc.toFixed(1)}" x2="${W - 8}" y2="${yc.toFixed(1)}" stroke="#22d3ee" stroke-width="1" stroke-dasharray="4 3" opacity="0.8"/>`);
+            p.push(`<text x="${W - 8}" y="${(yc - 3).toFixed(1)}" text-anchor="end" style="${mono};font-size:8.5px" fill="#22d3ee">close ${Math.round(close)}</text>`);
+          }
+          for (const w of rows) {
+            const bw = Math.max(10, w.proj / maxProj * maxBar);
+            const isC = w.side === 'C';
+            const col = isC ? '#16a34a' : '#dc2626';
+            const x0 = isC ? cx : cx - bw;
+            p.push(`<rect x="${x0.toFixed(1)}" y="${(w.y - 6).toFixed(1)}" width="${bw.toFixed(1)}" height="12" rx="2.5" fill="${col}" opacity="${w.forced ? '0.95' : '0.55'}"/>`);
+            const lblX = isC ? cx + bw + 5 : cx - bw - 5;
+            const anch = isC ? 'start' : 'end';
+            const sz = w.proj >= 1000 ? (w.proj / 1000).toFixed(1) + 'k' : w.proj;
+            p.push(`<text x="${lblX.toFixed(1)}" y="${(w.y + 3.5).toFixed(1)}" text-anchor="${anch}" style="${mono};font-size:10px" fill="#e2e8f0">${Math.round(w.k)} <tspan fill="${isC ? '#4ade80' : '#f87171'}">${sz}</tspan>${w.forced ? '<tspan fill="#fbbf24">⚡</tspan>' : ''}</text>`);
+          }
+          p.push('</svg>');
+          document.getElementById('gcProjViz').innerHTML = p.join('');
           tile.style.display = 'block';
         } else tile.style.display = 'none';
       }

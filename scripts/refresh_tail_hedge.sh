@@ -14,8 +14,10 @@
 #   2  hard error — couldn't fetch
 set -e
 
-REPO=/Users/ravshanrakhmanov/Desktop/spx-backtester/spx-backtester
-LOG=/Users/ravshanrakhmanov/Desktop/spx-backtester/spx-backtester/scripts/refresh_tail_hedge.log
+# Repointed 2026-08-11: launchd bash lost TCC access to ~/Desktop (exit 78
+# EX_CONFIG since 7/30) — ~/projects/brave-work is the canonical clone now.
+REPO=/Users/ravshanrakhmanov/projects/brave-work
+LOG=/Users/ravshanrakhmanov/projects/brave-work/scripts/refresh_tail_hedge.log
 THETA=http://localhost:25503/v3
 TODAY=$(date +%Y-%m-%d)
 TODAY_NODASH=$(date +%Y%m%d)

@@ -12474,7 +12474,8 @@ export default {
     // ── GET /backfill-wr ── Fill missing m8bfWR from Discord history + Stooq SPX
     // ?force=true recalculates last 60 days regardless of existing values
     if (url.pathname === '/backfill-wr' && request.method === 'GET') {
-      if (request.headers.get('X-Sync-Secret') !== env.SYNC_SECRET) {
+      const bwSec = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!bwSec || (bwSec !== env.SYNC_SECRET && bwSec !== env.GEXM_TRIGGER_TOKEN)) {
         return jsonResp({ error: 'Unauthorized' }, 401, {});
       }
       try {

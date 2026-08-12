@@ -355,7 +355,8 @@ function eventISOset() {
 // (gated days), MID 20-60, FAT >=60. The band/ghosts/projection pool becomes
 // "days like today" instead of "same weekday" — the weekday composite has
 // zero OOS signal (audit 2026-06-30), the gamma tier is the variable that
-// actually separates day behavior (fly WR 47.6/54.7/62.6% by tier).
+// actually separates day behavior (fly WR 48.2/55.8/67.5% by band position
+// at the entry minute — slot-judged rerun 2026-08-11).
 // Self-extending: ranks newer than the static file are computed client-side
 // from the public /gexgate-hist tail. SPX-only (NDX falls back to weekday).
 let poolMode = 'regime';

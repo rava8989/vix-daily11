@@ -2642,7 +2642,9 @@ async function dataCompletenessCheck(env, etNow) {
       return !!(row && row.vixClose != null);
     }, null],   // settle has its own retry path — report only
   ];
-  if (etNow.getDay() === 5) checks.push(['COT weekly', async () => {
+  // Fri–Mon: CFTC sometimes publishes hours late on Friday; a Friday-only
+  // check meant one lag = a full week stale (happened 2026-08-08).
+  if ([5, 6, 0, 1].includes(etNow.getDay())) checks.push(['COT weekly', async () => {
     const j = await J('https://raw.githubusercontent.com/rava8989/brave/main/data/cot_currencies.json');
     if (!j) return false;
     const last = j.series.EUR[j.series.EUR.length - 1][0];
@@ -7333,6 +7335,19 @@ async function handleScheduledInner(env) {
       if (etNow.getDay() === 5) {
         try { await cotWeeklyRefresh(env); } catch (e) { console.warn('[cot]', e.message); }
       }
+      // Persist today's intraday GEX grid permanently (no TTL) — sampler
+      // fills tg_today_<date> through the session; this is the archival copy
+      // the research bank extends from. Owner 2026-08-11 "no holes".
+      try {
+        const tgRaw = await env.SIGNAL_KV.get(`tg_today_${todayISO}`);
+        if (tgRaw && tgRaw !== '{}') {
+          const g935Raw = await env.SIGNAL_KV.get(`g935_snap_${todayISO}`);
+          await env.SIGNAL_KV.put(`tg_day_${todayISO}`, JSON.stringify({
+            date: todayISO, grid: JSON.parse(tgRaw),
+            g935: g935Raw ? JSON.parse(g935Raw) : null,
+          }));
+        }
+      } catch (e) { console.warn('[tg-persist]', e.message); }
       if (ok) await env.SIGNAL_KV.put(auxKey, 'done', { expirationTtl: 86400 });
       else await env.SIGNAL_KV.delete(auxKey);   // retry next tick within the window
       return { eod_aux: ok ? 'done' : 'partial-retry' };
@@ -7432,6 +7447,33 @@ async function handleScheduledInner(env) {
       }
     }
   } catch (e) { console.warn('[gamma-regime]', e.message); }
+  // ── Intraday GEX grid sampler (owner 2026-08-11 "we don't want any holes"):
+  // records {slot: {spot, totalGex}} at each half-hour 10:00–15:30 from
+  // gex_current_0dte into tg_today_<date>; the 16:25 AUX tick persists it
+  // permanently as tg_day_<date> (+ the 9:35 snap). Keeps the Mac's
+  // data_timegrid bank extendable without ThetaData refetches.
+  try {
+    const _th = etNow.getHours(), _tm = etNow.getMinutes();
+    let slot = null;
+    if (_th >= 10 && (_th < 15 || (_th === 15 && _tm <= 35))) {
+      if (_tm <= 5) slot = `${_th}:00`;
+      else if (_tm >= 25 && _tm <= 35) slot = `${_th}:30`;
+      else if (_tm >= 55) slot = `${_th + 1}:00`;
+    }
+    if (slot && slot >= '10:00' && slot <= '15:30') {
+      const tgKey = `tg_today_${isoDateET(etNow)}`;
+      const cur = JSON.parse((await env.SIGNAL_KV.get(tgKey)) || '{}');
+      if (!cur[slot]) {
+        const grRaw2 = await env.SIGNAL_KV.get('gex_current_0dte');
+        const g2 = grRaw2 ? JSON.parse(grRaw2) : null;
+        if (g2 && g2.timestamp && (Date.now() / 1000 - g2.timestamp) < 600
+            && typeof g2.totalGex === 'number' && typeof g2.spot === 'number') {
+          cur[slot] = { spot: Math.round(g2.spot * 100) / 100, totalGex: Math.round(g2.totalGex) };
+          await env.SIGNAL_KV.put(tgKey, JSON.stringify(cur), { expirationTtl: 172800 });
+        }
+      }
+    }
+  } catch (e) { console.warn('[tg-sampler]', e.message); }
   // 10:00 BOOK-FLIP note (owner 2026-07-31 'do 1'): when the book's sign
   // at ~10:00 differs from the 9:35 snap, post ONE line to the signals
   // channel — flip days historically ran ~¼-strength at coin-flip WR for
@@ -15575,6 +15617,18 @@ export default {
     // ── Debug: exercise claimSendSlot in the real runtime (authed; P26 rule 3) ──
     // ── GEX gate: PUBLIC today-verdict (dashboard M8BF card overlay). Read-only,
     // non-sensitive (one boolean + percentile), CORS like /magnetfly-today. ──
+    // Archived intraday GEX grid for a day (tg_day_<date>, sampler-fed;
+    // falls back to the in-progress tg_today for the current session).
+    if (url.pathname === '/tg-day' && request.method === 'GET') {
+      const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
+      const qd = url.searchParams.get('date');
+      const d = (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd)) ? qd : isoDateET(toET(new Date()));
+      const perm = await env.SIGNAL_KV.get(`tg_day_${d}`);
+      if (perm) return new Response(perm, { headers: { 'Content-Type': 'application/json', ...pub } });
+      const today = await env.SIGNAL_KV.get(`tg_today_${d}`);
+      if (today) return jsonResp({ date: d, grid: JSON.parse(today), g935: null, partial: true }, 200, pub);
+      return jsonResp({ error: 'no grid for ' + d }, 404, pub);
+    }
     if (url.pathname === '/gexgate-today' && request.method === 'GET') {
       const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
       try {

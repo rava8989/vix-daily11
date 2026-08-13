@@ -1638,8 +1638,36 @@ async function earnAfterJob(env, etNow, token) {
         const cs = (j?.candles || []).map(c => ({ d: isoDateET(toET(new Date(c.datetime))), o: c.open, c: c.close }));
         const eC = cs.find(c => c.d === prev)?.c;
         const xO = cs.find(c => c.d === iso)?.o;
+        if (eC > 0) r._eC = eC;   // stash: today's candle may lag the 9:40 send
         if (eC > 0 && xO > 0) r.afterPct = xO / eC - 1;
       } catch (e) { console.warn('[earn-after]', r.ticker, e.message); }
+    }
+    // Thin names/ADRs often have no TODAY daily candle yet at 9:40 → row showed
+    // "—" (2026-08-13: 6 of 14 names, incl the traded LONG). Fallback 1: live
+    // quote open (else last, ~10 min in) against the stashed candle prev-close
+    // (never quote closePrice — holiday-phantom rule). Fallback 2: LONGs take
+    // the exit job's authoritative earn_log move_24h — the traded result can
+    // never be a dash.
+    const noPx = scored.filter(r => r.afterPct == null);
+    if (noPx.length) {
+      try {
+        const qj = await fetchSchwabJSON(
+          `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(noPx.map(x => x.ticker).join(','))}&fields=quote`, token, env);
+        for (const r of noPx) {
+          const q = qj?.[r.ticker]?.quote;
+          const xO = q?.openPrice > 0 ? q.openPrice : (q?.lastPrice > 0 ? q.lastPrice : null);
+          if (xO && r._eC > 0) r.afterPct = xO / r._eC - 1;
+        }
+      } catch (e) { console.warn('[earn-after] quote fallback:', e.message); }
+      try {
+        const lg = JSON.parse((await env.SIGNAL_KV.get('earn_log')) || '[]');
+        for (const r of noPx) {
+          if (r.afterPct == null && String(r.verdict).toUpperCase() === 'LONG') {
+            const hit = (Array.isArray(lg) ? lg : []).find(x => x.date === prev && x.ticker === r.ticker && x.move_24h != null);
+            if (hit) r.afterPct = hit.move_24h;
+          }
+        }
+      } catch (e) { console.warn('[earn-after] log fallback:', e.message); }
     }
     b.after = true; b.final = false; b.date = prev;
     let png = null;
@@ -11889,8 +11917,15 @@ function buildEarningsCardSvg(b) {
     const avg = withPct.length ? withPct.reduce((a, r) => a + r.afterPct, 0) / withPct.length : null;
     const longRes = longs.map(l => shown.find(r => r.ticker === l.ticker)).filter(r => r && r.afterPct != null);
     footBg = C.foot; footTxt = C.footTxt;
-    msg = longRes.length
-      ? `traded: ${longRes.map(r => `${r.ticker} ${r.afterPct >= 0 ? '+' : ''}${(r.afterPct * 100).toFixed(1)}%`).join(' · ')}`
+    // "no positions" must key on the BOARD's longs, not on quote availability —
+    // 2026-08-13 the card claimed observation-only while JD was a 100% LONG
+    // whose open print was still missing. Pending longs are named instead.
+    const longPend = longs.filter(l => !longRes.some(r => r.ticker === l.ticker)).map(l => l.ticker);
+    msg = longs.length
+      ? `traded: ${[
+          ...longRes.map(r => `${r.ticker} ${r.afterPct >= 0 ? '+' : ''}${(r.afterPct * 100).toFixed(1)}%`),
+          ...longPend.map(t => `${t} — open print pending`),
+        ].join(' · ')}`
       : `no positions were taken — observation only${avg != null ? ` · board avg ${avg >= 0 ? '+' : ''}${(avg * 100).toFixed(1)}%` : ''}`;
   } else if (longs.length) {
     footBg = C.footGood; footTxt = C.footGoodTxt;

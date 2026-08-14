@@ -11126,6 +11126,87 @@ async function getSpxCloseForDate(dateISO, env = null) {
   return parseFloat(close.toFixed(2));
 }
 
+// ════════════════════════════════════════════════════════════════════
+// DISCORD MEMBER TRACKER (owner 2026-08-14) — private churn log.
+// Uses DISCORD_BOT_TOKEN (bot "Σ3 Utility", Server Members Intent) to
+// snapshot the Σ3 roster daily, diff vs yesterday, and DM the owner the
+// named joiners/leavers. Nothing is ever posted to a channel; the roster
+// lives only in KV (discord_members_prev + dated archives) and the owner DM.
+// ════════════════════════════════════════════════════════════════════
+const SIGMA_GUILD_ID = '1508151398905413784';
+
+async function discordFetchMembers(env) {
+  const tok = env.DISCORD_BOT_TOKEN;
+  if (!tok) throw new Error('DISCORD_BOT_TOKEN not set');
+  const out = {};
+  let after = '0';
+  for (let page = 0; page < 30; page++) {   // 30k-member ceiling
+    const r = await fetch(`https://discord.com/api/v10/guilds/${SIGMA_GUILD_ID}/members?limit=1000&after=${after}`,
+      { headers: { 'Authorization': `Bot ${tok}` } });
+    if (!r.ok) throw new Error(`members ${r.status}: ${(await r.text()).slice(0, 140)}`);
+    const arr = await r.json();
+    if (!Array.isArray(arr) || !arr.length) break;
+    for (const m of arr) {
+      if (!m.user || m.user.bot) continue;   // people only, skip bots
+      out[m.user.id] = { name: m.user.global_name || m.user.username || m.user.id,
+        joined: m.joined_at ? m.joined_at.slice(0, 10) : null };
+    }
+    after = arr[arr.length - 1].user.id;
+    if (arr.length < 1000) break;
+  }
+  return out;
+}
+
+async function discordBotDM(env, userId, content) {
+  const tok = env.DISCORD_BOT_TOKEN;
+  const ch = await fetch('https://discord.com/api/v10/users/@me/channels', {
+    method: 'POST', headers: { 'Authorization': `Bot ${tok}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient_id: userId }) });
+  if (!ch.ok) return { ok: false, err: (await ch.text()).slice(0, 140) };
+  const dm = await ch.json();
+  const r = await fetch(`https://discord.com/api/v10/channels/${dm.id}/messages`, {
+    method: 'POST', headers: { 'Authorization': `Bot ${tok}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }) });
+  return { ok: r.ok };
+}
+
+async function discordMemberDiffJob(env, notify = true) {
+  const now = await discordFetchMembers(env);
+  const nCount = Object.keys(now).length;
+  if (!nCount) return { error: 'empty roster (bot not in guild or intent off)' };
+  const today = isoDateET(toET(new Date()));
+  const prevRaw = await env.SIGNAL_KV.get('discord_members_prev');
+  const prev = prevRaw ? JSON.parse(prevRaw) : null;
+  // Snapshot first (idempotent even if the DM/diff below throws)
+  await env.SIGNAL_KV.put('discord_members_prev', JSON.stringify(now));
+  await env.SIGNAL_KV.put(`discord_members_${today}`, JSON.stringify(now), { expirationTtl: 60 * 86400 });
+  const dc = JSON.parse((await env.SIGNAL_KV.get('discord_config')) || '{}');
+  if (!prev) {   // first ever run → baseline only, no phantom "everyone joined"
+    if (notify && dc.channelId) await discordBotDM(env, dc.channelId,
+      `**Σ3 members — baseline set ${today}**\ntotal ${nCount}. From tomorrow you'll get named joins/leaves only.`);
+    return { first: true, total: nCount };
+  }
+  const joined = Object.keys(now).filter(id => !prev[id]);
+  const left = Object.keys(prev).filter(id => !now[id]);
+  if (joined.length || left.length) {
+    const logRaw = await env.SIGNAL_KV.get('discord_members_log');
+    const log = logRaw ? JSON.parse(logRaw) : [];
+    const daysIn = id => prev[id]?.joined ? Math.round((Date.parse(today) - Date.parse(prev[id].joined)) / 86400000) : null;
+    log.push({ date: today, total: nCount,
+      joined: joined.map(id => ({ id, name: now[id].name })),
+      left: left.map(id => ({ id, name: prev[id].name, days: daysIn(id) })) });
+    await env.SIGNAL_KV.put('discord_members_log', JSON.stringify(log.slice(-500)));
+    if (notify && dc.channelId) {
+      let msg = `**Σ3 members — ${today}**\n`;
+      if (joined.length) msg += `🟢 +${joined.length} joined: ${joined.map(id => now[id].name).join(', ')}\n`;
+      if (left.length) msg += `🔴 −${left.length} left: ${left.map(id => { const d = daysIn(id); return `${prev[id].name}${d != null ? ` (${d}d)` : ''}`; }).join(', ')}\n`;
+      msg += `total ${nCount}`;
+      await discordBotDM(env, dc.channelId, msg);
+    }
+  }
+  return { joined: joined.length, left: left.length, total: nCount };
+}
+
 async function backfillMissingWR(env, force = false, targetDates = null) {
   const token = env.DISCORD_USER_TOKEN;
   const channelId = '1048242197029458040';
@@ -12508,6 +12589,24 @@ export default {
 
     // ── GET /backfill-wr ── Fill missing m8bfWR from Discord history + Stooq SPX
     // ?force=true recalculates last 60 days regardless of existing values
+    // ── GET /discord-members ── owner-gated: ?run=1 fetches roster + diffs +
+    // DMs owner; no param returns the current churn log. Private (never a channel).
+    if (url.pathname === '/discord-members' && request.method === 'GET') {
+      const sec = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!sec || (sec !== env.SYNC_SECRET && sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      try {
+        if (url.searchParams.get('run') === '1') {
+          const notify = url.searchParams.get('quiet') !== '1';
+          return jsonResp(await discordMemberDiffJob(env, notify), 200, {});
+        }
+        const log = JSON.parse((await env.SIGNAL_KV.get('discord_members_log')) || '[]');
+        const cur = JSON.parse((await env.SIGNAL_KV.get('discord_members_prev')) || '{}');
+        return jsonResp({ total: Object.keys(cur).length, recent: log.slice(-30) }, 200, {});
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+
     if (url.pathname === '/backfill-wr' && request.method === 'GET') {
       const bwSec = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
       if (!bwSec || (bwSec !== env.SYNC_SECRET && bwSec !== env.GEXM_TRIGGER_TOKEN)) {
@@ -16538,6 +16637,17 @@ export default {
       try { await weeklyDigest(env); } catch (e) { console.warn('[digest]', e.message); }
       return;
     }
+
+    // ── Discord member churn (owner 2026-08-14): once per ET day, whichever
+    // cron fires first. Marker-gated so it runs exactly once; private DM only.
+    try {
+      const memDay = isoDateET(toET(new Date()));
+      if (env.DISCORD_BOT_TOKEN && !(await env.SIGNAL_KV.get(`discord_mem_done_${memDay}`))) {
+        await env.SIGNAL_KV.put(`discord_mem_done_${memDay}`, '1', { expirationTtl: 3 * 86400 });
+        const r = await discordMemberDiffJob(env, true);
+        console.log('[members]', JSON.stringify(r));
+      }
+    } catch (e) { console.warn('[members]', e.message); }
 
     // ── Slow-degradation watchdog: alert Discord if Schwab refresh has been
     //    failing for too long. Without this, a broken refresh chain rots

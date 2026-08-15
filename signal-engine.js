@@ -744,6 +744,19 @@ export function calculateSignal({ vixToday, vixYOpen, vixYClose, spxGapPct, etDa
     }
   }
 
+  // ── FRIDAY straddle cancel — ABSOLUTE (owner rule 2026-08-14) ──
+  // 2026 Fridays ran 0-for-9 (−$12,848) across EVERY subtype — regular, EOM,
+  // NM and Fed alike — while non-Friday 2026 straddles made +$23k. Gamma
+  // filters tested dead (no separation at any rank), so there is no
+  // conditional version. Unlike the Wednesday rule this has NO exemptions and
+  // sits AFTER the WR overrides: nothing force-fires a straddle on a Friday
+  // (a 0%-WR Friday stays blocked). GXBF is untouched — it decides upstream.
+  if (theme === "strad" && dow === 5) {
+    rec = "No Straddle (Friday)"; theme = "block"; crossed = true;
+    blockT = "fri"; blockD = "No straddle on Fridays (owner rule 2026-08-14 — 2026 Fridays 0/9, all subtypes)";
+    badge = "BLOCKED"; strikeInfo = null; entryT = "";
+  }
+
   // OPEX+1 GXBF override is now folded into the upfront strategy-independent
   // GXBF evaluation above (postOpDay is part of gxbfTrigger). The standalone
   // block here is removed — GXBF decides for itself before M8BF/Straddle paths

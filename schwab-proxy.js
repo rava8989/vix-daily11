@@ -12067,6 +12067,15 @@ async function earnSendCard(env, b, stage, dmOnly = false) {
   if (!dmOnly) {
     const wh = await env.SIGNAL_KV.get('earnings_webhook_url');
     if (wh) {
+      // Sink-level dedupe (2026-08-17): two colo-concurrent invocations of the
+      // same 15:30 tick each passed the job-level claim (own-colo KV cache) and
+      // double-posted the FINAL card 19s apart. A per-sink terminal marker
+      // makes the webhook post itself once-per-stage-per-day — the second
+      // racer sees 'sent' (or loses the sink claim) and stands down.
+      const sinkKey = `earn_whsent_${stage}_${b.date || isoDateET(toET(new Date()))}`;
+      const sinkCur = await env.SIGNAL_KV.get(sinkKey);
+      if (sinkCur === 'sent') { out.webhook = true; return out; }
+      if (!(await claimSendSlot(env, sinkKey))) { out.webhook = true; return out; }
       let ok = false;
       if (png) ok = await postWebhookImage(wh, png, EARN_CARD_FOOTER, 'earnings.png');
       if (!ok) {
@@ -12075,6 +12084,7 @@ async function earnSendCard(env, b, stage, dmOnly = false) {
           ok = r.ok || r.status === 204;
         } catch (_) {}
       }
+      if (ok) await env.SIGNAL_KV.put(sinkKey, 'sent', { expirationTtl: 86400 });
       out.webhook = ok;
     }
   }

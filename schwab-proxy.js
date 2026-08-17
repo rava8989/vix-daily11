@@ -4190,7 +4190,7 @@ async function handleEOD(env, etNow) {
       if (fullSigs.length > 0) {
         const signals = fullSigs.map(s => ({
           time: s.time, center: s.center, lower: s.lower, upper: s.upper,
-          t1: s.t1, premium: s.premium, cp: s.cp ?? 0, banned: isBanned(s.center, s.lower, s.t1),
+          t1: s.t1, t2: s.t2 ?? null, premium: s.premium, cp: s.cp ?? 0, banned: isBanned(s.center, s.lower, s.t1),
         }));
         await env.SIGNAL_KV.put('signals_today', JSON.stringify({ date: todayISO, signals }));
         console.log(`[eod] Re-scraped ${signals.length} signals for ${todayISO}`);
@@ -4494,7 +4494,11 @@ function parseDiscordSignal(content) {
   // T1 from "Target 1: XXXX"
   const t1Match = content.match(/Target\s*1[:\s]+(\d{4,5})/i);
   const t1 = t1Match ? parseInt(t1Match[1]) : center + 5;
-  return { center, upper, lower, t1, premium, cp };
+  // T2 (2026-08-17, Range-Forecast card): |T1-T2| = the model's Range width,
+  // a calibrated vol forecast (505d: width 5/20/50 -> realized |o->c| 21/27/37).
+  const t2Match = content.match(/Target\s*2[:\s]+(\d{4,5})/i);
+  const t2 = t2Match ? parseInt(t2Match[1]) : null;
+  return { center, upper, lower, t1, t2, premium, cp };
 }
 
 // M8BF banned-strike check.
@@ -4595,6 +4599,7 @@ async function pollDiscordSignals(env) {
       lower: sig.lower,
       upper: sig.upper,
       t1: sig.t1,
+      t2: sig.t2 ?? null,
       premium: sig.premium,
       cp: sig.cp ?? 0,
       banned: isBanned(sig.center, sig.lower, sig.t1),
@@ -15796,8 +15801,29 @@ export default {
             }
           }
         }
+        // Range Forecast (owner 2026-08-17): the first signal's |T1−T2| is a
+        // calibrated vol forecast — 505 days: width 5/20/50 → realized
+        // |open→close| 21/27/37 pts (monotonic). Buckets: ≤15 NARROW, <50 MID,
+        // ≥50 WIDE. Direction of T2 carries nothing (tested 50/50) — width only.
+        let rangeWidth = null, rangeBucket = null, rangeTravel = null;
+        try {
+          const stRaw = await env.SIGNAL_KV.get('signals_today');
+          if (stRaw) {
+            const st_ = JSON.parse(stRaw);
+            if (st_.date === forDate && Array.isArray(st_.signals)) {
+              const firstSig = st_.signals.filter(x => x.t1 && x.t2 && x.t1 !== x.t2)
+                .sort((a, b) => String(a.time).localeCompare(String(b.time)))[0];
+              if (firstSig) {
+                rangeWidth = Math.abs(firstSig.t1 - firstSig.t2);
+                [rangeBucket, rangeTravel] = rangeWidth <= 15 ? ['NARROW', 21]
+                  : rangeWidth < 50 ? ['MID', 27] : ['WIDE', 37];
+              }
+            }
+          }
+        } catch (_) {}
         return jsonResp({ forDate, skip: rank != null && rank < ANCHOR_THRESHOLD,
-          rank: rank != null ? Math.round(rank * 100) : null, liveFrom: GEXGATE_LIVE_FROM }, 200, pub);
+          rank: rank != null ? Math.round(rank * 100) : null, liveFrom: GEXGATE_LIVE_FROM,
+          rangeWidth, rangeBucket, rangeTravel }, 200, pub);
       } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
     }
     // ── Heatmap data (2026-07-25): term structure (strike × expiry) and

@@ -444,6 +444,11 @@
         <div class="lc-strike" id="gateTodayVerdict">--</div>
         <div class="lc-desc" id="gateTodayDesc">verdict locked yesterday 5:05 PM ET</div>
       </div>
+      <div class="level-card" id="rangeFcCard">
+        <div class="lc-title">Range Forecast</div>
+        <div class="lc-strike" id="rangeFcVal">--</div>
+        <div class="lc-desc" id="rangeFcDesc">first signal's |T1−T2| · calibrated: width 5/20/50 → day travels ~21/27/37 pts (505d)</div>
+      </div>
       <div class="level-card" id="gateTomorrowCard">
         <div class="lc-title">Next session preview</div>
         <div class="lc-strike" id="gateTomorrowVerdict">--</div>
@@ -2422,6 +2427,27 @@ async function initGatePanels() {
         ? `prev-day reading at p${today.rank} of trailing 120d` : `gate live from ${today.liveFrom}`)
         + (today.skip ? ' — fly not posted, day books as no-trade' : '');
     }
+    // Range Forecast card (owner 2026-08-17): the model's |T1−T2| = a calibrated
+    // vol forecast. Width only — T2's direction tested dead (50/50).
+    try {
+      const rEl = document.getElementById('rangeFcVal');
+      if (rEl && today) {
+        if (today.rangeWidth != null) {
+          rEl.textContent = `${today.rangeWidth} → ${today.rangeBucket}`;
+          rEl.style.color = today.rangeBucket === 'WIDE' ? '#f59e0b'
+            : today.rangeBucket === 'NARROW' ? '#22c55e' : 'var(--text)';
+          document.getElementById('rangeFcDesc').textContent =
+            `expect ~${today.rangeTravel} pts open→close (median for this width) · ` +
+            (today.rangeBucket === 'WIDE' ? 'movement day — respect breakouts'
+             : today.rangeBucket === 'NARROW' ? 'quiet day — pin-friendly, fly weather'
+             : 'ordinary travel expected');
+        } else {
+          rEl.textContent = '—';
+          document.getElementById('rangeFcDesc').textContent =
+            'appears with the first M8BF signal (~9:36 ET) · width 5/20/50 → travels ~21/27/37 pts (505d calibration)';
+        }
+      }
+    } catch (_) {}
     // next-session preview from the latest reading
     const latest = vals[n-1], latestDate = tail[n-1][0];
     const win = vals.slice(n-121, n-1);

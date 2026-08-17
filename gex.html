@@ -942,17 +942,27 @@ function stanceCone() {
   }
   const i = bands.times.indexOf(slot);
   const p20 = bands.p20[i], p80 = bands.p80[i];
+  // The dial describes the LIVE reading's zone; the M8BF verdict is the Anchor
+  // Filter's (prior-day 10:30 rank, locked the evening before) — read it from
+  // the gate strip's DOM so the two can never disagree. 2026-08-17 fix: the
+  // old caption asserted "no M8BF" from the live zone, contradicting a GO day.
+  const gateTxt = document.getElementById('gateTodayVerdict')?.textContent || '';
+  const gateGo = gateTxt.includes('GO'), gateNo = gateTxt.includes('NO');
+  const gateNote = gateGo ? 'M8BF: GO (gate = prior-day 10:30)'
+                 : gateNo ? 'M8BF: OFF today (Anchor gate)'
+                 : 'M8BF gate: see Anchor strip';
   let ang, chip, chipCol, verdict, vCol;
   if (latest < p20) {
     ang = -66; chip = 'BELOW BAND ' + latest.toFixed(1) + 'B'; chipCol = ST_COL.red;
-    verdict = '✗ no M8BF — Anchor Filter zone'; vCol = ST_COL.red;
+    verdict = '⚠ thin-gamma zone (raw flies 48% WR) · ' + gateNote;
+    vCol = gateNo ? ST_COL.red : '#f59e0b';
   } else if (latest > p80) {
     ang = 66; chip = 'ABOVE BAND ' + latest.toFixed(1) + 'B'; chipCol = ST_COL.green;
-    verdict = '✓ favorable for M8BF — best fly zone (62.6% WR)'; vCol = ST_COL.green;
+    verdict = '✓ best fly zone (67.5% WR at the minute) · ' + gateNote; vCol = ST_COL.green;
   } else {
     ang = -45 + 90 * (latest - p20) / Math.max(1e-9, p80 - p20);
     chip = 'INSIDE ' + latest.toFixed(1) + 'B'; chipCol = ST_COL.blue;
-    verdict = '— normal rules'; vCol = ST_COL.blue;
+    verdict = '— normal rules · ' + gateNote; vCol = ST_COL.blue;
   }
   stSlot('stCone','GEX Cone', stGauge('c','',zones,ticks,ang,false), chip, chipCol, verdict, vCol);
 }

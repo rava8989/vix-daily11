@@ -495,6 +495,48 @@ async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot) {
   console.log(`[spreads] paper ${side} ${pick.short}/${pick.long} cr $${pick.credit} gex ${gexB}B`);
 }
 
+async function spreadsRouterHeadsUp(env, etNow) {
+  // PNBF-style advance notice (owner 2026-08-18): ~15 min before a window,
+  // DM only when the book is in trigger territory. 11:40-11:58 → CALL likely
+  // (book ≤ −8B, near the −10B line); 12:40-12:58 → PUT likely (book > 0,
+  // only if noon produced no trade). Claim-gated; silent otherwise.
+  const h = etNow.getHours(), m = etNow.getMinutes();
+  const win12 = (h === 11 && m >= 40 && m <= 58), win13 = (h === 12 && m >= 40 && m <= 58);
+  if (!win12 && !win13) return;
+  const d = isoDateET(etNow);
+  const done = await env.SIGNAL_KV.get(`spreads_done_${d}`);
+  if (done) return;                                   // skip day or already decided
+  if (cpiSch.includes(todayLong(etNow)) || isLastTradeMo(etNow) || isFirstTradeMo(etNow)) return;
+  const gRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+  const g = gRaw ? JSON.parse(gRaw) : null;
+  if (!(g && g.timestamp && (Date.now() / 1000 - g.timestamp) < 600 && typeof g.totalGex === 'number')) return;
+  const gexB = Math.round(g.totalGex / 1e8) / 10;
+  let text = null, key = null;
+  if (win12 && gexB <= -8) {
+    key = `spreads_hu12_${d}`;
+    text = `🧭 **Spreads Router heads-up** — book ${gexB}B.\nCALL spread likely at 12:00 (fires at ≤ −10B).`;
+  } else if (win13 && gexB > 0) {
+    const e12 = await env.SIGNAL_KV.get(`spreads_eval12_${d}`);
+    if (e12 && e12.startsWith('cs')) return;
+    key = `spreads_hu13_${d}`;
+    text = `🧭 **Spreads Router heads-up** — book +${gexB}B.\nPUT spread likely at 1:00 (fires while book > 0).`;
+  }
+  if (!text) return;
+  const cur = await env.SIGNAL_KV.get(key);
+  if (cur === 'sent') return;
+  if (!(await claimSendSlot(env, key))) return;
+  let ok = false;
+  try {
+    const dcRaw = await env.SIGNAL_KV.get('discord_config');
+    if (dcRaw) {
+      const dc = JSON.parse(dcRaw);
+      if (dc.channelId) { const r = await sendDiscordDM(env, dc.channelId, text, dc.proxyUrl); ok = !!(r && r.ok); }
+    }
+  } catch (e) { console.warn('[spreads-hu]', e.message); }
+  if (ok) await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
+  else { try { await env.SIGNAL_KV.delete(key); } catch (_) {} }
+}
+
 async function spreadsRouterDM(env, etNow) {
   // separate from the open step so a Discord failure never blocks the trade;
   // retries each tick until 'sent' (claim-gated, delivery-confirmed).
@@ -8138,6 +8180,7 @@ async function handleScheduledInner(env) {
     try { await captureDiagChainSnap(env, etNow, masterChain); } catch (e) { console.warn('[diag-snap]', e.message); }
     try { await captureGxbfChainSnap(env, etNow, masterChain); } catch (e) { console.warn('[gxbf-snap]', e.message); }
     try { await spreadsRouterJob(env, etNow, masterChain); } catch (e) { console.warn('[spreads]', e.message); }
+    try { await spreadsRouterHeadsUp(env, etNow); } catch (e) { console.warn('[spreads-hu]', e.message); }
     try { await spreadsRouterDM(env, etNow); } catch (e) { console.warn('[spreads-dm]', e.message); }
     // Research capture: ~15:45 30DTE smile (VIX decomposition dataset)
     try { await captureVixSurfaceSnap(env, etNow, schwabToken); } catch (e) { console.warn('[surface-snap]', e.message); }

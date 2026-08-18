@@ -60,6 +60,56 @@ ul{padding-left:18px}
 
 
 <h2>The rules</h2>
+<div class="panel" style="margin:0 0 12px;padding:16px 18px">
+<div style="overflow-x:auto"><svg viewBox="0 0 940 300" style="min-width:720px;width:100%;height:auto;display:block" role="img" aria-label="Decision flow: skip trap days, check gamma at noon for a call spread, else at 1 PM for a put spread, else no trade; hold to the close.">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4a5568"/></marker></defs>
+<style>.bx{rx:10;stroke-width:1.5}.lbl{font:600 14px Inter,sans-serif;fill:#e7eaf0}.sm{font:500 11.5px Inter,sans-serif;fill:#8b93a3}.yn{font:700 11px Inter,sans-serif}.fl{stroke:#4a5568;stroke-width:1.6;fill:none;marker-end:url(#ah)}</style>
+
+<rect x="16" y="118" width="132" height="64" class="bx" fill="#161a20" stroke="#262c37"/>
+<text x="82" y="145" text-anchor="middle" class="lbl">TRADING DAY</text>
+<text x="82" y="164" text-anchor="middle" class="sm">every session</text>
+
+<path d="M148 150 H206" class="fl"/>
+<rect x="208" y="112" width="150" height="76" class="bx" fill="#161a20" stroke="#e66767"/>
+<text x="283" y="139" text-anchor="middle" class="lbl">trap day?</text>
+<text x="283" y="157" text-anchor="middle" class="sm">CPI &middot; last day &middot; first</text>
+<text x="283" y="171" text-anchor="middle" class="sm">day of the month</text>
+<path d="M283 188 V232" class="fl"/><text x="292" y="212" class="yn" fill="#e66767">yes</text>
+
+<path d="M358 150 H416" class="fl"/><text x="376" y="142" class="yn" fill="#4caf7d">no</text>
+<rect x="418" y="112" width="158" height="76" class="bx" fill="#161a20" stroke="#e0a63c"/>
+<text x="497" y="139" text-anchor="middle" class="lbl">12:00 &middot; book</text>
+<text x="497" y="158" text-anchor="middle" class="lbl" fill="#e0a63c">&le; &minus;10B ?</text>
+<text x="497" y="176" text-anchor="middle" class="sm">deep negative gamma</text>
+
+<path d="M576 132 H648" class="fl"/><text x="596" y="124" class="yn" fill="#e0a63c">yes</text>
+<rect x="650" y="96" width="180" height="72" class="bx" fill="#20180f" stroke="#e0a63c"/>
+<text x="740" y="122" text-anchor="middle" class="lbl" fill="#e0a63c">SELL CALL SPREAD</text>
+<text x="740" y="140" text-anchor="middle" class="sm">10-wide &middot; ~$4.00 credit</text>
+<text x="740" y="156" text-anchor="middle" class="sm">risk ~$600/lot</text>
+
+<path d="M497 188 V228" class="fl"/><text x="506" y="212" class="yn" fill="#8b93a3">no</text>
+<rect x="418" y="230" width="158" height="60" class="bx" fill="#161a20" stroke="#4caf7d"/>
+<text x="497" y="254" text-anchor="middle" class="lbl">13:00 &middot; book <tspan fill="#4caf7d">&gt; 0 ?</tspan></text>
+<text x="497" y="273" text-anchor="middle" class="sm">positive gamma &middot; pinned</text>
+
+<path d="M576 250 H648" class="fl"/><text x="596" y="242" class="yn" fill="#4caf7d">yes</text>
+<rect x="650" y="214" width="180" height="72" class="bx" fill="#10201a" stroke="#4caf7d"/>
+<text x="740" y="240" text-anchor="middle" class="lbl" fill="#4caf7d">SELL PUT SPREAD</text>
+<text x="740" y="258" text-anchor="middle" class="sm">10-wide &middot; ~$2.50 credit</text>
+<text x="740" y="274" text-anchor="middle" class="sm">risk ~$750/lot</text>
+
+<path d="M418 260 H370" class="fl"/><text x="393" y="252" class="yn" fill="#8b93a3">no</text>
+<rect x="260" y="240" width="108" height="40" class="bx" fill="#161a20" stroke="#262c37"/>
+<text x="314" y="265" text-anchor="middle" class="lbl" fill="#8b93a3">NO TRADE</text>
+
+<path d="M832 132 H872 V180" class="fl" style="marker-end:none"/>
+<path d="M832 250 H872 V202" class="fl" style="marker-end:none"/>
+<rect x="846" y="182" width="88" height="20" fill="none"/>
+<text x="890" y="196" text-anchor="middle" class="lbl" fill="#62d5b4" style="font-size:12.5px">HOLD &rarr; CLOSE</text>
+</svg></div>
+<div class="sm" style="font:500 12px Inter,sans-serif;color:var(--muted);margin-top:6px">one decision path per day &middot; no exits, no stops &middot; whatever fires (or nothing) is the day</div>
+</div>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
   <div style="background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--amber);border-radius:12px;padding:18px 20px">
     <div style="font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase">12:00 ET &middot; book &le; &minus;10B</div>

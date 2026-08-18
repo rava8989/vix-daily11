@@ -2672,11 +2672,15 @@ async function dataCompletenessCheck(env, etNow) {
   ];
   // Fri–Mon: CFTC sometimes publishes hours late on Friday; a Friday-only
   // check meant one lag = a full week stale (happened 2026-08-08).
+  // Threshold is 7, not 5: rows are keyed by the as-of TUESDAY, so the
+  // freshest possible data on Monday is already 6 days old (as-of Tue,
+  // released Fri) — ≤5 false-alarmed every Monday (first hit 2026-08-17).
+  // A genuinely missed release is 13+ days old by the next Friday check.
   if ([5, 6, 0, 1].includes(etNow.getDay())) checks.push(['COT weekly', async () => {
     const j = await J('https://raw.githubusercontent.com/rava8989/brave/main/data/cot_currencies.json');
     if (!j) return false;
     const last = j.series.EUR[j.series.EUR.length - 1][0];
-    return (new Date(todayISO) - new Date(last)) / 86400000 <= 5;
+    return (new Date(todayISO) - new Date(last)) / 86400000 <= 7;
   }, () => cotWeeklyRefresh(env)]);
 
   for (const [name, check, heal] of checks) {
@@ -2690,17 +2694,33 @@ async function dataCompletenessCheck(env, etNow) {
   }
   const result = { date: todayISO, ok: ok.length, healed, failed };
   if (healed.length || failed.length) {
-    try {
-      const dcRaw = await env.SIGNAL_KV.get('discord_config');
-      if (dcRaw) {
-        const dc = JSON.parse(dcRaw);
-        if (dc.channelId) await sendDiscordDM(env, dc.channelId,
-          `🩺 **Data watchdog** (${todayISO})` +
-          (healed.length ? `\n✅ auto-healed: ${healed.join(', ')}` : '') +
-          (failed.length ? `\n❌ NEEDS ATTENTION: ${failed.join(', ')}` : ''),
-          dc.proxyUrl);
-      }
-    } catch (_) {}
+    // ONE DM per day. The 18:35-18:50 caller deletes its marker on failure so
+    // heals retry every cron tick — but DMing each retry machine-gunned the
+    // owner ~15× on a single stale feed (2026-08-17). Claim-gated (P22/P46);
+    // a failed send deletes the claim so a tick ≥3 min later retries the DM.
+    const dmKey = `wd_dm_${todayISO}`;
+    if (await claimSendSlot(env, dmKey)) {
+      let sent = false;
+      try {
+        const dcRaw = await env.SIGNAL_KV.get('discord_config');
+        if (dcRaw) {
+          const dc = JSON.parse(dcRaw);
+          if (dc.channelId) {
+            const r = await sendDiscordDM(env, dc.channelId,
+              `🩺 **Data watchdog** (${todayISO})` +
+              (healed.length ? `\n✅ auto-healed: ${healed.join(', ')}` : '') +
+              (failed.length ? `\n❌ NEEDS ATTENTION: ${failed.join(', ')}` : ''),
+              dc.proxyUrl);
+            sent = !!(r && r.ok);
+          }
+        }
+        if (!dcRaw) sent = true;   // nowhere to send — spend the slot, don't spin
+      } catch (_) {}
+      try {
+        if (sent) await env.SIGNAL_KV.put(dmKey, 'sent', { expirationTtl: 86400 });
+        else await env.SIGNAL_KV.delete(dmKey);
+      } catch (_) {}
+    }
   }
   try { await logEvent(env, failed.length ? 'error' : 'info', 'watchdog', JSON.stringify(result).slice(0, 200), {}); } catch (_) {}
   return result;

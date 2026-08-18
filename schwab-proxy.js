@@ -401,6 +401,156 @@ async function captureGxbfChainSnap(env, etNow, masterChain) {
     { expirationTtl: 90 * 86400 });
 }
 
+// ── SPREADS ROUTER — paper program (owner order 2026-08-18) ─────────────
+// Gamma-routed 10-wide credit spreads. PAPER ONLY: never places orders.
+// Backtest (777d, spreads.html): n=444, WR 76.6%, +$71/lot, t=4.01.
+// Owner protocol: paper-log ~40 samples, then decide. Rule:
+//   skip CPI / last / first trading day of month;
+//   12:00 book ≤ −10B → SELL 0DTE CALL spread, credit target $4.00 ±$1.00;
+//   else 13:00 book > 0 → SELL 0DTE PUT spread, credit target $2.50 ±$0.63;
+//   fills = mid − $0.20 slip; hold to settlement (EOD job below).
+// Eval-once per window (mirrors the backtest's single 5-min stamp); the
+// DM card is claim-gated with 'sent' only on confirmed delivery (P22/P27).
+function spreadsPickStrike(expMap, spot, dir, width, target, tol) {
+  // dir +1 = calls (scan ATM upward), −1 = puts (scan ATM downward)
+  const expKey = Object.keys(expMap || {}).find(e => (e.split(':')[1] || '') === '0');
+  if (!expKey) return null;
+  const book = expMap[expKey];
+  const mid = (k) => {
+    const arr = book[k.toFixed(1)] ?? book[String(k)] ?? book[`${k}.0`];
+    const c = Array.isArray(arr) ? arr[0] : arr;
+    if (!c || c.bid == null || c.ask == null || c.ask <= 0) return null;
+    return (c.bid + c.ask) / 2;
+  };
+  const base = Math.round(spot / 5) * 5;
+  let best = null;
+  for (let i = -2; i <= 21; i++) {
+    const ks = base + dir * i * 5, kl = ks + dir * width;
+    const ms = mid(ks), ml = mid(kl);
+    if (ms == null || ml == null) continue;
+    const credit = ms - ml - 0.20;
+    if (credit < 0.05) continue;
+    if (best === null || Math.abs(credit - target) < Math.abs(best.credit - target))
+      best = { short: ks, long: kl, credit: Math.round(credit * 100) / 100 };
+  }
+  return (best && Math.abs(best.credit - target) <= tol) ? best : null;
+}
+
+async function spreadsRouterJob(env, etNow, masterChain) {
+  const h = etNow.getHours(), m = etNow.getMinutes();
+  if (!((h === 12 || h === 13) && m <= 20)) return;
+  const d = isoDateET(etNow);
+  if (await env.SIGNAL_KV.get(`spreads_done_${d}`)) return;
+
+  // house calendar: same days the rest of the board avoids
+  if (cpiSch.includes(todayLong(etNow)) || isLastTradeMo(etNow) || isFirstTradeMo(etNow)) {
+    const why = cpiSch.includes(todayLong(etNow)) ? 'CPI' : (isLastTradeMo(etNow) ? 'EOM' : 'first-of-month');
+    await env.SIGNAL_KV.put(`spreads_done_${d}`, `skip:${why}`, { expirationTtl: 3 * 86400 });
+    return;
+  }
+
+  // fresh 0DTE book (same source as the tg sampler)
+  const gRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+  const g = gRaw ? JSON.parse(gRaw) : null;
+  const fresh = g && g.timestamp && (Date.now() / 1000 - g.timestamp) < 600 && typeof g.totalGex === 'number';
+  if (!fresh) return;                      // retry next tick inside the window
+  const gexB = Math.round(g.totalGex / 1e8) / 10;
+
+  const evalKey = `spreads_eval12_${d}`;
+  if (h === 12) {
+    if (await env.SIGNAL_KV.get(evalKey)) return;      // noon already judged
+    if (gexB > -10) {                                  // no CS today — hand off to 13:00
+      await env.SIGNAL_KV.put(evalKey, `nocs:${gexB}`, { expirationTtl: 3 * 86400 });
+      return;
+    }
+    if (!masterChain || !masterChain.callExpDateMap || !masterChain.spot) return;   // retry for chain
+    const pick = spreadsPickStrike(masterChain.callExpDateMap, masterChain.spot, +1, 10, 4.00, 1.00);
+    if (!pick) { await env.SIGNAL_KV.put(evalKey, `nocs-nocredit:${gexB}`, { expirationTtl: 3 * 86400 }); return; }
+    await spreadsOpenPaper(env, d, etNow, 'CALL', '12:00', pick, gexB, masterChain.spot);
+    await env.SIGNAL_KV.put(evalKey, `cs:${gexB}`, { expirationTtl: 3 * 86400 });
+    return;
+  }
+
+  // 13:00 window — only when noon produced no trade
+  const e12 = await env.SIGNAL_KV.get(evalKey);
+  if (e12 && e12.startsWith('cs')) return;
+  if (gexB <= 0) {
+    await env.SIGNAL_KV.put(`spreads_done_${d}`, `no-trade:${gexB}`, { expirationTtl: 3 * 86400 });
+    return;
+  }
+  if (!masterChain || !masterChain.putExpDateMap || !masterChain.spot) return;
+  const pick = spreadsPickStrike(masterChain.putExpDateMap, masterChain.spot, -1, 10, 2.50, 0.63);
+  if (!pick) { await env.SIGNAL_KV.put(`spreads_done_${d}`, `no-trade-nocredit:${gexB}`, { expirationTtl: 3 * 86400 }); return; }
+  await spreadsOpenPaper(env, d, etNow, 'PUT', '13:00', pick, gexB, masterChain.spot);
+}
+
+async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot) {
+  // trade exists in KV BEFORE any Discord attempt (P27: state before send)
+  const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
+  const trade = { n: log.length + 1, date: d, entry, side, short: pick.short, long: pick.long,
+    credit: pick.credit, gexB, spot: Math.round(spot * 100) / 100, status: 'open' };
+  await env.SIGNAL_KV.put(`spreads_open_${d}`, JSON.stringify(trade), { expirationTtl: 5 * 86400 });
+  await env.SIGNAL_KV.put(`spreads_done_${d}`, `trade:${side}`, { expirationTtl: 3 * 86400 });
+  console.log(`[spreads] paper ${side} ${pick.short}/${pick.long} cr $${pick.credit} gex ${gexB}B`);
+}
+
+async function spreadsRouterDM(env, etNow) {
+  // separate from the open step so a Discord failure never blocks the trade;
+  // retries each tick until 'sent' (claim-gated, delivery-confirmed).
+  const d = isoDateET(etNow);
+  const h = etNow.getHours();
+  if (h < 12 || h > 15) return;
+  const openRaw = await env.SIGNAL_KV.get(`spreads_open_${d}`);
+  if (!openRaw) return;
+  const dmKey = `spreads_dm_${d}`;
+  const cur = await env.SIGNAL_KV.get(dmKey);
+  if (cur === 'sent') return;
+  if (!(await claimSendSlot(env, dmKey))) return;
+  const t = JSON.parse(openRaw);
+  const risk = Math.round((10 - t.credit) * 100);
+  const why = t.side === 'CALL'
+    ? `book ${t.gexB}B at noon — deep negative, betting no afternoon rally`
+    : `book +${t.gexB}B at 1 PM — pinned, betting no afternoon dump`;
+  const msg = `🧭 **Spreads Router — paper trade #${t.n} of 40**\n` +
+    `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide)\n` +
+    `credit ≈ $${t.credit.toFixed(2)} (mid − $0.20 slip) · max risk ~$${risk}/lot\n` +
+    `${why}\n` +
+    `PAPER ONLY — no order placed · settles at the close · log: spreads.html`;
+  let ok = false;
+  try {
+    const dcRaw = await env.SIGNAL_KV.get('discord_config');
+    if (dcRaw) {
+      const dc = JSON.parse(dcRaw);
+      if (dc.channelId) { const r = await sendDiscordDM(env, dc.channelId, msg, dc.proxyUrl); ok = !!(r && r.ok); }
+    }
+  } catch (e) { console.warn('[spreads-dm]', e.message); }
+  if (ok) await env.SIGNAL_KV.put(dmKey, 'sent', { expirationTtl: 86400 });
+  else { try { await env.SIGNAL_KV.delete(dmKey); } catch (_) {} }
+}
+
+async function spreadsRouterSettle(env, etNow) {
+  const h = etNow.getHours(), m = etNow.getMinutes();
+  if (h < 16 || (h === 16 && m < 45)) return;
+  const d = isoDateET(etNow);
+  const openRaw = await env.SIGNAL_KV.get(`spreads_open_${d}`);
+  if (!openRaw) return;
+  const t = JSON.parse(openRaw);
+  const hist = JSON.parse((await env.SIGNAL_KV.get('history_data')) || '[]');
+  const row = hist.find(r => r.date === t.date);
+  if (!row || row.spxClose == null) return;            // retry on later ticks (18:35 / 20:17 / 21:17)
+  const c = row.spxClose;
+  const loss = t.side === 'CALL' ? Math.max(0, Math.min(c - t.short, 10))
+                                 : Math.max(0, Math.min(t.short - c, 10));
+  const pl = Math.round((t.credit - loss) * 100 * 10) / 10;
+  const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
+  if (!log.some(x => x.date === t.date)) {
+    log.push({ ...t, status: 'settled', settle: c, pl });
+    await env.SIGNAL_KV.put('spreads_paper_log', JSON.stringify(log.slice(-300)));
+  }
+  await env.SIGNAL_KV.delete(`spreads_open_${d}`);
+  console.log(`[spreads] settled #${t.n} ${t.side} ${t.short}/${t.long}: close ${c} → $${pl}`);
+}
+
 // VIX-surface snapshot (2026-06-11, optionsgelt-inspired VIX decomposition).
 // At ~15:45 ET store the ~30DTE SPX smile at a sparse moneyness grid
 // (85%–110% of spot, OTM side: puts below / calls above, both at ATM).
@@ -7986,6 +8136,8 @@ async function handleScheduledInner(env) {
     // (with these all three bt datasets grow Schwab-only — ThetaData optional)
     try { await captureDiagChainSnap(env, etNow, masterChain); } catch (e) { console.warn('[diag-snap]', e.message); }
     try { await captureGxbfChainSnap(env, etNow, masterChain); } catch (e) { console.warn('[gxbf-snap]', e.message); }
+    try { await spreadsRouterJob(env, etNow, masterChain); } catch (e) { console.warn('[spreads]', e.message); }
+    try { await spreadsRouterDM(env, etNow); } catch (e) { console.warn('[spreads-dm]', e.message); }
     // Research capture: ~15:45 30DTE smile (VIX decomposition dataset)
     try { await captureVixSurfaceSnap(env, etNow, schwabToken); } catch (e) { console.warn('[surface-snap]', e.message); }
     // CycleLab live actual — today's session-so-far into KV (every 5 min)
@@ -15799,6 +15951,20 @@ export default {
       if (today) return jsonResp({ date: d, grid: JSON.parse(today), g935: null, partial: true }, 200, pub);
       return jsonResp({ error: 'no grid for ' + d }, 404, pub);
     }
+    if (url.pathname === '/spreads-paper' && request.method === 'GET') {
+      // Spreads Router paper program state: today's status + settled log.
+      // Public read like the other page feeds; PAPER data only.
+      const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
+      const d = isoDateET(toET(new Date()));
+      const [openRaw, logRaw, doneRaw] = await Promise.all([
+        env.SIGNAL_KV.get(`spreads_open_${d}`),
+        env.SIGNAL_KV.get('spreads_paper_log'),
+        env.SIGNAL_KV.get(`spreads_done_${d}`),
+      ]);
+      const log = logRaw ? JSON.parse(logRaw) : [];
+      return jsonResp({ date: d, today: doneRaw || 'pending',
+        open: openRaw ? JSON.parse(openRaw) : null, count: log.length, target: 40, log }, 200, pub);
+    }
     if (url.pathname === '/gexgate-today' && request.method === 'GET') {
       const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
       try {
@@ -16953,6 +17119,10 @@ export default {
         }
       }
     } catch (e) { console.warn('[evening-preview]', e.message); }
+
+    // ── Spreads Router paper settle: any tick ≥16:45 until history has the
+    //    close (retries ride the 18:35 / 20:17 / 21:17 crons) ──
+    try { await spreadsRouterSettle(env, toET(new Date())); } catch (e) { console.warn('[spreads-settle]', e.message); }
 
     // ── Nightly data watchdog: own 18:35-18:50 window (lessons P17) ──
     const etW = toET(new Date());

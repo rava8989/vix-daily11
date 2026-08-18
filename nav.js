@@ -14,6 +14,7 @@
     ['gex.html',                   'Γ GEX'],
     ['earnings-play.html',         '🌙 Earnings'],
     ['magnetfly.html',             '🧲 PNBF'],
+    ['spreads.html',               '⇄ Spreads'],
   ];
   function build() {
     const here = (location.pathname.split('/').pop() || 'index.html');

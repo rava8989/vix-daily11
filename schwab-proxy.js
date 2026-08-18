@@ -484,10 +484,11 @@ async function spreadsRouterJob(env, etNow, masterChain) {
   await spreadsOpenPaper(env, d, etNow, 'PUT', '13:00', pick, gexB, masterChain.spot);
 }
 
+const SPREADS_BT_N = 457;   // frozen backtest count (through 2026-08-18); live numbering continues from here
 async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot) {
   // trade exists in KV BEFORE any Discord attempt (P27: state before send)
   const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
-  const trade = { n: log.length + 1, date: d, entry, side, short: pick.short, long: pick.long,
+  const trade = { n: SPREADS_BT_N + log.length + 1, date: d, entry, side, short: pick.short, long: pick.long,
     credit: pick.credit, gexB, spot: Math.round(spot * 100) / 100, status: 'open' };
   await env.SIGNAL_KV.put(`spreads_open_${d}`, JSON.stringify(trade), { expirationTtl: 5 * 86400 });
   await env.SIGNAL_KV.put(`spreads_done_${d}`, `trade:${side}`, { expirationTtl: 3 * 86400 });

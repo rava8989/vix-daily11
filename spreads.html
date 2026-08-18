@@ -160,9 +160,40 @@ function render(){
 document.querySelectorAll('.btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.btn').forEach(x=>x.classList.remove('on'));b.classList.add('on');side=b.dataset.f;render()});
 document.getElementById('yr').onchange=e=>{yr=e.target.value;render()};
 document.getElementById('q').oninput=e=>{q=e.target.value;render()};
-render();
 </script>
 <script>
+function dowOf(d){return 'MTWTF'[new Date(d+'T12:00:00').getUTCDay()-1]||'?'}
+function mergeLive(j){
+  // fold settled live trades into the main log, stats and curve (auto-fill)
+  const have=new Set(D.map(r=>r[0]));
+  const add=(j.log||[]).filter(x=>x.settle!=null&&!have.has(x.date))
+    .sort((a,b)=>a.date<b.date?-1:1)
+    .map(x=>[x.date,dowOf(x.date),x.entry,x.side,x.short,x.long,x.credit,x.gexB,x.settle,x.pl,0,x.pl>0?'W':'L']);
+  if(add.length){
+    let cum=D.length?D[D.length-1][10]:0;
+    for(const r of add){cum=Math.round((cum+r[9])*10)/10;r[10]=cum;D.push(r)}
+    const pls=D.map(r=>r[9]),n=pls.length,w=pls.filter(p=>p>0).length,tot=pls.reduce((a,b)=>a+b,0);
+    const avg=tot/n,varr=pls.reduce((a,p)=>a+(p-avg)*(p-avg),0)/(n-1),t=avg/Math.sqrt(varr/n);
+    const wins=pls.filter(p=>p>0).reduce((a,b)=>a+b,0),loss=Math.abs(pls.filter(p=>p<=0).reduce((a,b)=>a+b,0));
+    let eq=0,pk=0,dd=0,worst=0;
+    for(const p of pls){eq+=p;pk=Math.max(pk,eq);dd=Math.min(dd,eq-pk);worst=Math.min(worst,p)}
+    const fmt=v=>v<0?'\u2212$'+Math.abs(Math.round(v)).toLocaleString():'+$'+Math.round(v).toLocaleString();
+    const cards=document.querySelectorAll('.cards .card');
+    const set=(i,v,sub)=>{if(cards[i]){cards[i].querySelector('.v').textContent=v;if(sub)cards[i].querySelector('.s').textContent=sub}};
+    set(0,fmt(tot),n+' trades');set(1,(100*w/n).toFixed(1)+'%',w+'W \u00b7 '+(n-w)+'L');
+    set(2,fmt(avg),'t-stat '+t.toFixed(2));set(3,(wins/loss).toFixed(2));
+    set(4,fmt(worst));set(5,fmt(dd));
+    const h=[...document.querySelectorAll('h2')].find(x=>x.textContent.includes('Trade log'));
+    if(h)h.innerHTML='Trade log \u2014 all '+n;
+    const poly=document.querySelector('svg .eq');
+    if(poly){
+      const lo=Math.min(0,...D.map(r=>r[10])),hi=Math.max(...D.map(r=>r[10]));
+      const X=i=>52+(i/(D.length-1))*838,Y=v=>14+(1-(v-lo)/(hi-lo))*200;
+      poly.setAttribute('points',D.map((r,i)=>X(i).toFixed(1)+','+Y(r[10]).toFixed(1)).join(' '));
+    }
+  }
+  render();
+}
 (async()=>{try{
   const r=await fetch('https://schwab-proxy.ravamt4.workers.dev/spreads-paper');
   const j=await r.json();
@@ -171,16 +202,17 @@ render();
   if(t.startsWith('skip:'))t='skipped ('+t.slice(5)+' day)';
   if(t.startsWith('no-trade'))t='no trade (book in dead zone)';
   if(t.startsWith('trade:'))t=t.slice(6)+' spread triggered';
-  document.getElementById('lpToday').textContent='today: '+t+(j.open?` — OPEN: ${j.open.side} ${j.open.short}/${j.open.long} @ $${j.open.credit.toFixed(2)}`:'');
+  document.getElementById('lpToday').textContent='today: '+t+(j.open?` \u2014 OPEN: ${j.open.side} ${j.open.short}/${j.open.long} @ $${j.open.credit.toFixed(2)}`:'');
   const fmt=n=>n<0?'\u2212$'+Math.abs(n).toLocaleString():'+$'+n.toLocaleString();
-  if(j.log.length){
+  if(j.log&&j.log.length){
     const pls=j.log.map(x=>x.pl), w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
-    document.getElementById('lpStats').innerHTML=`live so far: <b style="color:var(--text)">${j.log.length}</b> trades \u00b7 WR <b style="color:var(--text)">${(100*w/j.log.length).toFixed(0)}%</b> \u00b7 total <b class="${tot>=0?'pos':'neg'}">${fmt(Math.round(tot))}</b> \u00b7 avg ${fmt(Math.round(tot/j.log.length))}/trade \u00b7 backtest pace: +$71/trade`;
+    document.getElementById('lpStats').innerHTML=`live so far: <b style="color:var(--text)">${j.log.length}</b> trades \u00b7 WR <b style="color:var(--text)">${(100*w/j.log.length).toFixed(0)}%</b> \u00b7 total <b class="${tot>=0?'pos':'neg'}">${fmt(Math.round(tot))}</b> \u00b7 avg ${fmt(Math.round(tot/j.log.length))}/trade \u00b7 backtest pace: +$70/trade`;
     document.querySelector('#lpLog tbody').innerHTML=[...j.log].reverse().map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td><span class="side ${x.side}">${x.side}</span></td><td>${x.short}</td><td>${x.long}</td><td>$${x.credit.toFixed(2)}</td><td>${x.gexB>0?'+':''}${x.gexB}</td><td>${x.settle?x.settle.toFixed(2):'\u2014'}</td><td class="${x.pl>0?'pos':'neg'}">${fmt(x.pl)}</td></tr>`).join('');
   } else document.getElementById('lpStats').textContent='no settled trades yet.';
-  if(j.open&&!j.log.some(x=>x.date===j.open.date)){
+  if(j.open&&!(j.log||[]).some(x=>x.date===j.open.date)){
     document.querySelector('#lpLog tbody').insertAdjacentHTML('afterbegin',`<tr><td>${j.open.n}</td><td>${j.open.date}</td><td><span class="side ${j.open.side}">${j.open.side}</span></td><td>${j.open.short}</td><td>${j.open.long}</td><td>$${j.open.credit.toFixed(2)}</td><td>${j.open.gexB>0?'+':''}${j.open.gexB}</td><td colspan="2" style="color:var(--amber)">OPEN \u2014 settles at close</td></tr>`);
   }
-}catch(e){document.getElementById('lpStats').textContent='live feed unavailable: '+e.message}
+  mergeLive(j);
+}catch(e){document.getElementById('lpStats').textContent='live feed unavailable: '+e.message; render();}
 })();
 </script></body></html>

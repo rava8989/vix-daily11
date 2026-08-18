@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Spreads Router — Σ3 Paper Program</title>
+<title>Spreads Router — Σ3</title>
 <style>
 :root{--bg:#0e1013;--surface:#161a20;--surface2:#1c212a;--border:#262c37;--text:#e7eaf0;--muted:#8b93a3;--accent:#62d5b4;--win:#4caf7d;--loss:#e66767;--amber:#e0a63c}
 *{box-sizing:border-box;margin:0}
@@ -48,7 +48,7 @@ ul{padding-left:18px}
 </style></head><body><div class="wrap">
 
 <h1>Spreads Router</h1>
-<div class="sub">SPX 0DTE gamma-routed credit spreads &mdash; full study record &amp; trade log &middot; status: <b style="color:var(--amber)">PAPER-TRACK</b> (not live)</div>
+<div class="sub">SPX 0DTE gamma-routed credit spreads &mdash; live signals &amp; full study record</div>
 <div class="params">
 <span class="chip">Jun 2023 &rarr; Jul 21 2026 &middot; 777 sessions</span>
 <span class="chip">banked SPX chain mids, 5-min</span>
@@ -58,19 +58,18 @@ ul{padding-left:18px}
 </div>
 
 
-<h2>Live paper program</h2>
+<h2>Live trades</h2>
 <div class="panel" id="livePanel">
   <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-bottom:10px">
-    <div><span style="font-size:22px;font-weight:600" id="lpCount">–</span><span style="color:var(--muted)"> / 40 paper trades</span></div>
-    <div style="flex:1;min-width:160px;height:8px;background:var(--surface2);border-radius:99px;overflow:hidden"><div id="lpBar" style="height:8px;width:0%;background:var(--accent)"></div></div>
+    <div><span style="font-size:22px;font-weight:600" id="lpCount">–</span><span style="color:var(--muted)"> trades</span></div>
     <div id="lpToday" style="font-size:13px;color:var(--muted)">today: …</div>
   </div>
   <div id="lpStats" class="note" style="margin-bottom:10px">loading…</div>
   <div class="logbox" style="max-height:40vh"><table id="lpLog">
     <thead><tr><th>#</th><th>date</th><th>side</th><th>short</th><th>long</th><th>credit</th><th>gex B</th><th>settle</th><th>P/L</th></tr></thead>
-    <tbody><tr><td colspan="9" style="text-align:center;color:var(--muted)">no paper trades yet — program armed, first evaluation next session at noon ET</td></tr></tbody>
+    <tbody><tr><td colspan="9" style="text-align:center;color:var(--muted)">no trades yet — first evaluation next session at noon ET</td></tr></tbody>
   </table></div>
-  <div class="note" style="margin-top:8px">Signals fire live: noon book &le; &minus;10B &rarr; call spread &middot; 1 PM book &gt; 0 &rarr; put spread &middot; trap days skipped. Card goes out when it triggers; settles at the close automatically. <b>Paper only — nothing is executed.</b> Decision at 40 samples.</div>
+  <div class="note" style="margin-top:8px">Signals fire live: noon book &le; &minus;10B &rarr; call spread &middot; 1 PM book &gt; 0 &rarr; put spread &middot; trap days skipped. Card goes out when it triggers; settles at the close automatically.</div>
 </div>
 
 <h2>Backtest — the full study</h2><div class="cards">
@@ -140,7 +139,7 @@ overlap vs live &Sigma;3 book: corr +0.29; on the book&rsquo;s 10 worst days &md
 
 <h2>Honest print</h2>
 <div class="panel note">
-Posted credits verified against banked NBBO mids (median diff $0.00 &plusmn;$0.15). ~4,200 variant/filter combinations were graded across five rounds to reach this spec &mdash; at that search width, a t=4.01 result must be treated as <b style="color:var(--text)">bar-touching, not proven</b>. The calendar filter matches pre-existing house rules (the same days the straddle, BOBF, M8BF and PNBF already avoid), which is why it&rsquo;s admissible. 2026 standalone runs +$53/day at t=1.2 &mdash; right direction, thin sample. <b style="color:var(--amber)">Protocol: paper-log this exact spec ~40 trades (&asymp;3 months); it earns a deploy conversation only if the paper rate holds.</b> Commissions (~$2.60/spread) not modeled &mdash; shave ~4% off the averages. Backtest data: banked SPX chain mids, 777 sessions.
+Posted credits verified against banked NBBO mids (median diff $0.00 &plusmn;$0.15). ~4,200 variant/filter combinations were graded across five rounds to reach this spec &mdash; at that search width, a t=4.01 result must be treated as <b style="color:var(--text)">bar-touching, not proven</b>. The calendar filter matches pre-existing house rules (the same days the straddle, BOBF, M8BF and PNBF already avoid), which is why it&rsquo;s admissible. 2026 standalone runs +$53/day at t=1.2 &mdash; right direction, thin sample. The live log above is the confirmation test. Commissions (~$2.60/spread) not modeled &mdash; shave ~4% off the averages. Backtest data: banked SPX chain mids, 777 sessions.
 </div>
 
 </div>
@@ -166,7 +165,6 @@ render();
   const r=await fetch('https://schwab-proxy.ravamt4.workers.dev/spreads-paper');
   const j=await r.json();
   document.getElementById('lpCount').textContent=j.count;
-  document.getElementById('lpBar').style.width=Math.min(100,100*j.count/j.target)+'%';
   let t=j.today==='pending'?'no signal yet':j.today;
   if(t.startsWith('skip:'))t='skipped ('+t.slice(5)+' day)';
   if(t.startsWith('no-trade'))t='no trade (book in dead zone)';
@@ -175,9 +173,9 @@ render();
   const fmt=n=>n<0?'\u2212$'+Math.abs(n).toLocaleString():'+$'+n.toLocaleString();
   if(j.log.length){
     const pls=j.log.map(x=>x.pl), w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
-    document.getElementById('lpStats').innerHTML=`paper so far: <b style="color:var(--text)">${j.log.length}</b> trades \u00b7 WR <b style="color:var(--text)">${(100*w/j.log.length).toFixed(0)}%</b> \u00b7 total <b class="${tot>=0?'pos':'neg'}">${fmt(Math.round(tot))}</b> \u00b7 avg ${fmt(Math.round(tot/j.log.length))}/trade \u00b7 backtest pace: +$71/trade`;
+    document.getElementById('lpStats').innerHTML=`live so far: <b style="color:var(--text)">${j.log.length}</b> trades \u00b7 WR <b style="color:var(--text)">${(100*w/j.log.length).toFixed(0)}%</b> \u00b7 total <b class="${tot>=0?'pos':'neg'}">${fmt(Math.round(tot))}</b> \u00b7 avg ${fmt(Math.round(tot/j.log.length))}/trade \u00b7 backtest pace: +$71/trade`;
     document.querySelector('#lpLog tbody').innerHTML=[...j.log].reverse().map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td><span class="side ${x.side}">${x.side}</span></td><td>${x.short}</td><td>${x.long}</td><td>$${x.credit.toFixed(2)}</td><td>${x.gexB>0?'+':''}${x.gexB}</td><td>${x.settle?x.settle.toFixed(2):'\u2014'}</td><td class="${x.pl>0?'pos':'neg'}">${fmt(x.pl)}</td></tr>`).join('');
-  } else document.getElementById('lpStats').textContent='no settled paper trades yet.';
+  } else document.getElementById('lpStats').textContent='no settled trades yet.';
   if(j.open&&!j.log.some(x=>x.date===j.open.date)){
     document.querySelector('#lpLog tbody').insertAdjacentHTML('afterbegin',`<tr><td>${j.open.n}</td><td>${j.open.date}</td><td><span class="side ${j.open.side}">${j.open.side}</span></td><td>${j.open.short}</td><td>${j.open.long}</td><td>$${j.open.credit.toFixed(2)}</td><td>${j.open.gexB>0?'+':''}${j.open.gexB}</td><td colspan="2" style="color:var(--amber)">OPEN \u2014 settles at close</td></tr>`);
   }

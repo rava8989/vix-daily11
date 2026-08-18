@@ -511,11 +511,11 @@ async function spreadsRouterDM(env, etNow) {
   const why = t.side === 'CALL'
     ? `book ${t.gexB}B at noon — deep negative, betting no afternoon rally`
     : `book +${t.gexB}B at 1 PM — pinned, betting no afternoon dump`;
-  const msg = `🧭 **Spreads Router — paper trade #${t.n} of 40**\n` +
+  const msg = `🧭 **Spreads Router — trade #${t.n}**\n` +
     `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide)\n` +
-    `credit ≈ $${t.credit.toFixed(2)} (mid − $0.20 slip) · max risk ~$${risk}/lot\n` +
+    `credit ≈ $${t.credit.toFixed(2)} · max risk ~$${risk}/lot\n` +
     `${why}\n` +
-    `PAPER ONLY — no order placed · settles at the close · log: spreads.html`;
+    `settles at the close · spreads.html`;
   let ok = false;
   try {
     const dcRaw = await env.SIGNAL_KV.get('discord_config');
@@ -15963,7 +15963,7 @@ export default {
       ]);
       const log = logRaw ? JSON.parse(logRaw) : [];
       return jsonResp({ date: d, today: doneRaw || 'pending',
-        open: openRaw ? JSON.parse(openRaw) : null, count: log.length, target: 40, log }, 200, pub);
+        open: openRaw ? JSON.parse(openRaw) : null, count: log.length, log }, 200, pub);
     }
     if (url.pathname === '/gexgate-today' && request.method === 'GET') {
       const pub = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };

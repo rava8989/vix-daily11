@@ -599,6 +599,26 @@ async function spreadsRouterSettle(env, etNow) {
   }
   await env.SIGNAL_KV.delete(`spreads_open_${d}`);
   console.log(`[spreads] settled #${t.n} ${t.side} ${t.short}/${t.long}: close ${c} → $${pl}`);
+  // Forward-test scorecard: every 10th settled trade, DM live pace vs the
+  // frozen backtest (+$84/trade, 78.1%). Claim-gated per milestone.
+  if (log.length > 0 && log.length % 10 === 0) {
+    const msKey = `spreads_ms_${log.length}`;
+    if ((await env.SIGNAL_KV.get(msKey)) !== 'sent' && (await claimSendSlot(env, msKey))) {
+      const pls = log.map(x => x.pl); const nn = pls.length;
+      const w = pls.filter(p => p > 0).length; const tot = pls.reduce((a, b) => a + b, 0);
+      const msg = `📊 **Spreads Router — forward test, ${nn} trades in**\n` +
+        `live: ${(100 * w / nn).toFixed(0)}% WR · $${(tot / nn).toFixed(0)}/trade · total ${tot >= 0 ? '+' : ''}$${Math.round(tot).toLocaleString()}\n` +
+        `backtest pace: 78% · +$84/trade\n` +
+        `${tot / nn >= 60 ? 'on pace' : tot / nn >= 30 ? 'below pace — watching' : 'well below pace — review at 40'} · spreads.html`;
+      let ok = false;
+      try {
+        const dcRaw = await env.SIGNAL_KV.get('discord_config');
+        if (dcRaw) { const dc = JSON.parse(dcRaw); if (dc.channelId) { const r = await sendDiscordDM(env, dc.channelId, msg, dc.proxyUrl); ok = !!(r && r.ok); } }
+      } catch (_) {}
+      if (ok) await env.SIGNAL_KV.put(msKey, 'sent', { expirationTtl: 90 * 86400 });
+      else { try { await env.SIGNAL_KV.delete(msKey); } catch (_) {} }
+    }
+  }
 }
 
 // VIX-surface snapshot (2026-06-11, optionsgelt-inspired VIX decomposition).

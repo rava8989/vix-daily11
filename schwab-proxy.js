@@ -442,9 +442,15 @@ async function spreadsRouterJob(env, etNow, masterChain) {
   const d = isoDateET(etNow);
   if (await env.SIGNAL_KV.get(`spreads_done_${d}`)) return;
 
-  // house calendar: same days the rest of the board avoids
-  if (cpiSch.includes(todayLong(etNow)) || isLastTradeMo(etNow) || isFirstTradeMo(etNow)) {
-    const why = cpiSch.includes(todayLong(etNow)) ? 'CPI' : (isLastTradeMo(etNow) ? 'EOM' : 'first-of-month');
+  // house calendar (owner 2026-08-18): CPI, EOM, first-of-month, post-OPEX VIX
+  // expiration (vixExpAfterOpex: 40% WR, −$278/tr in the study), and OPEX−1
+  // (both cohorts negative). Normal VIX-exp Wednesdays TRADE (+$96/tr).
+  const isOpexM1 = opexSch.includes(todayLong(nextTrade(etNow)));
+  if (cpiSch.includes(todayLong(etNow)) || isLastTradeMo(etNow) || isFirstTradeMo(etNow)
+      || isVixAfterOpexDay(etNow) || isOpexM1) {
+    const why = cpiSch.includes(todayLong(etNow)) ? 'CPI'
+      : isLastTradeMo(etNow) ? 'EOM' : isFirstTradeMo(etNow) ? 'first-of-month'
+      : isVixAfterOpexDay(etNow) ? 'vixexp-after-opex' : 'opex-1';
     await env.SIGNAL_KV.put(`spreads_done_${d}`, `skip:${why}`, { expirationTtl: 3 * 86400 });
     return;
   }
@@ -484,7 +490,7 @@ async function spreadsRouterJob(env, etNow, masterChain) {
   await spreadsOpenPaper(env, d, etNow, 'PUT', '13:00', pick, gexB, masterChain.spot);
 }
 
-const SPREADS_BT_N = 457;   // frozen backtest count (through 2026-08-18); live numbering continues from here
+const SPREADS_BT_N = 433;   // frozen backtest count (through 2026-08-18, vixexp-after-opex + opex-1 filtered); live numbering continues from here
 async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot) {
   // trade exists in KV BEFORE any Discord attempt (P27: state before send)
   const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
@@ -506,7 +512,8 @@ async function spreadsRouterHeadsUp(env, etNow) {
   const d = isoDateET(etNow);
   const done = await env.SIGNAL_KV.get(`spreads_done_${d}`);
   if (done) return;                                   // skip day or already decided
-  if (cpiSch.includes(todayLong(etNow)) || isLastTradeMo(etNow) || isFirstTradeMo(etNow)) return;
+  if (cpiSch.includes(todayLong(etNow)) || isLastTradeMo(etNow) || isFirstTradeMo(etNow)
+      || isVixAfterOpexDay(etNow) || opexSch.includes(todayLong(nextTrade(etNow)))) return;
   const gRaw = await env.SIGNAL_KV.get('gex_current_0dte');
   const g = gRaw ? JSON.parse(gRaw) : null;
   if (!(g && g.timestamp && (Date.now() / 1000 - g.timestamp) < 600 && typeof g.totalGex === 'number')) return;

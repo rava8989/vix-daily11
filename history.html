@@ -257,7 +257,13 @@
     <div class="strat-pill active" data-strat="bobf" onclick="toggleStrat('bobf')" ondblclick="soloStrat('bobf')">BOBF</div>
     <div class="strat-pill active" data-strat="diagonal" onclick="toggleStrat('diagonal')" ondblclick="soloStrat('diagonal')" title="1/25 put-diagonal — entry anywhere in the 12:30–15:00 ET window, exit at the same clock time next day (24-hour hold, Entry Time === Exit Time, one diagonal active at a time); sDTE=1, +10 ITM, lDTE=25, −20 below (long 10 OTM, width 20); OPEX-1 + EOM + EOM-1 + NM + VIX 50–80% + COR1M≥10 excluded (default; 2026-06-09 safer-tail retune from 30/40 + VIX 50-90)">Diagonal</div>
     <div class="strat-pill active" data-strat="scalp" onclick="toggleStrat('scalp')" ondblclick="soloStrat('scalp')" title="PNBF — 30-wide 0DTE SPXW call fly bought ON the day's gamma magnet at 12:00 ET when the M8BF service's fly center sits exactly 5 pts from the magnet (T1 IS the magnet) and the debit ≤ $17.00. Skips EOM, CPI, FED, and Mon–Thu of monthly OPEX week. OCO bracket TP +3.0 / SL −5.0. Traded at 10 contracts; scalpPL is already 10-lot-sized dollars. Live record on magnetfly.html.">🧲 PNBF</div>
+    <span style="width:1px;background:var(--border);margin:2px 6px;"></span>
+    <div class="strat-pill size-pill active" data-size="current" onclick="setSizing('current')" style="border-color:#14b8a6;" title="All sleeves at recorded size (PNBF 10 lots).">Current</div>
+    <div class="strat-pill size-pill" data-size="defensive" onclick="setSizing('defensive')" style="border-color:#14b8a6;" title="Same profit, −38% drawdown: M8BF ×1 · Strad ×0.5 · GXBF ×0.5 · BOBF ×1 · Diag ×1 · PNBF 4 lots (2026-08-18 combo study).">🛡 Defensive</div>
+    <div class="strat-pill size-pill" data-size="growth" onclick="setSizing('growth')" style="border-color:#14b8a6;" title="Nothing cut, winners sized up: M8BF ×2 · Strad ×1 · GXBF ×1 · BOBF ×1.5 · Diag ×2 · PNBF 6 lots.">📈 Growth</div>
+    <div class="strat-pill size-pill" data-size="max" onclick="setSizing('max')" style="border-color:#14b8a6;" title="Best risk-adjusted book from the 28k-combo grid: M8BF ×2 · Strad ×1 · GXBF ×0.5 · BOBF ×1.5 · Diag ×2 · PNBF 6 lots.">⚡ Max Quality</div>
   </div>
+  <div id="sizingNote" style="display:none;margin:6px 24px 0;padding:8px 14px;background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.35);border-radius:8px;font-size:12px;color:var(--text2);"></div>
 
   <div class="filter-bar" id="filterBar">
     <div class="filter-group">
@@ -700,16 +706,40 @@ function renderPortfolioRisk(visibleRows) {
 // STATS
 // ══════════════════════════════════════════════════════════════
 
+// ── Sizing presets (2026-08-18 combo study — see spreads.html for the two
+//    new sleeves; router excluded here: live only from 8/19). Weights are
+//    multiples of current size; scalp/PNBF is recorded at 10 lots, so 0.4 = 4 lots.
+const SIZING_PRESETS = {
+  current:   { label:'Current',   m8bf:1, strad:1,   gxbf:1,   bobf:1,   diagonal:1, scalp:1   },
+  defensive: { label:'Defensive', m8bf:1, strad:0.5, gxbf:0.5, bobf:1,   diagonal:1, scalp:0.4 },
+  growth:    { label:'Growth',    m8bf:2, strad:1,   gxbf:1,   bobf:1.5, diagonal:2, scalp:0.6 },
+  max:       { label:'Max Quality', m8bf:2, strad:1, gxbf:0.5, bobf:1.5, diagonal:2, scalp:0.6 },
+};
+let SIZE_W = SIZING_PRESETS.current;
+function setSizing(name) {
+  SIZE_W = SIZING_PRESETS[name] || SIZING_PRESETS.current;
+  document.querySelectorAll('.size-pill').forEach(p =>
+    p.classList.toggle('active', p.dataset.size === name));
+  const note = document.getElementById('sizingNote');
+  if (note) note.style.display = (name === 'current') ? 'none' : '';
+  if (note && name !== 'current') {
+    const w = SIZE_W;
+    note.textContent = `Sizing preset: ${w.label} — M8BF ×${w.m8bf} · Strad ×${w.strad} · GXBF ×${w.gxbf} · BOBF ×${w.bobf} · Diag ×${w.diagonal} · PNBF ${Math.round(w.scalp*10)} lots. Totals, stats, curves and streaks are re-weighted; per-strategy columns stay at recorded size. Router not included (live from Aug 19).`;
+  }
+  applyFilters();
+}
+
 function getRowPL(row) {
   // Returns the active P/L for this row based on activeStrats, or null
   const s = row.signal || {};
+  const W = SIZE_W;
   let pl = 0, hasTrade = false;
-  if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) { pl += row.m8bfPL; hasTrade = true; }
-  if (activeStrats.strad && s.stradRan && row.stradPL != null) { pl += row.stradPL; hasTrade = true; }
-  if (activeStrats.gxbf && row.gxbfPL != null) { pl += row.gxbfPL; hasTrade = true; }
-  if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { pl += row.bobfPL; hasTrade = true; }
-  if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { pl += row.diagPL; hasTrade = true; }  // diagPL===0 = no-trade day, not a flat trade
-  if (activeStrats.scalp && row.scalpPL != null) { pl += row.scalpPL; hasTrade = true; }
+  if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) { pl += W.m8bf * row.m8bfPL; hasTrade = true; }
+  if (activeStrats.strad && s.stradRan && row.stradPL != null) { pl += W.strad * row.stradPL; hasTrade = true; }
+  if (activeStrats.gxbf && row.gxbfPL != null) { pl += W.gxbf * row.gxbfPL; hasTrade = true; }
+  if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { pl += W.bobf * row.bobfPL; hasTrade = true; }
+  if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { pl += W.diagonal * row.diagPL; hasTrade = true; }  // diagPL===0 = no-trade day, not a flat trade
+  if (activeStrats.scalp && row.scalpPL != null) { pl += W.scalp * row.scalpPL; hasTrade = true; }
   return hasTrade ? pl : null;
 }
 
@@ -762,13 +792,8 @@ function computeStats(visibleRows) {
   const sorted = visibleRows.slice().sort((a,b) => a.date.localeCompare(b.date));
   let cum = 0, peak = 0, maxDD = 0, peakAtMaxDD = 0;
   for (const row of sorted) {
-    const s = row.signal || {};
-    if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) cum += row.m8bfPL;
-    if (activeStrats.strad && s.stradRan && row.stradPL != null) cum += row.stradPL;
-    if (activeStrats.gxbf && row.gxbfPL != null) cum += row.gxbfPL;
-    if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) cum += row.bobfPL;
-    if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) cum += row.diagPL;  // diagPL===0 = no-trade day (matches getRowPL)
-    if (activeStrats.scalp && row.scalpPL != null) cum += row.scalpPL;
+    const dp = getRowPL(row);            // preset-weighted, same basis as everything else
+    if (dp != null) cum += dp;
     if (cum > peak) peak = cum;
     const dd = peak - cum;
     if (dd > maxDD) { maxDD = dd; peakAtMaxDD = peak; }

@@ -175,7 +175,7 @@ let side='ALL',yr='',q='';
 const fmt=n=>n<0?'\u2212$'+Math.abs(n).toLocaleString():'+$'+n.toLocaleString();
 function render(){
   let rows=D.filter(r=>(side=='ALL'||(side=='L'?r[9]<=0:r[3]==side))&&(!yr||r[0].startsWith(yr))&&(!q||r[0].includes(q)));
-  tb.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="side ${r[3]}">${r[3]}</span></td><td>${r[4]}</td><td>${r[5]}</td><td>$${r[6].toFixed(2)}</td><td>${r[7]>0?'+':''}${r[7].toFixed(1)}</td><td>${r[8]?r[8].toFixed(2):'\u2014'}</td><td class="${r[9]>0?'pos':'neg'}">${fmt(r[9])}</td><td>${fmt(r[10])}</td></tr>`).join('');
+  tb.innerHTML=[...rows].reverse().map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="side ${r[3]}">${r[3]}</span></td><td>${r[4]}</td><td>${r[5]}</td><td>$${r[6].toFixed(2)}</td><td>${r[7]>0?'+':''}${r[7].toFixed(1)}</td><td>${r[8]?r[8].toFixed(2):'\u2014'}</td><td class="${r[9]>0?'pos':'neg'}">${fmt(r[9])}</td><td>${fmt(r[10])}</td></tr>`).join('');
   const pls=rows.map(r=>r[9]);
   const w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
   document.getElementById('fsum').textContent=rows.length? `${rows.length} trades \u00b7 WR ${(100*w/rows.length).toFixed(1)}% \u00b7 total ${fmt(Math.round(tot))} \u00b7 avg ${fmt(Math.round(tot/rows.length))}` : 'no trades match';

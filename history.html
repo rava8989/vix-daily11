@@ -148,6 +148,10 @@
     .strat-pill[data-strat="spreads"]{background:rgba(20,184,166,.15);color:#14b8a6;border-color:#14b8a6;}
     .strat-pill.inactive{border-color:transparent;}
     .strat-pill.solo{box-shadow:0 0 0 3px var(--accent),0 0 12px rgba(99,102,241,.4);}
+    /* Sizing preset pills: pressed = filled teal, unpressed = dim outline */
+    .strat-pill.size-pill{background:transparent;color:#14b8a6;opacity:.65;}
+    .strat-pill.size-pill.active{background:#14b8a6;color:#0b1512;opacity:1;font-weight:700;box-shadow:0 0 10px rgba(20,184,166,.45);}
+    .strat-pill.size-pill.inactive{border-color:#14b8a6;}
 
     /* Filter bar */
     .filter-bar{display:flex;gap:16px;padding:12px 24px 0;flex-wrap:wrap;align-items:flex-start;}

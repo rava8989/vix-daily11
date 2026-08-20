@@ -490,6 +490,17 @@ async function spreadsRouterJob(env, etNow, masterChain) {
   await spreadsOpenPaper(env, d, etNow, 'PUT', '13:00', pick, gexB, masterChain.spot);
 }
 
+// Morning-card row: the calendar is knowable at 9:35; the gamma book decides
+// at noon/1 PM. Mirrors spreadsRouterJob's skip gate exactly.
+function spreadsCalendarBlock(etNow) {
+  if (cpiSch.includes(todayLong(etNow))) return 'CPI day';
+  if (isLastTradeMo(etNow)) return 'EOM';
+  if (isFirstTradeMo(etNow)) return 'first trading day';
+  if (isVixAfterOpexDay(etNow)) return 'post-OPEX VIX expiration';
+  if (opexSch.includes(todayLong(nextTrade(etNow)))) return 'OPEX\u22121';
+  return null;
+}
+
 const SPREADS_BT_N = 433;   // frozen backtest count (through 2026-08-18, vixexp-after-opex + opex-1 filtered); live numbering continues from here
 async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot) {
   // trade exists in KV BEFORE any Discord attempt (P27: state before send)
@@ -9107,7 +9118,7 @@ async function handleScheduledInner(env) {
   let result = null;
   try {
     const cardData = buildMorningCardData(signal, vixValues, tailLineCanon,
-      { block: mfCalendarBlock(toET(new Date())) });
+      { block: mfCalendarBlock(toET(new Date())), spreadsBlock: spreadsCalendarBlock(toET(new Date())) });
     const png = await renderMorningCardPng(cardData);
     // Footer rides as the message content (renders ABOVE the image in Discord)
     // so the live link + disclaimer sit on top of the card, link clickable.
@@ -12446,6 +12457,13 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
       ? { n: 'PNBF', det: pnbf.block, state: 'no' }
       : { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' });
   }
+  // Spreads Router (main strategy 2026-08-20): same 3-state convention —
+  // calendar-blocked reads NO, clear calendar reads POSSIBLE (book decides).
+  if (pnbf && 'spreadsBlock' in pnbf) {
+    rows.push(pnbf.spreadsBlock
+      ? { n: 'Spreads', det: pnbf.spreadsBlock, state: 'no' }
+      : { n: 'Spreads', det: 'noon ≤ −10B → call · 1 PM > 0 → put · 2 lots', state: 'possible' });
+  }
   const vix = (vixValues.todayOpen != null) ? String(vixValues.todayOpen) : '—';
   // Overnight VIX direction in plain words. oNight = priorClose − todayOpen:
   // positive = VIX FELL overnight ("down"); negative = VIX ROSE ("up").
@@ -12669,6 +12687,7 @@ const SAMPLE_MORNING_CARD = {
     // Tail Hedge row removed 2026-08-03 — strategy retired; the live builder
     // omits it via `if (tailLine)` since getTailHedgeStatusLine returns null.
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },
+    { n: 'Spreads', det: 'noon ≤ −10B → call · 1 PM > 0 → put · 2 lots', state: 'possible' },
   ],
   tiles: [['SPX GAP', '+0.91%', '#4ade80']],
   stats: [

@@ -456,6 +456,7 @@ body {
       <div class="sz-field"><label class="sz-label" for="szA_bobf">BOBF</label><div class="sz-wrap sz-p"><input id="szA_bobf" class="sz-input" type="number" value="5" min="0" max="100" step="1"></div></div>
       <div class="sz-field"><label class="sz-label" for="szA_diagonal">Diagonal</label><div class="sz-wrap sz-p"><input id="szA_diagonal" class="sz-input" type="number" value="5" min="0" max="100" step="1"></div></div>
       <div class="sz-field"><label class="sz-label" for="szA_scalp">PNBF</label><div class="sz-wrap sz-p"><input id="szA_scalp" class="sz-input" type="number" value="5" min="0" max="100" step="1"></div></div>
+      <div class="sz-field"><label class="sz-label" for="szA_spreads">Spreads</label><div class="sz-wrap sz-p"><input id="szA_spreads" class="sz-input" type="number" value="5" min="0" max="100" step="1"></div></div>
     </div>
 
     <!-- Allocation mode: Fixed weights (existing default) vs Auto-Tilt (rolling MAR).
@@ -489,6 +490,7 @@ body {
       <div class="sz-field"><label class="sz-label" for="szM_bobf">BOBF</label><div class="sz-wrap"><input id="szM_bobf" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
       <div class="sz-field"><label class="sz-label" for="szM_diagonal">Diagonal</label><div class="sz-wrap"><input id="szM_diagonal" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
       <div class="sz-field"><label class="sz-label" for="szM_scalp">PNBF</label><div class="sz-wrap"><input id="szM_scalp" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
+      <div class="sz-field"><label class="sz-label" for="szM_spreads">Spreads</label><div class="sz-wrap"><input id="szM_spreads" class="sz-input" type="number" placeholder="no cap" min="1" step="1"></div></div>
     </div>
 
     <div style="margin:4px 0 14px;">
@@ -676,7 +678,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // allocWeights — ported as a plain object (no Allocation Optimizer card on this
 // page; the self-contained best-Sharpe search below writes into it, then
 // _sizingUseOptimizer() reads it to fill the szA_* allocation fields).
-const allocWeights = { m8bf:5, strad:5, gxbf:5, bobf:5, diagonal:5, scalp:5 };
+const allocWeights = { m8bf:5, strad:5, gxbf:5, bobf:5, diagonal:5, scalp:5, spreads:5 };
 
 // ══════════════════════════════════════════════════════════════════════
 // Data loader — builds global allRows exactly as history.html's init() does:
@@ -728,6 +730,8 @@ async function loadHistory() {
       // is per-1-contract and the sim scales by `contracts`. Normalize to
       // per-1-lot (÷10) so PNBF sizes like the rest (capPerCt.scalp=$1,700).
       scalpPL: cur.scalpPL != null ? cur.scalpPL / 10 : null,
+      // Spreads Router spreadsPL is stored at the live 2-contract size → per-1-lot (÷2).
+      spreadsPL: cur.spreadsPL != null ? cur.spreadsPL / 2 : null,
     });
   }
   out.reverse();
@@ -746,7 +750,8 @@ async function loadHistory() {
     (r.bobfPL != null && r.bobfPL !== 0) ||
     (r.diagPL != null && r.diagPL !== 0) ||
     (r.tailPL != null && r.tailPL !== 0) ||
-    (r.scalpPL != null && r.scalpPL !== 0));
+    (r.scalpPL != null && r.scalpPL !== 0) ||
+    (r.spreadsPL != null && r.spreadsPL !== 0));
 
   const dn = document.getElementById('dataNotice');
   const hm = document.getElementById('hdrMeta');
@@ -776,13 +781,13 @@ async function loadHistory() {
 // contracts), but IS in this list so the engine evaluates it per-row.
 const _SZ_KEYS = [['m8bf','M8BF','m8bfPL'],['strad','Straddle','stradPL'],
   ['gxbf','GXBF','gxbfPL'],['bobf','BOBF','bobfPL'],['diagonal','Diagonal','diagPL'],
-  ['scalp','PNBF','scalpPL']]  // tail retired 2026-08-03;
+  ['scalp','PNBF','scalpPL'],['spreads','Spreads','spreadsPL']]  // tail retired 2026-08-03;
 
 // Strategies that use the % allocation model (the original Sigma 3 + Diagonal
 // + PNBF). Tail Hedge is fixed-contracts, NOT % allocation, so it's excluded.
 const _SZ_ALLOC_KEYS = [['m8bf','M8BF','m8bfPL'],['strad','Straddle','stradPL'],
   ['gxbf','GXBF','gxbfPL'],['bobf','BOBF','bobfPL'],['diagonal','Diagonal','diagPL'],
-  ['scalp','PNBF','scalpPL']];
+  ['scalp','PNBF','scalpPL'],['spreads','Spreads','spreadsPL']];
 
 function _szDays(aISO, bISO) {
   const A = aISO.split('-').map(Number), B = bISO.split('-').map(Number);
@@ -1038,7 +1043,7 @@ function _sizingRun() {
   // Max risk per contract — FIXED hard values, user-decided. NOT auto-calculated
   // (no historical drawdown, no stress multiplier). Change only on request.
   // tail: $200 = small-loss tail hedge (worst trade historically -$520 = capped by per-trade put debit).
-  const capPerCt = { m8bf: 3000, strad: 3500, gxbf: 5000, bobf: 1200, diagonal: 11000, scalp: 1700, tail: 200 };
+  const capPerCt = { m8bf: 3000, strad: 3500, gxbf: 5000, bobf: 1200, diagonal: 11000, scalp: 1700, spreads: 800, tail: 200 };
 
   // ── Path-dependent compounding portfolio simulation (Option Omega style):
   //    each day, each strategy's contracts = floor( alloc% × CURRENT equity ÷
@@ -1063,7 +1068,7 @@ function _sizingRun() {
     let dayAlloc = allocPct;
     if (tiltOn && tiltActKeys.length && tiltTotal > 0) {
       const w = _tiltWeightsForDay(sorted, di, tiltActKeys, tiltP);
-      dayAlloc = { m8bf: 0, strad: 0, gxbf: 0, bobf: 0, diagonal: 0, scalp: 0 };
+      dayAlloc = { m8bf: 0, strad: 0, gxbf: 0, bobf: 0, diagonal: 0, scalp: 0, spreads: 0 };
       for (const [k] of tiltActKeys) dayAlloc[k] = tiltTotal * w[k];
       tiltTrack.push(Object.assign({ date: row.date }, dayAlloc));
     }
@@ -1234,7 +1239,7 @@ function _sizingRun() {
 // Auto-Tilt weights chart: stacked area of each strategy's allocation % of
 // equity over the run. Vanilla canvas (no chart lib on this page), DPR-aware.
 // Pass null (Fixed mode) to hide the box.
-const _TILT_COLORS = { m8bf:'#6366f1', strad:'#f59e0b', gxbf:'#22c55e', bobf:'#ec4899', diagonal:'#06b6d4', scalp:'#f43f5e' };
+const _TILT_COLORS = { m8bf:'#6366f1', strad:'#f59e0b', gxbf:'#22c55e', bobf:'#ec4899', diagonal:'#06b6d4', scalp:'#f43f5e', spreads:'#14b8a6' };
 function _tiltRenderWeights(track) {
   const box = document.getElementById('tiltWeightsBox');
   if (!box) return;
@@ -1656,7 +1661,7 @@ document.getElementById('exportDailyBtn').addEventListener('click', () => {
 // ══════════════════════════════════════════════════════════════════════
 let mcChart = null;
 let allocChart = null;
-const activeStrats = { m8bf:true, strad:true, gxbf:true, bobf:true, diagonal:true, scalp:true };
+const activeStrats = { m8bf:true, strad:true, gxbf:true, bobf:true, diagonal:true, scalp:true, spreads:true };
 
 // Full allRows with a `signal` shim so the verbatim history.html bodies
 // (which read row.signal.m8bfRan / stradRan / bobfBadge) run unchanged and
@@ -1790,8 +1795,8 @@ function renderCorrelationMoved() {
   if (!sorted.length) { card.style.display='none'; return; }
   card.style.display = '';
 
-  const strats = ['m8bf','strad','gxbf','bobf','diagonal','scalp'];
-  const stratLabels = {m8bf:'M8BF', strad:'Straddle', gxbf:'GXBF', bobf:'BOBF', diagonal:'Diagonal', scalp:'PNBF'};
+  const strats = ['m8bf','strad','gxbf','bobf','diagonal','scalp','spreads'];
+  const stratLabels = {m8bf:'M8BF', strad:'Straddle', gxbf:'GXBF', bobf:'BOBF', diagonal:'Diagonal', scalp:'PNBF', spreads:'Spreads'};
 
   // Build daily P/L by strategy
   const dailyPL = {};
@@ -1814,6 +1819,7 @@ function renderCorrelationMoved() {
     // PNBF: scalpPL non-null = it traded (correlation is scale-invariant, so
     // the per-lot ÷10 normalization on allRows doesn't affect the coefficient).
     if (row.scalpPL != null) dailyPL.scalp[row.date] = row.scalpPL;
+    if (row.spreadsPL != null) dailyPL.spreads[row.date] = row.spreadsPL;
   }
 
   function pearson(a, b) {

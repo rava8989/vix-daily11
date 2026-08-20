@@ -260,6 +260,39 @@
     <details class="params"><summary>Key parameters</summary><p>30-wide 0DTE SPXW call fly (magnet −30 / magnet / magnet +30), entry 12:00 ET, debit cap $17.00, OCO TP +3.00 / SL −5.00, tracked at 10 contracts. Skips EOM, CPI, FED, mid-OPEX week (Mon–Thu). ~4 signals/month. Backtest Sep 2024 → Jun 2026: 87 trades, 83.9% WR, +$171/lot avg, PF 3.13, max DD $1,000/lot, every year green. Live record: <a href="magnetfly.html">magnetfly.html</a>. Added to Σ3 2026-07-15.</p></details>
   </section>
 
+  <!-- Spreads Router (main strategy 2026-08-19) -->
+  <section class="card">
+    <div class="chead"><span class="dot" style="background:#14b8a6"></span><h2>Spreads Router</h2><span class="tag">Gamma-routed credit spread · one per day · 2 contracts</span></div>
+    <p class="oneliner">One 10-wide SPX 0DTE credit spread a day, side picked by the gamma book: deep-negative books don&rsquo;t rally back (sell calls), pinned books don&rsquo;t dump (sell puts).</p>
+    <div class="payoff">
+      <svg viewBox="0 0 480 170" role="img" aria-label="Credit spread payoff: full credit kept below the short strike, capped loss above the long strike">
+        <line class="zero" x1="40" y1="120" x2="440" y2="120"/><text class="plm" x="44" y="116">$0</text>
+        <polyline class="line" points="40,88 220,88 320,150 440,150"/>
+        <line class="tick" x1="220" y1="120" x2="220" y2="156"/><line class="tick" x1="320" y1="120" x2="320" y2="156"/>
+        <text class="pl" x="220" y="168" text-anchor="middle" style="fill:var(--text)">short</text><text class="pl" x="320" y="168" text-anchor="middle">long (+10)</text>
+        <text class="plg" x="120" y="80" text-anchor="middle">KEEP THE CREDIT</text>
+        <text class="plr" x="392" y="144" text-anchor="middle">max loss = width − credit</text>
+      </svg>
+    </div>
+    <div class="cols">
+      <div><h3>WHEN IT FIRES</h3><ul>
+        <li><b>12:00 ET:</b> 0DTE book &le; &minus;10B &rarr; SELL call spread, credit target &asymp;$4.00 (short strike lands near the money)</li>
+        <li><b>13:00 ET</b> (only if noon didn&rsquo;t fire): book &gt; 0 &rarr; SELL put spread, credit target &asymp;$2.50</li>
+        <li>Neither condition &rarr; no trade (dead-zone book)</li>
+        <li>Hold to settlement — no exits, no stops; risk structurally capped</li>
+      </ul></div>
+      <div><h3>BLOCKED WHEN</h3><ul>
+        <li>CPI day</li>
+        <li>Last trading day of the month (EOM)</li>
+        <li>First trading day of the month</li>
+        <li>Day before OPEX</li>
+        <li>Post-OPEX VIX expiration (normal VIX-exp Wednesdays trade)</li>
+      </ul></div>
+    </div>
+    <div class="bet"><h3>THE BET</h3><p>The gamma book&rsquo;s sign at midday predicts which side of the market is dead for the afternoon — sell that side, collect the credit at the close. Backtest Jun 2023 &rarr; Aug 2026: 433 trades, 78.1% win rate, +$84/contract average, worst day &minus;$798/contract. Default size 2 contracts. Full record and live log: <a href="spreads.html">spreads.html</a>.</p></div>
+    <details class="params"><summary>Key parameters</summary><p>10-wide verticals only. Credit targets: $4.00 &plusmn;$1.00 (call side), $2.50 &plusmn;$0.63 (put side) — strike auto-scanned to hit the target. Fills modeled at mid &minus; $0.20. One decision per window (12:00&ndash;12:20 / 13:00&ndash;13:20 eval-once). Signals fan out to the channel + subscriber DMs; settles automatically vs the SPX close; live results merge into the site record.</p></details>
+  </section>
+
   <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:8px;">Payoff diagrams are illustrative shapes, not to scale. Informational only — not financial advice.</p>
 </main>
 </body>

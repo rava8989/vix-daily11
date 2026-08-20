@@ -257,6 +257,7 @@
     <div class="strat-pill active" data-strat="bobf" onclick="toggleStrat('bobf')" ondblclick="soloStrat('bobf')">BOBF</div>
     <div class="strat-pill active" data-strat="diagonal" onclick="toggleStrat('diagonal')" ondblclick="soloStrat('diagonal')" title="1/25 put-diagonal — entry anywhere in the 12:30–15:00 ET window, exit at the same clock time next day (24-hour hold, Entry Time === Exit Time, one diagonal active at a time); sDTE=1, +10 ITM, lDTE=25, −20 below (long 10 OTM, width 20); OPEX-1 + EOM + EOM-1 + NM + VIX 50–80% + COR1M≥10 excluded (default; 2026-06-09 safer-tail retune from 30/40 + VIX 50-90)">Diagonal</div>
     <div class="strat-pill active" data-strat="scalp" onclick="toggleStrat('scalp')" ondblclick="soloStrat('scalp')" title="PNBF — 30-wide 0DTE SPXW call fly bought ON the day's gamma magnet at 12:00 ET when the M8BF service's fly center sits exactly 5 pts from the magnet (T1 IS the magnet) and the debit ≤ $17.00. Skips EOM, CPI, FED, and Mon–Thu of monthly OPEX week. OCO bracket TP +3.0 / SL −5.0. Traded at 10 contracts; scalpPL is already 10-lot-sized dollars. Live record on magnetfly.html.">🧲 PNBF</div>
+    <div class="strat-pill active" data-strat="spreads" onclick="toggleStrat('spreads')" ondblclick="soloStrat('spreads')" title="Spreads Router — gamma-routed 10-wide SPX 0DTE credit spread, one/day: noon book ≤ −10B → sell CALL spread ~$4.00 credit; else 1 PM book > 0 → sell PUT spread ~$2.50 credit; skips CPI, EOM, first-of-month, OPEX−1, post-OPEX VIX expiration. Hold to settlement. Default 2 contracts; spreadsPL is 2-contract dollars. Live from Aug 19 2026 — full record on spreads.html.">⇄ Spreads</div>
     <span style="width:1px;background:var(--border);margin:2px 6px;"></span>
     <div class="strat-pill size-pill active" data-size="current" onclick="setSizing('current')" style="border-color:#14b8a6;" title="All sleeves at recorded size (PNBF 10 lots).">Current</div>
     <div class="strat-pill size-pill" data-size="defensive" onclick="setSizing('defensive')" style="border-color:#14b8a6;" title="Same profit, −38% drawdown: M8BF ×1 · Strad ×0.5 · GXBF ×0.5 · BOBF ×1 · Diag ×1 · PNBF 4 lots (2026-08-18 combo study).">🛡 Defensive</div>
@@ -437,7 +438,7 @@ let rows = [];
 let sortCol = null;
 let sortAsc = true;
 let currentMonths = 0;
-const activeStrats = { m8bf:true, strad:true, gxbf:true, bobf:true, diagonal:true, scalp:true };  // tail retired 2026-08-03
+const activeStrats = { m8bf:true, strad:true, gxbf:true, bobf:true, diagonal:true, scalp:true, spreads:true };  // tail retired 2026-08-03
 let soloKey = null;
 let activeDays = {1:true,2:true,3:true,4:true,5:true};
 let vixRegime = 'all';
@@ -618,6 +619,7 @@ function applyFilters() {
 const PR_STRATS = [
   ['M8BF', r => (r.signal || {}).m8bfRan && r.m8bfPL != null ? r.m8bfPL : null],
   ['Strad', r => (r.signal || {}).stradRan && r.stradPL != null ? r.stradPL : null],
+  ['Spreads', r => r.spreadsPL != null ? r.spreadsPL : null],
   ['BOBF', r => (r.signal || {}).bobfBadge !== 'BLOCKED' && r.bobfPL != null ? r.bobfPL : null],
   ['GXBF', r => r.gxbfPL != null ? r.gxbfPL : null],
   ['Diag', r => (r.diagPL != null && r.diagPL !== 0) ? r.diagPL : null],
@@ -710,10 +712,10 @@ function renderPortfolioRisk(visibleRows) {
 //    new sleeves; router excluded here: live only from 8/19). Weights are
 //    multiples of current size; scalp/PNBF is recorded at 10 lots, so 0.4 = 4 lots.
 const SIZING_PRESETS = {
-  current:   { label:'Current',   m8bf:1, strad:1,   gxbf:1,   bobf:1,   diagonal:1, scalp:1   },
-  defensive: { label:'Defensive', m8bf:1, strad:0.5, gxbf:0.5, bobf:1,   diagonal:1, scalp:0.4 },
-  growth:    { label:'Growth',    m8bf:2, strad:1,   gxbf:1,   bobf:1.5, diagonal:2, scalp:0.6 },
-  max:       { label:'Max Quality', m8bf:2, strad:1, gxbf:0.5, bobf:1.5, diagonal:2, scalp:0.6 },
+  current:   { label:'Current',   m8bf:1, strad:1,   gxbf:1,   bobf:1,   diagonal:1, scalp:1,   spreads:1   },
+  defensive: { label:'Defensive', m8bf:1, strad:0.5, gxbf:0.5, bobf:1,   diagonal:1, scalp:0.4, spreads:0.5 },
+  growth:    { label:'Growth',    m8bf:2, strad:1,   gxbf:1,   bobf:1.5, diagonal:2, scalp:0.6, spreads:1 },
+  max:       { label:'Max Quality', m8bf:2, strad:1, gxbf:0.5, bobf:1.5, diagonal:2, scalp:0.6, spreads:1 },
 };
 let SIZE_W = SIZING_PRESETS.current;
 function setSizing(name) {
@@ -724,7 +726,7 @@ function setSizing(name) {
   if (note) note.style.display = (name === 'current') ? 'none' : '';
   if (note && name !== 'current') {
     const w = SIZE_W;
-    note.textContent = `Sizing preset: ${w.label} — M8BF ×${w.m8bf} · Strad ×${w.strad} · GXBF ×${w.gxbf} · BOBF ×${w.bobf} · Diag ×${w.diagonal} · PNBF ${Math.round(w.scalp*10)} lots. Totals, stats, curves and streaks are re-weighted; per-strategy columns stay at recorded size. Router not included (live from Aug 19).`;
+    note.textContent = `Sizing preset: ${w.label} — M8BF ×${w.m8bf} · Strad ×${w.strad} · GXBF ×${w.gxbf} · BOBF ×${w.bobf} · Diag ×${w.diagonal} · PNBF ${Math.round(w.scalp*10)} lots · Router ${Math.round((w.spreads!=null?w.spreads:1)*2)} lots. Totals, stats, curves and streaks are re-weighted; per-strategy columns stay at recorded size. `;
   }
   applyFilters();
 }
@@ -740,6 +742,7 @@ function getRowPL(row) {
   if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { pl += W.bobf * row.bobfPL; hasTrade = true; }
   if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { pl += W.diagonal * row.diagPL; hasTrade = true; }  // diagPL===0 = no-trade day, not a flat trade
   if (activeStrats.scalp && row.scalpPL != null) { pl += W.scalp * row.scalpPL; hasTrade = true; }
+  if (activeStrats.spreads && row.spreadsPL != null) { pl += (W.spreads != null ? W.spreads : 1) * row.spreadsPL; hasTrade = true; }
   return hasTrade ? pl : null;
 }
 
@@ -975,6 +978,7 @@ async function init() {
         bobfPL: cur.bobfPL != null ? cur.bobfPL : null,
         diagPL: cur.diagPL != null ? cur.diagPL : null,
         scalpPL: cur.scalpPL != null ? cur.scalpPL : null,   // PNBF — already 10-lot-sized dollars
+        spreadsPL: cur.spreadsPL != null ? cur.spreadsPL : null,   // Spreads Router — 2-contract dollars (live from 2026-08-19)
         prevWR: prevWR != null ? prevWR : null,
         signal,
         specialDayText: buildSpecialDayText(signal),
@@ -1020,6 +1024,7 @@ const cols = [
   { key:'bobfPL',      label:'BOBF',       type:'stratPL' },
   { key:'diagPL',      label:'Diagonal',   type:'stratPL' },
   { key:'scalpPL',     label:'🧲 PNBF',   type:'stratPL' },
+  { key:'spreadsPL',   label:'Spreads',    type:'stratPL' },
   { key:'totalPL',     label:'Total',      type:'stratPL' },
   { key:'specialDay',  label:'Special',    type:'string'  },
 ];

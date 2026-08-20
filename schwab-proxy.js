@@ -561,19 +561,17 @@ async function spreadsRouterDM(env, etNow) {
   const why = t.side === 'CALL'
     ? `book ${t.gexB}B at noon — deep negative, betting no afternoon rally`
     : `book +${t.gexB}B at 1 PM — pinned, betting no afternoon dump`;
-  const msg = `🧭 **Spreads Router — trade #${t.n}**\n` +
-    `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide)\n` +
-    `credit ≈ $${t.credit.toFixed(2)} · max risk ~$${risk}/lot\n` +
+  // MAIN-STRATEGY fanout (owner 2026-08-19): signals channel + every subscriber,
+  // default size 2 contracts. Trade state was written BEFORE this send (P27);
+  // the claim gates the whole fanout, 'sent' only after the fanout ran.
+  const msg = `🧭 **Σ3 Spreads Router — trade #${t.n}**\n` +
+    `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide) · **2 contracts**\n` +
+    `credit ≈ $${t.credit.toFixed(2)}/spread · max risk ~$${risk}/spread\n` +
     `${why}\n` +
-    `settles at the close · spreads.html`;
+    `settles at the close · https://rava8989.github.io/brave/spreads.html`;
   let ok = false;
-  try {
-    const dcRaw = await env.SIGNAL_KV.get('discord_config');
-    if (dcRaw) {
-      const dc = JSON.parse(dcRaw);
-      if (dc.channelId) { const r = await sendDiscordDM(env, dc.channelId, msg, dc.proxyUrl); ok = !!(r && r.ok); }
-    }
-  } catch (e) { console.warn('[spreads-dm]', e.message); }
+  try { const out = await fanoutSubscribers(env, msg); ok = true; console.log(`[spreads] card fanned out (${Array.isArray(out) ? out.length : 0} subs)`); }
+  catch (e) { console.warn('[spreads-fanout]', e.message); }
   if (ok) await env.SIGNAL_KV.put(dmKey, 'sent', { expirationTtl: 86400 });
   else { try { await env.SIGNAL_KV.delete(dmKey); } catch (_) {} }
 }
@@ -597,6 +595,22 @@ async function spreadsRouterSettle(env, etNow) {
     log.push({ ...t, status: 'settled', settle: c, pl });
     await env.SIGNAL_KV.put('spreads_paper_log', JSON.stringify(log.slice(-300)));
   }
+  // Main-strategy accounting (owner 2026-08-19): write spreadsPL to the day's
+  // history row at the DEFAULT SIZE (2 contracts) — log stays per-lot. Fresh
+  // read-modify-write, adds ONLY this field (history-safe-edit rule); the EOD
+  // writer is done by ~16:41 and this runs ≥16:45, retried on evening crons.
+  try {
+    const histRaw = await env.SIGNAL_KV.get('history_data');
+    if (histRaw) {
+      const hd = JSON.parse(histRaw);
+      const row2 = hd.find(r => r.date === t.date);
+      if (row2 && row2.spreadsPL == null) {
+        row2.spreadsPL = Math.round(pl * 2 * 10) / 10;
+        await env.SIGNAL_KV.put('history_data', JSON.stringify(hd));
+        console.log(`[spreads] history_data.spreadsPL = ${row2.spreadsPL} (2 contracts)`);
+      }
+    }
+  } catch (e) { console.warn('[spreads-hist]', e.message); }
   await env.SIGNAL_KV.delete(`spreads_open_${d}`);
   console.log(`[spreads] settled #${t.n} ${t.side} ${t.short}/${t.long}: close ${c} → $${pl}`);
   // Forward-test scorecard: every 10th settled trade, DM live pace vs the

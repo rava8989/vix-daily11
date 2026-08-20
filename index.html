@@ -674,6 +674,19 @@
       </div>
     </div>
 
+    <!-- CARD 8: Spreads Router (main strategy 2026-08-19, default 2 contracts) -->
+    <div class="scard" id="cardSpreads" title="Spreads Router — gamma-routed 10-wide SPX 0DTE credit spread, one per day, default 2 contracts. Noon 0DTE book ≤ −10B → SELL call spread ~$4.00 credit (deep-negative days don't rally back); else 1 PM book > 0 → SELL put spread ~$2.50 credit (pinned days don't dump); else no trade. Skips CPI, EOM, first-of-month, OPEX−1, post-OPEX VIX expiration. Hold to settlement, no exits. Backtest Jun 2023→Aug 2026: 433 trades, 78.1% WR, +$84/lot, PF 1.68, worst day −$798/lot. Full record + live log: spreads.html.">
+      <div class="scard-header">
+        <span class="scard-label">⇄ Spreads <span style="font-weight:400;font-size:10px;opacity:.7;letter-spacing:normal;text-transform:none">· 2 lots</span></span>
+        <span class="today-trade-pill" id="pillSpreads" style="display:none;">▶ TODAY'S TRADE</span>
+        <span class="scard-badge" id="spreadsBadge">—</span>
+      </div>
+      <div class="scard-body">
+        <div class="scard-main" id="spreadsRec">Loading…</div>
+        <div class="scard-reason" id="spreadsReason"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- CycleLab shape advisory (2026-06-10) — INFORMATIONAL ONLY -->
@@ -3693,6 +3706,44 @@
     }
   }
 
+
+
+  async function updateSpreadsStatus() {
+    const rec    = document.getElementById('spreadsRec');
+    const badge  = document.getElementById('spreadsBadge');
+    const reason = document.getElementById('spreadsReason');
+    const pill   = document.getElementById('pillSpreads');
+    if (!rec) return;
+    try {
+      const r = await fetch('https://schwab-proxy.ravamt4.workers.dev/spreads-paper', {cache:'no-store'});
+      const j = await r.json();
+      const settled = (j.log || []).find(x => x.date === j.date);
+      const t = j.open || settled || null;
+      let st, col, head, sub = '';
+      if (t) {
+        const closed = !!settled && !j.open;
+        st = closed ? 'SETTLED' : 'OPEN';
+        col = closed ? (t.pl >= 0 ? 'var(--green,#22c55e)' : 'var(--red,#ef4444)') : 'var(--green,#22c55e)';
+        head = `SELL ${t.side} spread ${t.short}/${t.long} · $${t.credit.toFixed(2)} cr · 2 contracts`;
+        sub = closed ? `settled ${t.settle != null ? t.settle.toFixed(2) : ''} → <b>${t.pl >= 0 ? '+' : ''}$${Math.round(t.pl*2)}</b> (2 lots)` : `book ${t.gexB > 0 ? '+' : ''}${t.gexB}B at ${t.entry} · risk ~$${Math.round((10 - t.credit)*200)} · settles at close`;
+      } else {
+        const td = j.today || 'pending';
+        if (td.startsWith('skip:')) { st = 'SKIP'; col = 'var(--text3)'; head = 'calendar skip — ' + td.slice(5); }
+        else if (td.startsWith('no-trade')) { st = 'NO TRADE'; col = 'var(--red,#ef4444)'; head = 'book in dead zone — no trade today'; }
+        else { st = 'WAIT'; col = 'var(--text3)'; head = 'noon ≤ −10B → call · 1 PM > 0 → put'; }
+        sub = 'one 10-wide credit spread/day · <a href="spreads.html" style="color:var(--accent)">record</a>';
+      }
+      if (badge) { badge.textContent = st; badge.style.color = col; badge.style.borderColor = col; }
+      if (pill) pill.style.display = (t && j.open) ? '' : 'none';
+      rec.innerHTML = `<span style="color:${col};">&#9679;</span> ${head}`;
+      if (reason) reason.innerHTML = sub;
+    } catch(e) {
+      if (badge) badge.textContent = '—';
+      rec.textContent = 'Spreads Router: feed unavailable. See spreads.html.';
+      if (reason) reason.innerHTML = '';
+    }
+  }
+
   document.addEventListener('DOMContentLoaded',()=>{
     initTheme();
     renderSched(SignalEngine.cpiSch,  'cpiSchedule');
@@ -3705,6 +3756,8 @@
     updateTailHedgeStatus();
     updateScalpM8bfStatus();
     setInterval(updateScalpM8bfStatus, 60000);   // PNBF live signal — refresh every 60s
+    updateSpreadsStatus();
+    setInterval(updateSpreadsStatus, 60000);     // Spreads Router — refresh every 60s
     // On CPI days only Diagonal trades, and Diagonal only needs today's VIX
     // open. 2026-06-10 (user request): do NOT disable the yesterday fields —
     // auto-filled values must ALWAYS stay manually editable so the user can

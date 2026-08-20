@@ -246,6 +246,9 @@
 <div class="main" id="scalpSection" style="display:none;">
   <!-- Dynamically rendered by renderScalp() — PNBF paper trade (magnetfly-today) -->
 </div>
+<div class="main" id="spreadsSection" style="display:none;">
+  <!-- Dynamically rendered by renderSpreads() — Spreads Router (/spreads-paper feed) -->
+</div>
 
 
 <script>
@@ -266,6 +269,8 @@
     #tailSection      .diag-title span{color:#ef4444;}
     #scalpSection     .diag-card{border-top:3px solid #bc8cff;background:linear-gradient(180deg,rgba(188,140,255,.07) 0%,var(--bg2) 60%);}
     #scalpSection     .diag-title span{color:#bc8cff;}
+    #spreadsSection   .diag-card{border-top:3px solid #14b8a6;background:linear-gradient(180deg,rgba(20,184,166,.07) 0%,var(--bg2) 60%);}
+    #spreadsSection   .diag-title span{color:#14b8a6;}
     /* M8BF lives inside #mainContent — apply violet accent to both the
        butterfly card (when triggered) and the diag-card (when waiting). */
     #mainContent .bf-card,
@@ -713,6 +718,59 @@ function renderScalp() {
     html.push(`</div>`);
     html.push(`<div style="font-size:13px;color:var(--text2);padding:2px 0;">${scalp.headline || 'waiting for the 12:00 ET check'}</div>`);
     if (scalp.detail) html.push(`<div style="font-size:11.5px;color:var(--text3);margin-top:4px;">${scalp.detail}</div>`);
+  }
+  html.push(`</div>`);
+  sec.innerHTML = html.join('');
+}
+
+// ─── Spreads Router (main strategy 2026-08-19, default 2 contracts) — one
+// gamma-routed 10-wide credit spread/day from /spreads-paper. pl is PER-LOT
+// dollars in the feed; ×2 for the default-size display. ────────────────────
+const SPREADS_LOTS = 2;
+let spreadsData = null;
+async function loadSpreads() {
+  try {
+    const r = await fetchWithRetry(PROXY + '/spreads-paper', { cache: 'no-store' });
+    if (r.ok) spreadsData = await r.json();
+  } catch (e) { console.warn('[live] /spreads-paper fetch failed:', e); }
+}
+function renderSpreads() {
+  const sec = document.getElementById('spreadsSection');
+  if (!spreadsData) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  const j = spreadsData;
+  const todaysSettled = (j.log || []).find(x => x.date === j.date);
+  const t = j.open || todaysSettled || null;
+  const html = [];
+  html.push(`<div class="diag-card">`);
+  html.push(`<div class="diag-header">`);
+  html.push(`<div class="diag-title">⇄ <span>Spreads Router</span></div>`);
+  if (t) {
+    const closed = !!todaysSettled && !j.open;
+    const badge = closed ? 'SETTLED' : 'OPEN · LIVE';
+    const badgeClass = closed ? ((t.pl != null && t.pl >= 0) ? 'open' : 'error') : 'open';
+    html.push(`<span class="diag-badge ${badgeClass}">${badge}</span>`);
+    html.push(`<div style="flex:1"></div>`);
+    html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">trade #${t.n} · book ${t.gexB > 0 ? '+' : ''}${t.gexB}B @ ${t.entry}</span>`);
+    html.push(`</div>`);
+    html.push(`<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">SELL ${t.side} spread ${t.short}/${t.long} (10-wide) · credit $${t.credit.toFixed(2)}/spread · ${SPREADS_LOTS} contracts · hold to close</div>`);
+    const pl2 = closed && t.pl != null ? Math.round(t.pl * SPREADS_LOTS) : null;
+    const plClass = pl2 == null ? '' : pl2 > 0 ? 'diag-pl-pos' : pl2 < 0 ? 'diag-pl-neg' : '';
+    html.push(`<div class="diag-grid">`);
+    html.push(`<div class="diag-stat"><div class="diag-stat-label">P&L (${SPREADS_LOTS} contracts)</div><div class="diag-stat-value ${plClass}">${pl2 == null ? '—' : fmt$(pl2)}</div><div class="diag-stat-sub">${pl2 == null ? 'settles at the close' : 'final · settle ' + (t.settle != null ? t.settle.toFixed(2) : '—')}</div></div>`);
+    html.push(`<div class="diag-stat"><div class="diag-stat-label">Credit</div><div class="diag-stat-value">$${Math.round(t.credit * 100 * SPREADS_LOTS)}</div><div class="diag-stat-sub">$${t.credit.toFixed(2)} × ${SPREADS_LOTS}</div></div>`);
+    html.push(`<div class="diag-stat"><div class="diag-stat-label">Max risk</div><div class="diag-stat-value">$${Math.round((10 - t.credit) * 100 * SPREADS_LOTS)}</div><div class="diag-stat-sub">capped · ${SPREADS_LOTS} contracts</div></div>`);
+    html.push(`</div>`);
+  } else {
+    let badge = 'WATCHING', badgeClass = 'pending', headline = 'noon book ≤ −10B → call spread · 1 PM book > 0 → put spread';
+    const st = j.today || 'pending';
+    if (st.startsWith('skip:')) { badge = 'NO TRADE'; badgeClass = 'skip'; headline = 'calendar skip — ' + st.slice(5) + ' day'; }
+    else if (st.startsWith('no-trade')) { badge = 'NO TRADE'; badgeClass = 'skip'; headline = 'book in the dead zone at both checks — no edge, no trade'; }
+    html.push(`<span class="diag-badge ${badgeClass}">${badge}</span>`);
+    html.push(`<div style="flex:1"></div>`);
+    html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">${SPREADS_LOTS} contracts default</span>`);
+    html.push(`</div>`);
+    html.push(`<div style="font-size:13px;color:var(--text2);padding:2px 0;">${headline}</div>`);
   }
   html.push(`</div>`);
   sec.innerHTML = html.join('');
@@ -2252,7 +2310,7 @@ async function tick() {
   // Re-check trade state every tick — catches trigger/close without page refresh
   const prevTriggered = trade?.triggered;
   const prevStatus = trade?.status;
-  await Promise.all([loadTrade(), loadDiagonal(), loadStraddle(), loadBobf(), loadGxbf(), loadTail(), loadScalp()]);
+  await Promise.all([loadTrade(), loadDiagonal(), loadStraddle(), loadBobf(), loadGxbf(), loadTail(), loadScalp(), loadSpreads()]);
   // Wrap each render so the user's "show per-leg fills" <details> toggle
   // doesn't reset every 30s tick.
   preserveDetailsState('diagonalSection', renderDiagonal);
@@ -2261,6 +2319,7 @@ async function tick() {
   preserveDetailsState('gxbfSection',     renderGxbf);
   preserveDetailsState('tailSection',     renderTail);
   preserveDetailsState('scalpSection',    renderScalp);
+  preserveDetailsState('spreadsSection',  renderSpreads);
   const stateChanged = (trade?.triggered !== prevTriggered) || (trade?.status !== prevStatus);
   if (stateChanged) { render(); }
 
@@ -2336,7 +2395,7 @@ function reorderStrategySections() {
 async function init() {
   try {
     checkOAuthCallback();
-    await Promise.all([loadTrade(), loadSPXHistory(), loadSignals(), loadDiagonal(), loadStraddle(), loadBobf(), loadGxbf(), loadTail(), loadScalp()]);
+    await Promise.all([loadTrade(), loadSPXHistory(), loadSignals(), loadDiagonal(), loadStraddle(), loadBobf(), loadGxbf(), loadTail(), loadScalp(), loadSpreads()]);
     updateLiveBadge();
     createSPXChart();
     rebuildSPXChart();
@@ -2347,6 +2406,7 @@ async function init() {
     renderGxbf();
     renderTail();
     renderScalp();
+    renderSpreads();
     try { renderLiveTotal(); } catch (e) { console.warn('renderLiveTotal init failed:', e); }
     try { reorderStrategySections(); } catch (e) { console.warn('reorderStrategySections init failed:', e); }
     await tick();

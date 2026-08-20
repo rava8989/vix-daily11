@@ -496,7 +496,7 @@ function soloStrat(key) {
 }
 
 function updatePillStates() {
-  for (const k of ['m8bf','strad','gxbf','bobf','diagonal','scalp']) {
+  for (const k of Object.keys(activeStrats)) {
     const el = document.querySelector(`.strat-pill[data-strat="${k}"]`);
     if (!el) continue;
     el.classList.toggle('active', activeStrats[k]);

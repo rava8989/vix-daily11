@@ -12462,7 +12462,7 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
   if (pnbf && 'spreadsBlock' in pnbf) {
     rows.push(pnbf.spreadsBlock
       ? { n: 'Spreads', det: pnbf.spreadsBlock, state: 'no' }
-      : { n: 'Spreads', det: 'noon ≤ −10B → call · 1 PM > 0 → put · 2 lots', state: 'possible' });
+      : { n: 'Spreads', det: 'noon ≤ −10B → call · 1PM > 0 → put', state: 'possible' });
   }
   const vix = (vixValues.todayOpen != null) ? String(vixValues.todayOpen) : '—';
   // Overnight VIX direction in plain words. oNight = priorClose − todayOpen:
@@ -12687,7 +12687,7 @@ const SAMPLE_MORNING_CARD = {
     // Tail Hedge row removed 2026-08-03 — strategy retired; the live builder
     // omits it via `if (tailLine)` since getTailHedgeStatusLine returns null.
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },
-    { n: 'Spreads', det: 'noon ≤ −10B → call · 1 PM > 0 → put · 2 lots', state: 'possible' },
+    { n: 'Spreads', det: 'noon ≤ −10B → call · 1PM > 0 → put', state: 'possible' },
   ],
   tiles: [['SPX GAP', '+0.91%', '#4ade80']],
   stats: [

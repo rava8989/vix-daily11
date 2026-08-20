@@ -12800,7 +12800,7 @@ export default {
         let tailLine = null; try { tailLine = await getTailHedgeStatusLine(env); } catch (_) {}
         let r = null;
         try {
-          const png = await renderMorningCardPng(buildMorningCardData(signal, vixValues, tailLine));
+          const png = await renderMorningCardPng(buildMorningCardData(signal, vixValues, tailLine, { block: mfCalendarBlock(toET(new Date())), spreadsBlock: spreadsCalendarBlock(toET(new Date())) }));
           r = await sendDiscordImage(env, dc.channelId, png, dc.proxyUrl, 'morning.png', DISCORD_FOOTER);
         } catch (e) { r = { ok: false, error: 'render: ' + e.message }; }
         if (!r || !r.ok) {

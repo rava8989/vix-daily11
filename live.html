@@ -1890,6 +1890,14 @@ function renderLiveTotal() {
     else if (mfT.lastMid != null && mfT.entry != null) pnbfPL = Math.round((mfT.lastMid - mfT.entry) * 100) * SCALP_LOTS;
   }
 
+  // Spreads Router (main strategy 2026-08-20, 2 contracts): settled today →
+  // realized pl × 2. Open (pre-settle) → no live mid tracked; counts at settle.
+  let spreadsLivePL = null;
+  if (spreadsData) {
+    const st = (spreadsData.log || []).find(x => x.date === today && x.pl != null);
+    if (st) spreadsLivePL = Math.round(st.pl * SPREADS_LOTS);
+  }
+
   const parts = [
     { name: 'M8BF',     pl: m8bfPL },
     { name: 'BOBF',     pl: bobfPL },
@@ -1897,6 +1905,7 @@ function renderLiveTotal() {
     { name: 'Straddle', pl: stradPL },
     { name: 'Diagonal', pl: diagPL  },
     { name: 'PNBF',     pl: pnbfPL },
+    { name: 'Spreads',  pl: spreadsLivePL },
   ];
   const total = parts.reduce((s, p) => s + (p.pl ?? 0), 0);
   const anyData = parts.some(p => p.pl != null);

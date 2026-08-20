@@ -543,14 +543,11 @@ async function spreadsRouterHeadsUp(env, etNow) {
   const cur = await env.SIGNAL_KV.get(key);
   if (cur === 'sent') return;
   if (!(await claimSendSlot(env, key))) return;
+  // Full fanout like PNBF's heads-up (owner 2026-08-20: "same way other
+  // strategies work") — channel + subscribers via the disclaimer chokepoint.
   let ok = false;
-  try {
-    const dcRaw = await env.SIGNAL_KV.get('discord_config');
-    if (dcRaw) {
-      const dc = JSON.parse(dcRaw);
-      if (dc.channelId) { const r = await sendDiscordDM(env, dc.channelId, text, dc.proxyUrl); ok = !!(r && r.ok); }
-    }
-  } catch (e) { console.warn('[spreads-hu]', e.message); }
+  try { await fanoutSubscribers(env, text); ok = true; }
+  catch (e) { console.warn('[spreads-hu]', e.message); }
   if (ok) await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
   else { try { await env.SIGNAL_KV.delete(key); } catch (_) {} }
 }
@@ -16054,6 +16051,49 @@ export default {
       const today = await env.SIGNAL_KV.get(`tg_today_${d}`);
       if (today) return jsonResp({ date: d, grid: JSON.parse(today), g935: null, partial: true }, 200, pub);
       return jsonResp({ error: 'no grid for ' + d }, 404, pub);
+    }
+    if (url.pathname === '/spreads-test' && request.method === 'GET') {
+      // End-to-end pipeline diagnostic (owner 2026-08-20): runs every live
+      // link EXCEPT sends/writes — calendar gate, book read, strike pricing
+      // from the real chain, settle arithmetic. Secret-gated, zero side effects.
+      const _sec = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!_sec || (_sec !== env.SYNC_SECRET && _sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, corsHeaders);
+      }
+      const et = toET(new Date());
+      const out = { date: isoDateET(et), calendarBlock: spreadsCalendarBlock(et) };
+      try {
+        const gRaw = await env.SIGNAL_KV.get('gex_current_0dte');
+        const g = gRaw ? JSON.parse(gRaw) : null;
+        out.gexFresh = !!(g && g.timestamp && (Date.now() / 1000 - g.timestamp) < 600);
+        out.gexB = g && typeof g.totalGex === 'number' ? Math.round(g.totalGex / 1e8) / 10 : null;
+      } catch (e) { out.gexError = e.message; }
+      try {
+        let tok = null;
+        try { tok = await getAccessToken(env); } catch (_) {}
+        const mc = await fetchMasterSpxChain(tok, env);
+        out.chain = !!(mc && mc.callExpDateMap && mc.putExpDateMap && mc.spot);
+        if (out.chain) {
+          out.spot = Math.round(mc.spot * 100) / 100;
+          out.callPick = spreadsPickStrike(mc.callExpDateMap, mc.spot, +1, 10, 4.00, 1.00);
+          out.putPick = spreadsPickStrike(mc.putExpDateMap, mc.spot, -1, 10, 2.50, 0.63);
+          if (out.putPick) {
+            const sim = { ...out.putPick, settleAt: out.spot };
+            const loss = Math.max(0, Math.min(sim.short - out.spot, 10));
+            sim.plPerLot = Math.round((sim.credit - loss) * 100 * 10) / 10;
+            sim.plHistory2lot = Math.round(sim.plPerLot * 2 * 10) / 10;
+            out.settleSim = sim;
+          }
+        }
+      } catch (e) { out.chainError = e.message; }
+      try {
+        out.kv = {
+          discord_config: !!(await env.SIGNAL_KV.get('discord_config')),
+          signals_webhook_url: !!(await env.SIGNAL_KV.get('signals_webhook_url')),
+          subscribers: ((await env.SIGNAL_KV.get('signal_subscribers')) ? JSON.parse(await env.SIGNAL_KV.get('signal_subscribers')).filter(x => x && !x.paused).length : 0),
+        };
+      } catch (e) { out.kvError = e.message; }
+      return jsonResp(out, 200, corsHeaders);
     }
     if (url.pathname === '/spreads-paper' && request.method === 'GET') {
       // Spreads Router paper program state: today's status + settled log.

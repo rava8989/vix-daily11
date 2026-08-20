@@ -1039,6 +1039,7 @@ function getValue(row, col) {
     case 'bobfPL': return row.signal?.bobfBadge !== 'BLOCKED' ? (row.bobfPL != null ? row.bobfPL : 0.1) : -Infinity;
     case 'diagPL': return row.diagPL != null ? row.diagPL : -Infinity;
     case 'scalpPL': return row.scalpPL != null ? row.scalpPL : -Infinity;
+    case 'spreadsPL': return row.spreadsPL != null ? row.spreadsPL : -Infinity;
     case 'totalPL': {
       const s = row.signal || {}; let t = 0;
       if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) t += row.m8bfPL;
@@ -1145,7 +1146,7 @@ function renderTable() {
   });
   h += '</tr></thead><tbody>';
 
-  let totM8=0, totStrad=0, totGxbf=0, totBobf=0, totDiag=0, totTail=0, totScalp=0;
+  let totM8=0, totStrad=0, totGxbf=0, totBobf=0, totDiag=0, totTail=0, totScalp=0, totSpreads = 0;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const dash = '<td style="color:var(--text3);text-align:center">—</td>';
@@ -1162,6 +1163,7 @@ function renderTable() {
     if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) totBobf += row.bobfPL;
     if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) totDiag += row.diagPL;  // 0 = no-trade day
     if (activeStrats.scalp && row.scalpPL != null) totScalp += row.scalpPL;
+    if (activeStrats.spreads && row.spreadsPL != null) totSpreads += row.spreadsPL;
   }
 
   // Show the TOP N of the current sort (default = newest-first) so the mobile
@@ -1200,6 +1202,7 @@ function renderTable() {
       h += stratCell(activeStrats.bobf && s.bobfBadge !== 'BLOCKED', row.bobfPL);
       h += stratCell(activeStrats.diagonal && row.diagPL != null, row.diagPL);
       h += stratCell(activeStrats.scalp && row.scalpPL != null, row.scalpPL);
+      h += stratCell(activeStrats.spreads && row.spreadsPL != null, row.spreadsPL);
 
       let dayTotal = 0, hasDayTrade = false;
       if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) { dayTotal += row.m8bfPL; hasDayTrade = true; }
@@ -1208,6 +1211,7 @@ function renderTable() {
       if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { dayTotal += row.bobfPL; hasDayTrade = true; }
       if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { dayTotal += row.diagPL; hasDayTrade = true; }  // 0 = no-trade day
       if (activeStrats.scalp && row.scalpPL != null) { dayTotal += row.scalpPL; hasDayTrade = true; }
+      if (activeStrats.spreads && row.spreadsPL != null) { dayTotal += row.spreadsPL; hasDayTrade = true; }
       if (hasDayTrade) {
         const cls = dayTotal > 0 ? 'val-pos' : dayTotal < 0 ? 'val-neg' : 'val-zero';
         h += `<td class="${cls}" style="font-weight:700">$${dayTotal.toLocaleString()}</td>`;
@@ -1223,9 +1227,9 @@ function renderTable() {
   const fc = (v, active) => active ? `<td class="${valClass(v)}" style="font-weight:700">$${Math.round(v).toLocaleString()}</td>` : '<td style="color:var(--text3);text-align:center">—</td>';
   h += '</tbody><tfoot><tr>';
   h += '<td colspan="10" style="text-align:right;font-family:Inter,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2)">TOTAL</td>';
-  const totAll = (activeStrats.m8bf ? totM8 : 0) + (activeStrats.strad ? totStrad : 0) + (activeStrats.gxbf ? totGxbf : 0) + (activeStrats.bobf ? totBobf : 0) + (activeStrats.diagonal ? totDiag : 0) + (activeStrats.scalp ? totScalp : 0);
-  h += fc(totM8, activeStrats.m8bf) + fc(totStrad, activeStrats.strad) + fc(totGxbf, activeStrats.gxbf) + fc(totBobf, activeStrats.bobf) + fc(totDiag, activeStrats.diagonal) + fc(totScalp, activeStrats.scalp);
-  const anyActive = activeStrats.m8bf || activeStrats.strad || activeStrats.gxbf || activeStrats.bobf || activeStrats.diagonal || activeStrats.scalp;
+  const totAll = (activeStrats.m8bf ? totM8 : 0) + (activeStrats.strad ? totStrad : 0) + (activeStrats.gxbf ? totGxbf : 0) + (activeStrats.bobf ? totBobf : 0) + (activeStrats.diagonal ? totDiag : 0) + (activeStrats.scalp ? totScalp : 0) + (activeStrats.spreads ? totSpreads : 0);
+  h += fc(totM8, activeStrats.m8bf) + fc(totStrad, activeStrats.strad) + fc(totGxbf, activeStrats.gxbf) + fc(totBobf, activeStrats.bobf) + fc(totDiag, activeStrats.diagonal) + fc(totScalp, activeStrats.scalp) + fc(totSpreads, activeStrats.spreads);
+  const anyActive = activeStrats.m8bf || activeStrats.strad || activeStrats.gxbf || activeStrats.bobf || activeStrats.diagonal || activeStrats.scalp || activeStrats.spreads;
   h += anyActive ? `<td class="${valClass(totAll)}" style="font-weight:700">$${Math.round(totAll).toLocaleString()}</td>` : `<td style="color:var(--text3);text-align:center">—</td>`;
   h += `<td></td>`; // Special Day column — no total
   h += '</tr></tfoot></table></div>';

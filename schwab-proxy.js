@@ -17283,47 +17283,10 @@ export default {
       }
     }
 
-    // ── Tail-bundle staleness watchdog (2026-06-09) ──
-    // The Tail Hedge LaunchAgent (5 PM ET) can fail silently — observed today:
-    // macOS TCC blocks launchd from reading ~/Desktop ("Operation not
-    // permitted", exit 126), so the bundle (and the cor1m history column)
-    // silently stops refreshing. Once per weekday evening (18:00-18:20 ET),
-    // fetch the bundle's last daily date; if it isn't today, alert Discord
-    // with the manual-run command. One fetch/day (~1.8MB) — negligible.
-    try {
-      const etW = toET(new Date());
-      const isWkdayW = etW.getDay() >= 1 && etW.getDay() <= 5;
-      const inWindow = etW.getHours() === 18 && etW.getMinutes() < 20;
-      if (isWkdayW && inWindow) {
-        const todayW = isoDateET(etW);
-        const checkedKey = `tail_bundle_check_${todayW}`;
-        if (!(await env.SIGNAL_KV.get(checkedKey))) {
-          await env.SIGNAL_KV.put(checkedKey, 'checked', { expirationTtl: 86400 });
-          const r = await fetch('https://raw.githubusercontent.com/rava8989/brave/main/cor1m_contango_bundle.json',
-            { headers: { 'User-Agent': 'schwab-proxy-worker/1.0' } });
-          if (r.ok) {
-            const bundle = await r.json();
-            const daily = bundle?.daily || [];
-            const lastDate = daily.length ? daily[daily.length - 1].date : null;
-            if (lastDate && lastDate < todayW) {
-              const dcRaw = await env.SIGNAL_KV.get('discord_config');
-              if (dcRaw) {
-                const dc = JSON.parse(dcRaw);
-                if (dc.channelId) {
-                  await sendDiscordDM(env, dc.channelId,
-                    `ℹ️ **Backtester bundle is stale** — last day ${lastDate}, expected ${todayW}.\nLIVE is unaffected (COR1M/VVIX are cloud-captured from Schwab). Only the Tail Hedge backtester page lags.\n→ Refresh when the Mac is on: \`bash scripts/refresh_tail_hedge.sh\``,
-                    dc.proxyUrl);
-                  await logEvent(env, 'warn', 'tail-bundle-stale',
-                    `bundle last=${lastDate}, expected ${todayW} — Discord alert sent`, { lastDate });
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (tailWatchdogErr) {
-      console.warn('[cron] Tail-bundle watchdog failed:', tailWatchdogErr.message);
-    }
+    // Tail-bundle staleness watchdog REMOVED 2026-08-20 (owner: "we dont have
+    // tail hedge anymore"). The strategy retired 2026-08-03; live COR1M/VVIX
+    // are cloud-captured, and the LaunchAgent still refreshes the bundle
+    // silently for the cor1m page. No nag for a retired page.
 
     let result;
     try {

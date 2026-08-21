@@ -153,14 +153,16 @@ async function renderBacktest(){
   } catch(e) {}
   rows.sort((a,b) => a.date < b.date ? -1 : 1);
   const tb = document.getElementById('btBody'); tb.innerHTML = '';
+  // Running total computed chronologically; table rendered NEWEST-FIRST
+  // (owner 2026-08-21) with each row carrying its precomputed cum.
   let cum = 0; const pts = [];
-  rows.forEach((r, i) => {
-    cum += r.pnl; pts.push(cum);
+  const rendered = rows.map((r, i) => { cum += r.pnl; pts.push(cum); return { ...r, n: i + 1, cum }; });
+  rendered.slice().reverse().forEach(r => {
     const tr = document.createElement('tr');
     const cls = r.pnl > 0 ? 'g' : 'r';
-    tr.innerHTML = `<td>${i+1}</td><td>${r.date}</td><td>${r.day}</td><td>${r.magnet}</td><td>${r.center}</td>`+
+    tr.innerHTML = `<td>${r.n}</td><td>${r.date}</td><td>${r.day}</td><td>${r.magnet}</td><td>${r.center}</td>`+
       `<td>$${r.debit}</td><td class="${cls}">${r.exit}</td><td>${r.exitTime}</td>`+
-      `<td class="${cls}">${r.pnl>0?'+':'−'}$${Math.abs(r.pnl)}</td><td>${cum<0?'−':''}$${Math.abs(cum).toLocaleString()}</td><td class="a">${r.note||''}</td>`;
+      `<td class="${cls}">${r.pnl>0?'+':'−'}$${Math.abs(r.pnl)}</td><td>${r.cum<0?'−':''}$${Math.abs(r.cum).toLocaleString()}</td><td class="a">${r.note||''}</td>`;
     tb.appendChild(tr);
   });
   // stat tiles over the combined record

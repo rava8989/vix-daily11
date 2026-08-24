@@ -517,8 +517,12 @@ async function spreadsRouterHeadsUp(env, etNow) {
   // DM only when the book is in trigger territory. 11:40-11:58 → CALL likely
   // (book ≤ −8B, near the −10B line); 12:40-12:58 → PUT likely (book > 0,
   // only if noon produced no trade). Claim-gated; silent otherwise.
+  // Owner 2026-08-24: fire 5-6 min BEFORE each check, and ONLY when the book
+  // is already inside the actual trigger range (call ≤ −10B / put > 0) — no
+  // "close to it" maybes (the −8B early-warning line produced a false alarm
+  // on 8/24). Same fanout path as the other heads-ups.
   const h = etNow.getHours(), m = etNow.getMinutes();
-  const win12 = (h === 11 && m >= 40 && m <= 58), win13 = (h === 12 && m >= 40 && m <= 58);
+  const win12 = (h === 11 && m >= 54 && m <= 59), win13 = (h === 12 && m >= 54 && m <= 59);
   if (!win12 && !win13) return;
   const d = isoDateET(etNow);
   const done = await env.SIGNAL_KV.get(`spreads_done_${d}`);
@@ -530,14 +534,14 @@ async function spreadsRouterHeadsUp(env, etNow) {
   if (!(g && g.timestamp && (Date.now() / 1000 - g.timestamp) < 600 && typeof g.totalGex === 'number')) return;
   const gexB = Math.round(g.totalGex / 1e8) / 10;
   let text = null, key = null;
-  if (win12 && gexB <= -8) {
+  if (win12 && gexB <= -10) {
     key = `spreads_hu12_${d}`;
-    text = `🧭 **Spreads Router heads-up** — book ${gexB}B.\nCALL spread likely at 12:00 (fires at ≤ −10B).`;
+    text = `🧭 **Σ3 Spreads Router — heads-up**\nBook ${gexB}B — in the CALL-spread trigger range. Likely trade at 12:00.`;
   } else if (win13 && gexB > 0) {
     const e12 = await env.SIGNAL_KV.get(`spreads_eval12_${d}`);
     if (e12 && e12.startsWith('cs')) return;
     key = `spreads_hu13_${d}`;
-    text = `🧭 **Spreads Router heads-up** — book +${gexB}B.\nPUT spread likely at 1:00 (fires while book > 0).`;
+    text = `🧭 **Σ3 Spreads Router — heads-up**\nBook +${gexB}B — in the PUT-spread trigger range. Likely trade at 1:00.`;
   }
   if (!text) return;
   const cur = await env.SIGNAL_KV.get(key);

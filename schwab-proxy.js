@@ -6643,6 +6643,15 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
     status: 'filled',
   };
 
+  // LAST-CALL dupe gate (2026-08-25: two colo-concurrent ticks both passed the
+  // claim and posted "GXBF opened" twice, 13s apart — P46). By now the rival's
+  // 'filled' marker has had those seconds to propagate; one fresh read kills
+  // the duplicate before any state write or DM. Same pattern as the morning card.
+  const lastCallG = await env.SIGNAL_KV.get(doneKey);
+  if (lastCallG === 'filled') {
+    console.log('[gxbf] pre-write dupe gate: already filled — aborting duplicate open');
+    return { ...out, status: 'duplicate_avoided' };
+  }
   // Write trade record FIRST (source of truth), then the done-key marker.
   await env.SIGNAL_KV.put('gxbf_open_trade', JSON.stringify(trade));
   await env.SIGNAL_KV.put(doneKey, 'filled', { expirationTtl: 86400 });

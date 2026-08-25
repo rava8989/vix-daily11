@@ -6719,6 +6719,38 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
   return { ...out, status: 'opened', center: K, wing: W, netDebit, centerSource };
 }
 
+// Mark-to-market the open Spreads Router credit spread every market tick
+// (owner 2026-08-25: "spreads in live page not showing live pl"). Reuses the
+// master chain — zero extra Schwab calls. Mirrors refreshGxbfLiveQuotes.
+// Only runs BEFORE 16:00 ET: spreadsRouterSettle (≥16:45) deletes
+// spreads_open_<d>, and a post-settle stale write-back here would resurrect
+// the key (P41 class) — the hour gate makes the two windows disjoint.
+async function refreshSpreadsLiveQuotes(env, token, etNow, preChain = null) {
+  try {
+    if (etNow.getHours() >= 16) return;
+    const d = isoDateET(etNow);
+    const raw = await env.SIGNAL_KV.get(`spreads_open_${d}`);
+    if (!raw) return;
+    const trade = JSON.parse(raw);
+    const chain = preChain || await fetchSpxFullChain(token, d, env);
+    const map = trade.side === 'CALL' ? chain.callExpDateMap : chain.putExpDateMap;
+    if (!map) return;
+    const shortLeg = pickContractFromChain(map, d, trade.short);
+    const longLeg  = pickContractFromChain(map, d, trade.long);
+    if (!shortLeg || !longLeg || shortLeg.strike !== trade.short || longLeg.strike !== trade.long ||
+        shortLeg.mid == null || longLeg.mid == null) return;
+    const mark = shortLeg.mid - longLeg.mid;         // cost to buy the spread back
+    if (!(mark > -0.5 && mark < 10.5)) return;        // quote-sanity: a 10-wide can't be outside [0,10]
+    trade.currentShortMid = parseFloat(shortLeg.mid.toFixed(2));
+    trade.currentLongMid  = parseFloat(longLeg.mid.toFixed(2));
+    trade.currentValue    = parseFloat(mark.toFixed(2));
+    trade.currentPnl      = Math.round((trade.credit - mark) * 100 * 10) / 10;  // per-lot $, same convention as log.pl
+    trade.currentSpot     = chain.spot ? parseFloat(chain.spot.toFixed(2)) : trade.currentSpot;
+    trade.lastQuoteAt     = new Date().toISOString();
+    await env.SIGNAL_KV.put(`spreads_open_${d}`, JSON.stringify(trade), { expirationTtl: 5 * 86400 });
+  } catch (e) { console.warn('[spreads] live refresh failed:', e.message); }
+}
+
 // Refresh live mids on the open GXBF trade. Reuses the master chain (zero
 // extra Schwab calls). Mirrors refreshBobfLiveQuotes.
 async function refreshGxbfLiveQuotes(env, token, etNow, preChain = null) {
@@ -8425,6 +8457,7 @@ async function handleScheduledInner(env) {
       await refreshBobfLiveQuotes(env, schwabToken, etNow, masterChain);
       await refreshGxbfLiveQuotes(env, schwabToken, etNow, masterChain);
       await refreshM8bfLiveQuotes(env, schwabToken, etNow, masterChain);
+      await refreshSpreadsLiveQuotes(env, schwabToken, etNow, masterChain);
       if (etHour >= 12) await refreshMagnetFlyLiveQuotes(env, schwabToken, etNow, masterChain);
     } catch (e) {
       console.warn('[live] refresh failed:', e.message);

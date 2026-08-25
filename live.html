@@ -754,10 +754,13 @@ function renderSpreads() {
     html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">book ${t.gexB > 0 ? '+' : ''}${t.gexB}B @ ${t.entry}</span>`);
     html.push(`</div>`);
     html.push(`<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">SELL ${t.side} spread ${t.short}/${t.long} (10-wide) · credit $${t.credit.toFixed(2)}/spread · ${SPREADS_LOTS} contracts · hold to close</div>`);
-    const pl2 = closed && t.pl != null ? Math.round(t.pl * SPREADS_LOTS) : null;
+    const pl2 = closed && t.pl != null ? Math.round(t.pl * SPREADS_LOTS)
+              : (!closed && t.currentPnl != null) ? Math.round(t.currentPnl * SPREADS_LOTS) : null;
     const plClass = pl2 == null ? '' : pl2 > 0 ? 'diag-pl-pos' : pl2 < 0 ? 'diag-pl-neg' : '';
+    const plSub = closed ? ('final · settle ' + (t.settle != null ? t.settle.toFixed(2) : '—'))
+                : t.currentPnl != null ? `live · mark $${(t.currentValue ?? 0).toFixed(2)} vs $${t.credit.toFixed(2)} credit` : 'settles at the close';
     html.push(`<div class="diag-grid">`);
-    html.push(`<div class="diag-stat"><div class="diag-stat-label">P&L (${SPREADS_LOTS} contracts)</div><div class="diag-stat-value ${plClass}">${pl2 == null ? '—' : fmt$(pl2)}</div><div class="diag-stat-sub">${pl2 == null ? 'settles at the close' : 'final · settle ' + (t.settle != null ? t.settle.toFixed(2) : '—')}</div></div>`);
+    html.push(`<div class="diag-stat"><div class="diag-stat-label">P&L (${SPREADS_LOTS} contracts)</div><div class="diag-stat-value ${plClass}">${pl2 == null ? '—' : fmt$(pl2)}</div><div class="diag-stat-sub">${plSub}</div></div>`);
     html.push(`<div class="diag-stat"><div class="diag-stat-label">Credit</div><div class="diag-stat-value">$${Math.round(t.credit * 100 * SPREADS_LOTS)}</div><div class="diag-stat-sub">$${t.credit.toFixed(2)} × ${SPREADS_LOTS}</div></div>`);
     html.push(`<div class="diag-stat"><div class="diag-stat-label">Max risk</div><div class="diag-stat-value">$${Math.round((10 - t.credit) * 100 * SPREADS_LOTS)}</div><div class="diag-stat-sub">capped · ${SPREADS_LOTS} contracts</div></div>`);
     html.push(`</div>`);
@@ -1891,11 +1894,13 @@ function renderLiveTotal() {
   }
 
   // Spreads Router (main strategy 2026-08-20, 2 contracts): settled today →
-  // realized pl × 2. Open (pre-settle) → no live mid tracked; counts at settle.
+  // realized pl × 2; open trade → live mark-to-market (worker refreshes
+  // currentPnl per-lot every tick since 2026-08-25).
   let spreadsLivePL = null;
   if (spreadsData) {
     const st = (spreadsData.log || []).find(x => x.date === today && x.pl != null);
     if (st) spreadsLivePL = Math.round(st.pl * SPREADS_LOTS);
+    else if (spreadsData.open && spreadsData.open.currentPnl != null) spreadsLivePL = Math.round(spreadsData.open.currentPnl * SPREADS_LOTS);
   }
 
   const parts = [

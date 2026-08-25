@@ -576,7 +576,8 @@ async function spreadsRouterDM(env, etNow) {
   // MAIN-STRATEGY fanout (owner 2026-08-19): signals channel + every subscriber,
   // default size 2 contracts. Trade state was written BEFORE this send (P27);
   // the claim gates the whole fanout, 'sent' only after the fanout ran.
-  const msg = `🧭 **Σ3 Spreads Router — trade #${t.n}**\n` +
+  // No trade numbering in the card (owner 2026-08-25: "can we not number these").
+  const msg = `🧭 **Σ3 Spreads Router — new trade**\n` +
     `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide) · **2 contracts**\n` +
     `credit ≈ $${t.credit.toFixed(2)}/spread · max risk ~$${risk}/spread\n` +
     `${why}\n` +

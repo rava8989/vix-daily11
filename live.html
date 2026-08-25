@@ -751,7 +751,7 @@ function renderSpreads() {
     const badgeClass = closed ? ((t.pl != null && t.pl >= 0) ? 'open' : 'error') : 'open';
     html.push(`<span class="diag-badge ${badgeClass}">${badge}</span>`);
     html.push(`<div style="flex:1"></div>`);
-    html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">trade #${t.n} · book ${t.gexB > 0 ? '+' : ''}${t.gexB}B @ ${t.entry}</span>`);
+    html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">book ${t.gexB > 0 ? '+' : ''}${t.gexB}B @ ${t.entry}</span>`);
     html.push(`</div>`);
     html.push(`<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">SELL ${t.side} spread ${t.short}/${t.long} (10-wide) · credit $${t.credit.toFixed(2)}/spread · ${SPREADS_LOTS} contracts · hold to close</div>`);
     const pl2 = closed && t.pl != null ? Math.round(t.pl * SPREADS_LOTS) : null;

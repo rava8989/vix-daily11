@@ -143,6 +143,7 @@
         <li>Fires once ~9:36 AM (window opens 9:35 so the gamma chain can settle)</li>
         <li>Center = the volume-weighted dealer-gamma peak, read live from the 0DTE call chain</li>
         <li>Wing W chosen as the widest 5–100 where debit &gt; 0 and risk ≤ reward</li>
+        <li><b>Parity guard</b> (since 2026-08-25): leg quotes below intrinsic − $2, or asking &gt; $1 with no bid, are rejected as stubs — the scan only prices parity-clean wings, retrying until 9:45 if none price</li>
         <li>Independent — fires regardless of M8BF/Straddle; allowed on CPI days</li>
         <li><b>9:35 gamma gate</b> (since 2026-07-30): fresh 0DTE total dealer gamma must be <b>positive</b>. Negative books ran −$369/day at 59% WR vs +$999/day on positive books (73 trades). <b>Applies on OPEX+1 too</b> — the auto-trigger never overrides the gate (owner 2026-07-31)</li>
       </ul></div>

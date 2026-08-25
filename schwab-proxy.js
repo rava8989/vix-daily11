@@ -6512,6 +6512,15 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
         if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
           `⚠️ **GXBF** — no trade. Entry window passed without a computable center (live SPX chain unavailable — the fallback chain lacks volume/OI). No order placed.`, dc.proxyUrl);
       } catch (_) {}
+    } else if (await env.SIGNAL_KV.get(`gxbf_stub_seen_${todayISO}`)) {
+      // Stub-quote guard rejected legs every tick and no clean wing ever
+      // priced (2026-08-25 pattern). Say so instead of skipping silently.
+      try {
+        const dcRaw = await env.SIGNAL_KV.get('discord_config');
+        const dc = dcRaw ? JSON.parse(dcRaw) : null;
+        if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
+          `⚠️ **GXBF** — no trade. Chain quotes never passed parity sanity all window (stub deep-ITM marks) — no rule-valid wing could be priced. No order placed.`, dc.proxyUrl);
+      } catch (_) {}
     }
     await env.SIGNAL_KV.put(doneKey, 'window-passed', { expirationTtl: 86400 });
     return { ...out, status: 'window-passed' };
@@ -6562,17 +6571,44 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
 
   // 4. Wing 50/50 selection. midFn pulls the call mid for an exact strike
   //    (no fuzz — symmetric debit math requires exact strikes).
+  //    STUB-QUOTE PARITY GUARD (2026-08-25): at 9:35 the chain can serve
+  //    stub quotes on deep-ITM strikes (observed: 7620C mid 43.50 with spot
+  //    7685.89 — $22 BELOW intrinsic; the real market 7 min later was
+  //    62.40/62.90). A below-parity mid understates the fly debit and lets a
+  //    rule-breaking wing pass risk≤reward. Reject a leg when (a) it's ITM by
+  //    >$2 but quoted below intrinsic − $2 (a call can never be worth less
+  //    than parity), or (b) its ask is >$1 with no real bid (one-sided stub;
+  //    tiny far-OTM 0-bid quotes stay valid). Rejected legs read as missing,
+  //    so the scan lands on the widest PARITY-CLEAN wing instead.
+  let sawStubQuote = false;
   const legCache = new Map();
   const legFor = (strike) => {
     if (legCache.has(strike)) return legCache.get(strike);
     const leg = pickContractFromChain(callExpDateMap, todayISO, strike);
-    const exact = (leg && leg.strike === strike && leg.mid != null) ? leg : null;
+    let exact = (leg && leg.strike === strike && leg.mid != null) ? leg : null;
+    if (exact) {
+      const intrinsic = Math.max(spot - strike, 0);
+      const belowParity = intrinsic > 2 && exact.mid < intrinsic - 2;
+      const oneSidedStub = exact.ask != null && exact.ask > 1 && !(exact.bid > 0);
+      if (belowParity || oneSidedStub) {
+        console.warn(`[gxbf] stub quote rejected: ${strike}C ${exact.bid}/${exact.ask} mid ${exact.mid} vs intrinsic ${intrinsic.toFixed(2)}`);
+        sawStubQuote = true;
+        exact = null;
+      }
+    }
     legCache.set(strike, exact);
     return exact;
   };
   const midFn = (strike) => { const l = legFor(strike); return l ? l.mid : null; };
 
   const pick = selectGxbfWing(K, midFn);
+  if (!pick && sawStubQuote) {
+    // Quotes failed parity sanity and no clean wing priced — do NOT mark done:
+    // the caller releases its claim and the next tick in the 9:35–9:45 window
+    // re-quotes. If it never clears, the window-passed branch reports it.
+    await env.SIGNAL_KV.put(`gxbf_stub_seen_${todayISO}`, '1', { expirationTtl: 86400 });
+    return { ...out, status: 'bad-quotes', reason: 'stub quote(s) rejected — parity/two-sided sanity' };
+  }
   if (!pick) {
     await env.SIGNAL_KV.put(doneKey, 'no-wing: no W with netDebit>0 & risk≤reward', { expirationTtl: 86400 });
     await logEvent(env, 'warn', 'gxbf-skip', 'no qualifying wing (risk≤reward) found', { center: K, centerSource, centerOI: computed.centerOI, centerVol: computed.center });
@@ -6689,6 +6725,14 @@ async function refreshGxbfLiveQuotes(env, token, etNow, preChain = null) {
   if (!raw) return null;
   const trade = JSON.parse(raw);
   if (trade.status === 'closed' || trade.status === 'expired') return trade;
+  // P41 stale-write-back guard (2026-08-25): if this day's record was RESTATED
+  // (marker set by /gxbf-restate) but the object we just read predates the
+  // restatement (no .restated field — a stale KV edge read), do NOT write it
+  // back — that resurrects the corrupted record. Skip; a later tick reads fresh.
+  if (!trade.restated && (await env.SIGNAL_KV.get(`gxbf_restated_${trade.openDate}`))) {
+    console.warn('[gxbf] refresh skipped — stale pre-restatement read (marker present)');
+    return trade;
+  }
 
   try {
     const chain = preChain || await fetchSpxFullChain(token, trade.expDate, env);
@@ -16065,6 +16109,76 @@ export default {
       if (today) return jsonResp({ date: d, grid: JSON.parse(today), g935: null, partial: true }, 200, pub);
       return jsonResp({ error: 'no grid for ' + d }, 404, pub);
     }
+    if (url.pathname === '/gxbf-restate' && request.method === 'GET') {
+      // ONE-SHOT (2026-08-25): restate today's GXBF record and post the
+      // correction. The 9:35 entry captured a stub deep-ITM quote (7620C mid
+      // 43.50 vs intrinsic 65.89 — below parity, not a real market), which
+      // understated the fly debit and let wing 80 pass risk≤reward. Owner
+      // order: restate under the rules. Wing selection re-run against the
+      // first real NBBO (09:42 ET, ThetaData tick tape): widest wing with
+      // netDebit ≤ W/2 = 40 → 7660/7700/7740 @ $18.95 (25.70/3.55/0.35).
+      // Fingerprint-guarded (refuses to touch anything but the corrupted
+      // record), idempotent, secret-gated. Inert once applied.
+      const _sec = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!_sec || (_sec !== env.SYNC_SECRET && _sec !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, corsHeaders);
+      }
+      let tRaw = await env.SIGNAL_KV.get('gxbf_open_trade');
+      let t = tRaw ? JSON.parse(tRaw) : null;
+      if (t && !t.restated) {
+        const isCorrupted = t.openDate === '2026-08-25' && t.status === 'filled' &&
+          t.wing === 80 && t.lowerStrike === 7620 && t.netDebit === 39.92;
+        if (!isCorrupted) return jsonResp({ ok: false, error: 'record does not match the corrupted 2026-08-25 fingerprint', found: { openDate: t.openDate, wing: t.wing, netDebit: t.netDebit } }, 400, corsHeaders);
+        // Marker FIRST: refreshGxbfLiveQuotes refuses to write back any
+        // pre-restatement object once this key exists (P41 resurrection guard).
+        await env.SIGNAL_KV.put('gxbf_restated_2026-08-25', '1', { expirationTtl: 14 * 86400 });
+        const original = {
+          openTimeET: t.openTimeET, lowerStrike: t.lowerStrike, centerStrike: t.centerStrike,
+          upperStrike: t.upperStrike, wing: t.wing, netDebit: t.netDebit,
+          entryLowerMid: t.entryLowerMid, entryCenterMid: t.entryCenterMid,
+          entryUpperMid: t.entryUpperMid, spotEntry: t.spotEntry,
+        };
+        t = {
+          ...t,
+          openTimeET: '09:42',
+          wing: 40, spotEntry: 7682.4,
+          lowerStrike: 7660, centerStrike: 7700, upperStrike: 7740,
+          lowerSymbol: 'SPXW  260825C07660000', centerSymbol: 'SPXW  260825C07700000', upperSymbol: 'SPXW  260825C07740000',
+          entryLowerMid: 25.70, entryCenterMid: 3.55, entryUpperMid: 0.35,
+          netDebit: 18.95, maxRisk: 18.95, maxReward: 21.05,
+          // Seed live fields at entry; the next quote refresh overwrites them
+          // (lastQuoteAt backdated so the on-demand refresh fires immediately).
+          currentSpot: 7682.4, currentLowerMid: 25.70, currentCenterMid: 3.55,
+          currentUpperMid: 0.35, currentValue: 18.95, currentPnl: 0,
+          lastQuoteAt: '2026-08-25T13:42:00.000Z',
+          restated: {
+            at: new Date().toISOString(),
+            why: '9:35 entry captured a stub deep-ITM quote (7620C mid 43.50 vs intrinsic 65.89 — below parity, not a real market), understating the fly debit and letting wing 80 pass risk≤reward. Restated to the first real NBBO (09:42 ET, ThetaData tick tape) and re-ran the standard wing selection: widest wing with netDebit ≤ W/2 at real quotes = 40.',
+            original,
+          },
+        };
+        await env.SIGNAL_KV.put('gxbf_open_trade', JSON.stringify(t));
+      }
+      if (!t || !t.restated) return jsonResp({ ok: false, error: 'no GXBF trade to restate (KV empty or already settled shape)' }, 400, corsHeaders);
+      const noteKey = `gxbf_restate_note_${t.openDate}`;
+      if ((await env.SIGNAL_KV.get(noteKey)) === 'sent') return jsonResp({ ok: true, status: 'already-sent' }, 200, corsHeaders);
+      const o = t.restated.original || {};
+      const msg = `🦋 **GXBF correction — today's fly restated**\n` +
+        `The 9:35 open captured a stub deep-ITM quote (${o.lowerStrike}C marked $${o.entryLowerMid} — below intrinsic, not a real market), which understated the debit and let wing ${o.wing} pass the risk ≤ reward rule.\n` +
+        `Re-ran the same wing selection at the first real market (9:42 ET):\n` +
+        `**SPX ${t.lowerStrike}/${t.centerStrike}/${t.upperStrike} CALL fly (wing ${t.wing}) · net debit $${t.netDebit.toFixed(2)}** · max risk $${Math.round(t.maxRisk * 100)} · max reward $${Math.round(t.maxReward * 100)} · 0DTE\n` +
+        `-# Today's record tracks this fly. A parity guard now rejects stub quotes at entry so this can't recur.`;
+      let sendRes = null;
+      try {
+        const dcRaw = await env.SIGNAL_KV.get('discord_config');
+        const dc = dcRaw ? JSON.parse(dcRaw) : null;
+        if (dc && dc.channelId) sendRes = await sendDiscordDM(env, dc.channelId, msg, dc.proxyUrl);
+        else sendRes = { ok: false, error: 'no discord_config/channelId' };
+      } catch (e) { sendRes = { ok: false, error: e.message }; }
+      if (sendRes && sendRes.ok) await env.SIGNAL_KV.put(noteKey, 'sent', { expirationTtl: 14 * 86400 });
+      return jsonResp({ ok: !!(sendRes && sendRes.ok), sendRes }, 200, corsHeaders);
+    }
+
     if (url.pathname === '/spreads-test' && request.method === 'GET') {
       // End-to-end pipeline diagnostic (owner 2026-08-20): runs every live
       // link EXCEPT sends/writes — calendar gate, book read, strike pricing

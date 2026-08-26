@@ -1593,8 +1593,9 @@ function renderChart() {
 
 
 
-  const dates=[], cumM8=[], cumStrad=[], cumGxbf=[], cumBobf=[], cumDiag=[], cumTail=[], cumScalp=[], cumAll=[], ddAll=[];
-  let rm=0, rs=0, rg=0, rb=0, rd=0, rt=0, rsc=0, peak=0;
+  const dates=[], cumM8=[], cumStrad=[], cumGxbf=[], cumBobf=[], cumDiag=[], cumTail=[], cumScalp=[], cumSpread=[], cumAll=[], ddAll=[];
+  let rm=0, rs=0, rg=0, rb=0, rd=0, rt=0, rsc=0, rsp=0, peak=0;
+  const W = SIZE_W;   // same preset weighting as getRowPL — card and curve must agree
 
   // Win/loss scatter data
   const winX=[], winY=[], lossX=[], lossY=[], athX=[], athY=[];
@@ -1604,16 +1605,17 @@ function renderChart() {
     const row = sortedRows[i];
     const s = row.signal || {};
     let dayPL = 0;
-    if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) { rm += row.m8bfPL; dayPL += row.m8bfPL; }
-    if (activeStrats.strad && s.stradRan && row.stradPL != null) { rs += row.stradPL; dayPL += row.stradPL; }
-    if (activeStrats.gxbf && row.gxbfPL != null) { rg += row.gxbfPL; dayPL += row.gxbfPL; }
-    if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { rb += row.bobfPL; dayPL += row.bobfPL; }
-    if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { rd += row.diagPL; dayPL += row.diagPL; }  // 0 = no-trade day
-    if (activeStrats.scalp && row.scalpPL != null) { rsc += row.scalpPL; dayPL += row.scalpPL; }
+    if (activeStrats.m8bf && s.m8bfRan && row.m8bfPL != null) { const v = W.m8bf * row.m8bfPL; rm += v; dayPL += v; }
+    if (activeStrats.strad && s.stradRan && row.stradPL != null) { const v = W.strad * row.stradPL; rs += v; dayPL += v; }
+    if (activeStrats.gxbf && row.gxbfPL != null) { const v = W.gxbf * row.gxbfPL; rg += v; dayPL += v; }
+    if (activeStrats.bobf && s.bobfBadge !== 'BLOCKED' && row.bobfPL != null) { const v = W.bobf * row.bobfPL; rb += v; dayPL += v; }
+    if (activeStrats.diagonal && row.diagPL != null && row.diagPL !== 0) { const v = W.diagonal * row.diagPL; rd += v; dayPL += v; }  // 0 = no-trade day
+    if (activeStrats.scalp && row.scalpPL != null) { const v = W.scalp * row.scalpPL; rsc += v; dayPL += v; }
+    if (activeStrats.spreads && row.spreadsPL != null) { const v = (W.spreads != null ? W.spreads : 1) * row.spreadsPL; rsp += v; dayPL += v; }
 
-    const total = rm+rs+rg+rb+rd+rt+rsc;
+    const total = rm+rs+rg+rb+rd+rt+rsc+rsp;
     dates.push(row.date);
-    cumM8.push(rm); cumStrad.push(rs); cumGxbf.push(rg); cumBobf.push(rb); cumDiag.push(rd); cumTail.push(rt); cumScalp.push(rsc);
+    cumM8.push(rm); cumStrad.push(rs); cumGxbf.push(rg); cumBobf.push(rb); cumDiag.push(rd); cumTail.push(rt); cumScalp.push(rsc); cumSpread.push(rsp);
     cumAll.push(total);
 
     if (total > peak) peak = total;
@@ -1671,6 +1673,7 @@ function renderChart() {
     { label:'BOBF',     data:cumBobf,  borderColor:'#fb923c', backgroundColor:'rgba(251,146,60,.1)',  tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.bobf, yAxisID:'y' },
     { label:'Diagonal', data:cumDiag,  borderColor:'#4ade80', backgroundColor:'rgba(74,222,128,.1)',  tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.diagonal, yAxisID:'y' },
     { label:'🧲 PNBF', data:cumScalp, borderColor:'#f472b6', backgroundColor:'rgba(244,114,182,.1)', tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.scalp, yAxisID:'y' },
+    { label:'⇄ Spreads', data:cumSpread, borderColor:'#14b8a6', backgroundColor:'rgba(20,184,166,.1)', tension:.3, borderWidth:2, pointRadius:0, pointHitRadius:6, hidden:!activeStrats.spreads, yAxisID:'y' },
     { label:'Combined', data:cumAll,   borderColor: isDark?'#e2e8f0':'#1e293b', backgroundColor: isDark?'rgba(226,232,240,.08)':'rgba(30,41,59,.08)', tension:.3, borderWidth:2.5, pointRadius:0, pointHitRadius:6, borderDash:[6,3], yAxisID:'y' },
     // Drawdown overlay
     { label:'Drawdown', data:ddAll, borderColor:'rgba(239,68,68,.6)', backgroundColor:'rgba(239,68,68,.15)', fill:'origin', tension:.3, borderWidth:1, pointRadius:0, pointHitRadius:4, yAxisID:'y2' },

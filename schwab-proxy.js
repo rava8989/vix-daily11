@@ -547,13 +547,19 @@ async function spreadsRouterHeadsUp(env, etNow) {
   const cur = await env.SIGNAL_KV.get(key);
   if (cur === 'sent') return;
   if (!(await claimSendSlot(env, key))) return;
-  // Full fanout like PNBF's heads-up (owner 2026-08-20: "same way other
-  // strategies work") — channel + subscribers via the disclaimer chokepoint.
-  let ok = false;
-  try { await fanoutSubscribers(env, text); ok = true; }
-  catch (e) { console.warn('[spreads-hu]', e.message); }
-  if (ok) await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
-  else { try { await env.SIGNAL_KV.delete(key); } catch (_) {} }
+  // LAST-CALL fresh re-read (P46, 2026-08-27: heads-up posted twice — two
+  // colo-concurrent ticks both passed the claim; the 8/25 GXBF fix was never
+  // swept here, P34 violation). By now a rival's marker has had seconds to
+  // propagate; one fresh read kills the duplicate before the fanout.
+  if ((await env.SIGNAL_KV.get(key)) === 'sent') return;
+  // MARKER BEFORE SEND (P27: lose-once > dupe). The fanout to N subscribers
+  // can outlive a cron minute; marking after it is what let the twin through.
+  await env.SIGNAL_KV.put(key, 'sent', { expirationTtl: 86400 });
+  try { await fanoutSubscribers(env, text); }
+  catch (e) {
+    console.warn('[spreads-hu]', e.message);
+    try { await env.SIGNAL_KV.delete(key); } catch (_) {}   // confirmed nothing posted → allow retry
+  }
 }
 
 async function spreadsRouterDM(env, etNow) {
@@ -568,6 +574,10 @@ async function spreadsRouterDM(env, etNow) {
   const cur = await env.SIGNAL_KV.get(dmKey);
   if (cur === 'sent') return;
   if (!(await claimSendSlot(env, dmKey))) return;
+  // LAST-CALL fresh re-read (P46 sweep, 2026-08-27: the trade card posted
+  // twice, 1:00 + 1:03 — the first fanout ran long and its after-send marker
+  // hadn't landed when the next tick checked).
+  if ((await env.SIGNAL_KV.get(dmKey)) === 'sent') return;
   const t = JSON.parse(openRaw);
   const risk = Math.round((10 - t.credit) * 100);
   const why = t.side === 'CALL'
@@ -582,11 +592,14 @@ async function spreadsRouterDM(env, etNow) {
     `credit ≈ $${t.credit.toFixed(2)}/spread · max risk ~$${risk}/spread\n` +
     `${why}\n` +
     `settles at the close · https://rava8989.github.io/brave/spreads.html`;
-  let ok = false;
-  try { const out = await fanoutSubscribers(env, msg); ok = true; console.log(`[spreads] card fanned out (${Array.isArray(out) ? out.length : 0} subs)`); }
-  catch (e) { console.warn('[spreads-fanout]', e.message); }
-  if (ok) await env.SIGNAL_KV.put(dmKey, 'sent', { expirationTtl: 86400 });
-  else { try { await env.SIGNAL_KV.delete(dmKey); } catch (_) {} }
+  // MARKER BEFORE SEND (P27: lose-once > dupe) — the after-send marker is
+  // exactly what allowed today's twin card.
+  await env.SIGNAL_KV.put(dmKey, 'sent', { expirationTtl: 86400 });
+  try { const out = await fanoutSubscribers(env, msg); console.log(`[spreads] card fanned out (${Array.isArray(out) ? out.length : 0} subs)`); }
+  catch (e) {
+    console.warn('[spreads-fanout]', e.message);
+    try { await env.SIGNAL_KV.delete(dmKey); } catch (_) {}   // nothing posted → retry next tick
+  }
 }
 
 async function spreadsRouterSettle(env, etNow) {
@@ -630,7 +643,8 @@ async function spreadsRouterSettle(env, etNow) {
   // frozen backtest (+$84/trade, 78.1%). Claim-gated per milestone.
   if (log.length > 0 && log.length % 10 === 0) {
     const msKey = `spreads_ms_${log.length}`;
-    if ((await env.SIGNAL_KV.get(msKey)) !== 'sent' && (await claimSendSlot(env, msKey))) {
+    if ((await env.SIGNAL_KV.get(msKey)) !== 'sent' && (await claimSendSlot(env, msKey))
+        && (await env.SIGNAL_KV.get(msKey)) !== 'sent') {   // last-call fresh re-read (P46 sweep)
       const pls = log.map(x => x.pl); const nn = pls.length;
       const w = pls.filter(p => p > 0).length; const tot = pls.reduce((a, b) => a + b, 0);
       const msg = `📊 **Spreads Router — forward test, ${nn} trades in**\n` +
@@ -6451,6 +6465,12 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
         } catch (_) {}
         await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B:no-conv`, { expirationTtl: 86400 });
         return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle: `no-conversion:${why}` };
+      }
+      // LAST-CALL fresh re-read (P46 sweep 2026-08-27): a rival tick that
+      // finished this branch marks doneKey; catch it before opening/posting.
+      {
+        const lcG = await env.SIGNAL_KV.get(doneKey);
+        if (lcG && lcG.startsWith('gamma-gate')) return { ...out, status: 'duplicate_avoided' };
       }
       let gatedStraddle = null;
       try {

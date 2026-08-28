@@ -174,12 +174,37 @@ const D=[["2023-06-02","F","13:00","IC",4280,4270,2.55,15.0,4282.12,378.0,378.0,
 const tb=document.querySelector('#log tbody');
 let side='ALL',yr='',q='';
 const fmt=n=>n<0?'\u2212$'+Math.abs(n).toLocaleString():'+$'+n.toLocaleString();
+function applyStats(rows,label){
+  // cards + equity curve reflect the CURRENT filter (owner 2026-08-28:
+  // "make sure it is togglable" — condor vs CCS separable everywhere)
+  if(!rows.length)return;
+  const pls=rows.map(r=>r[9]),n=pls.length,w=pls.filter(p=>p>0).length,tot=pls.reduce((a,b)=>a+b,0);
+  const avg=tot/n,varr=n>1?pls.reduce((a,p)=>a+(p-avg)*(p-avg),0)/(n-1):1,t=avg/Math.sqrt(varr/n);
+  const wins=pls.filter(p=>p>0).reduce((a,b)=>a+b,0),loss=Math.abs(pls.filter(p=>p<=0).reduce((a,b)=>a+b,0))||1;
+  let eq=0,pk=0,dd=0,worst=0;const cums=[];
+  for(const p of pls){eq+=p;cums.push(eq);pk=Math.max(pk,eq);dd=Math.min(dd,eq-pk);worst=Math.min(worst,p)}
+  const cards=document.querySelectorAll('.cards .card');
+  const set=(i,v,sub)=>{if(cards[i]){cards[i].querySelector('.v').textContent=v;if(sub)cards[i].querySelector('.s').textContent=sub}};
+  set(0,fmt(Math.round(tot)),n+' trades'+(label?' \u00b7 '+label:''));
+  set(1,(100*w/n).toFixed(1)+'%',w+'W \u00b7 '+(n-w)+'L');
+  set(2,fmt(Math.round(avg)),'t-stat '+t.toFixed(2));
+  set(3,(wins/loss).toFixed(2));
+  set(4,fmt(Math.round(worst)));set(5,fmt(Math.round(dd)));
+  const poly=document.querySelector('svg .eq');
+  if(poly&&cums.length>1){
+    const lo=Math.min(0,...cums),hi=Math.max(...cums,1);
+    const X=i=>52+(i/(cums.length-1))*838,Y=v=>14+(1-(v-lo)/(hi-lo))*200;
+    poly.setAttribute('points',cums.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' '));
+  }
+}
 function render(){
   let rows=D.filter(r=>(side=='ALL'||(side=='L'?r[9]<=0:r[3]==side))&&(!yr||r[0].startsWith(yr))&&(!q||r[0].includes(q)));
   tb.innerHTML=[...rows].reverse().map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="side ${r[3]}">${r[3]}</span></td><td>${r[4]}</td><td>${r[5]}</td><td>$${r[6].toFixed(2)}</td><td>${r[12]?`${r[12]}/${r[13]} $${r[14].toFixed(2)}`:'\u2014'}</td><td>${r[7]>0?'+':''}${r[7].toFixed(1)}</td><td>${r[8]?r[8].toFixed(2):'\u2014'}</td><td class="${r[9]>0?'pos':'neg'}">${fmt(r[9])}</td><td>${fmt(r[10])}</td></tr>`).join('');
   const pls=rows.map(r=>r[9]);
   const w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
   document.getElementById('fsum').textContent=rows.length? `${rows.length} trades \u00b7 WR ${(100*w/rows.length).toFixed(1)}% \u00b7 total ${fmt(Math.round(tot))} \u00b7 avg ${fmt(Math.round(tot/rows.length))}` : 'no trades match';
+  const lbl=side==='ALL'&&!yr&&!q?'':[side!=='ALL'?(side==='IC'?'condors':side==='CALL'?'call spreads':'losses'):null,yr||null].filter(Boolean).join(' ')||'filtered';
+  applyStats(rows,lbl);
 }
 document.querySelectorAll('.btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.btn').forEach(x=>x.classList.remove('on'));b.classList.add('on');side=b.dataset.f;render()});
 document.getElementById('yr').onchange=e=>{yr=e.target.value;render()};
@@ -196,25 +221,8 @@ function mergeLive(j){
   if(add.length){
     let cum=D.length?D[D.length-1][10]:0;
     for(const r of add){cum=Math.round((cum+r[9])*10)/10;r[10]=cum;D.push(r)}
-    const pls=D.map(r=>r[9]),n=pls.length,w=pls.filter(p=>p>0).length,tot=pls.reduce((a,b)=>a+b,0);
-    const avg=tot/n,varr=pls.reduce((a,p)=>a+(p-avg)*(p-avg),0)/(n-1),t=avg/Math.sqrt(varr/n);
-    const wins=pls.filter(p=>p>0).reduce((a,b)=>a+b,0),loss=Math.abs(pls.filter(p=>p<=0).reduce((a,b)=>a+b,0));
-    let eq=0,pk=0,dd=0,worst=0;
-    for(const p of pls){eq+=p;pk=Math.max(pk,eq);dd=Math.min(dd,eq-pk);worst=Math.min(worst,p)}
-    const fmt=v=>v<0?'\u2212$'+Math.abs(Math.round(v)).toLocaleString():'+$'+Math.round(v).toLocaleString();
-    const cards=document.querySelectorAll('.cards .card');
-    const set=(i,v,sub)=>{if(cards[i]){cards[i].querySelector('.v').textContent=v;if(sub)cards[i].querySelector('.s').textContent=sub}};
-    set(0,fmt(tot),n+' trades');set(1,(100*w/n).toFixed(1)+'%',w+'W \u00b7 '+(n-w)+'L');
-    set(2,fmt(avg),'t-stat '+t.toFixed(2));set(3,(wins/loss).toFixed(2));
-    set(4,fmt(worst));set(5,fmt(dd));
     const h=[...document.querySelectorAll('h2')].find(x=>x.textContent.includes('Trade log'));
-    if(h)h.innerHTML='Trade log \u2014 all '+n;
-    const poly=document.querySelector('svg .eq');
-    if(poly){
-      const lo=Math.min(0,...D.map(r=>r[10])),hi=Math.max(...D.map(r=>r[10]));
-      const X=i=>52+(i/(D.length-1))*838,Y=v=>14+(1-(v-lo)/(hi-lo))*200;
-      poly.setAttribute('points',D.map((r,i)=>X(i).toFixed(1)+','+Y(r[10]).toFixed(1)).join(' '));
-    }
+    if(h)h.innerHTML='Trade log \u2014 all '+D.length;
   }
   render();
 }

@@ -1043,7 +1043,7 @@ function _sizingRun() {
   // Max risk per contract — FIXED hard values, user-decided. NOT auto-calculated
   // (no historical drawdown, no stress multiplier). Change only on request.
   // tail: $200 = small-loss tail hedge (worst trade historically -$520 = capped by per-trade put debit).
-  const capPerCt = { m8bf: 3000, strad: 3500, gxbf: 5000, bobf: 1200, diagonal: 11000, scalp: 1700, spreads: 800, tail: 200 };
+  const capPerCt = { m8bf: 3000, strad: 3500, gxbf: 5000, bobf: 1200, diagonal: 11000, scalp: 1700, spreads: 650, tail: 200 };
 
   // ── Path-dependent compounding portfolio simulation (Option Omega style):
   //    each day, each strategy's contracts = floor( alloc% × CURRENT equity ÷

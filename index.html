@@ -675,7 +675,7 @@
     </div>
 
     <!-- CARD 8: Spreads Router (main strategy 2026-08-19, default 2 contracts) -->
-    <div class="scard" id="cardSpreads" title="Spreads Router — gamma-routed 10-wide SPX 0DTE credit spread, one per day, default 2 contracts. Noon 0DTE book ≤ −10B → SELL call spread ~$4.00 credit (deep-negative days don't rally back); else 1 PM book > 0 → SELL put spread ~$2.50 credit (pinned days don't dump); else no trade. Skips CPI, EOM, first-of-month, OPEX−1, post-OPEX VIX expiration. Hold to settlement, no exits. Backtest Jun 2023→Aug 2026: 433 trades, 78.1% WR, +$84/lot, PF 1.68, worst day −$798/lot. Full record + live log: spreads.html.">
+    <div class="scard" id="cardSpreads" title="Spreads Router — gamma-routed 10-wide SPX 0DTE credit spread, one per day, default 2 contracts. Noon 0DTE book ≤ −10B → SELL call spread ~$4.00 credit (deep-negative days don't rally back); else 1 PM book > 0 → SELL IRON CONDOR: put spread ~$2.50 + far call spread ~$1.25 (pinned days don't travel; condor rule since 2026-08-28); else no trade. Skips CPI, EOM, first-of-month, OPEX−1, post-OPEX VIX expiration. Hold to settlement, no exits. Backtest (condor basis) Jun 2023→Aug 2026: 420 trades, 70.7% WR, +$98/lot, PF 1.69, worst day −$709/lot. Full record + live log: spreads.html.">
       <div class="scard-header">
         <span class="scard-label">⇄ Spreads <span style="font-weight:400;font-size:10px;opacity:.7;letter-spacing:normal;text-transform:none">· 2 lots</span></span>
         <span class="today-trade-pill" id="pillSpreads" style="display:none;">▶ TODAY'S TRADE</span>

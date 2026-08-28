@@ -520,6 +520,18 @@ async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot, pi
     credit: pick.credit, gexB, spot: Math.round(spot * 100) / 100, status: 'open' };
   if (side === 'IC' && pickC) {
     trade.cShort = pickC.short; trade.cLong = pickC.long; trade.cCredit = pickC.credit;
+    // Morning-direction cohort (owner 2026-08-28, INFO ONLY — like M8BF's
+    // fat-gamma tier): down/flat mornings historically +$173/lot vs +$70 on
+    // up-mornings (era-stable; mechanism = the late-day fade hitting the put
+    // side). Story, not sizing advice.
+    try {
+      const msdRawS = await env.SIGNAL_KV.get(`morning_signal_data_${d}`);
+      const msdS = msdRawS ? JSON.parse(msdRawS) : null;
+      if (msdS && typeof msdS.spxOpen === 'number' && msdS.spxOpen > 0) {
+        trade.spxOpen = msdS.spxOpen;
+        trade.mornUp = spot > msdS.spxOpen;
+      }
+    } catch (_) {}
   }
   await env.SIGNAL_KV.put(`spreads_open_${d}`, JSON.stringify(trade), { expirationTtl: 5 * 86400 });
   await env.SIGNAL_KV.put(`spreads_done_${d}`, `trade:${side}`, { expirationTtl: 3 * 86400 });
@@ -606,7 +618,9 @@ async function spreadsRouterDM(env, etNow) {
       `PUT spread **${t.short}/${t.long}** @ $${t.credit.toFixed(2)} + CALL spread **${t.cShort}/${t.cLong}** @ $${t.cCredit.toFixed(2)} (10-wides)\n` +
       `total credit ≈ $${totCr.toFixed(2)}/condor · max risk ~$${risk}/condor\n` +
       `book +${t.gexB}B at 1 PM — pinned, betting the range holds\n` +
-      `settles at the close · https://rava8989.github.io/brave/spreads.html`;
+      `settles at the close · https://rava8989.github.io/brave/spreads.html` +
+      (t.mornUp === false ? `\n-# 🟢 Down-morning cohort — historically the condor's strongest days (+$173/lot vs +$70 on up-mornings). Info only.`
+       : t.mornUp === true ? `\n-# ⚪ Up-morning cohort — historically the softer cohort (+$70/lot vs +$173 on down-mornings). Info only.` : '');
   } else {
     const risk = Math.round((10 - t.credit) * 100);
     const why = t.side === 'CALL'

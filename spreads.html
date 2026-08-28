@@ -160,7 +160,7 @@ overlap vs live &Sigma;3 book: corr +0.29; on the book&rsquo;s 10 worst days &md
 <div class="ctrl">
 <button class="btn on" data-f="ALL">All</button>
 <button class="btn" data-f="IC">Condors</button>
-<button class="btn" data-f="CALL">Calls</button>
+<button class="btn" data-f="CALL">CCS</button>
 <button class="btn" data-f="L">Losses</button>
 <select id="yr"><option value="">every year</option><option>2022</option><option>2023</option><option>2024</option><option>2025</option><option>2026</option></select>
 <input type="search" id="q" placeholder="find date&hellip;">
@@ -201,7 +201,7 @@ function applyStats(rows,label){
 }
 function render(){
   let rows=D.filter(r=>(side=='ALL'||(side=='L'?r[9]<=0:r[3]==side))&&(!yr||r[0].startsWith(yr))&&(!q||r[0].includes(q)));
-  tb.innerHTML=[...rows].reverse().map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="side ${r[3]}">${r[3]}</span></td><td>${r[4]}</td><td>${r[5]}</td><td>$${r[6].toFixed(2)}</td><td>${r[12]?`${r[12]}/${r[13]} $${r[14].toFixed(2)}`:'\u2014'}</td><td>${r[7]>0?'+':''}${r[7].toFixed(1)}</td><td>${r[8]?r[8].toFixed(2):'\u2014'}</td><td class="${r[9]>0?'pos':'neg'}">${fmt(r[9])}</td><td>${fmt(r[10])}</td></tr>`).join('');
+  tb.innerHTML=[...rows].reverse().map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="side ${r[3]}">${r[3]==='CALL'?'CCS':r[3]}</span></td><td>${r[4]}</td><td>${r[5]}</td><td>$${r[6].toFixed(2)}</td><td>${r[12]?`${r[12]}/${r[13]} $${r[14].toFixed(2)}`:'\u2014'}</td><td>${r[7]>0?'+':''}${r[7].toFixed(1)}</td><td>${r[8]?r[8].toFixed(2):'\u2014'}</td><td class="${r[9]>0?'pos':'neg'}">${fmt(r[9])}</td><td>${fmt(r[10])}</td></tr>`).join('');
   const pls=rows.map(r=>r[9]);
   const w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
   document.getElementById('fsum').textContent=rows.length? `${rows.length} trades \u00b7 WR ${(100*w/rows.length).toFixed(1)}% \u00b7 total ${fmt(Math.round(tot))} \u00b7 avg ${fmt(Math.round(tot/rows.length))}` : 'no trades match';
@@ -241,10 +241,10 @@ function mergeLive(j){
   if(j.log&&j.log.length){
     const pls=j.log.map(x=>x.pl), w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
     document.getElementById('lpStats').innerHTML=`live so far: <b style="color:var(--text)">${j.log.length}</b> trades \u00b7 WR <b style="color:var(--text)">${(100*w/j.log.length).toFixed(0)}%</b> \u00b7 total <b class="${tot>=0?'pos':'neg'}">${fmt(Math.round(tot))}</b> \u00b7 avg ${fmt(Math.round(tot/j.log.length))}/trade \u00b7 backtest pace: +$84/trade`;
-    document.querySelector('#lpLog tbody').innerHTML=[...j.log].reverse().map(x=>{const ic=x.side==='IC'&&x.cShort!=null;const cr=ic?x.credit+x.cCredit:x.credit;return `<tr><td>${x.n}</td><td>${x.date}</td><td><span class="side ${x.side}">${x.side}</span></td><td>${x.short}${ic?'p / '+x.cShort+'c':''}</td><td>${x.long}${ic?'p / '+x.cLong+'c':''}</td><td>$${cr.toFixed(2)}</td><td>${x.gexB>0?'+':''}${x.gexB}</td><td>${x.settle?x.settle.toFixed(2):'\u2014'}</td><td class="${x.pl>0?'pos':'neg'}">${fmt(x.pl)}</td></tr>`}).join('');
+    document.querySelector('#lpLog tbody').innerHTML=[...j.log].reverse().map(x=>{const ic=x.side==='IC'&&x.cShort!=null;const cr=ic?x.credit+x.cCredit:x.credit;return `<tr><td>${x.n}</td><td>${x.date}</td><td><span class="side ${x.side}">${x.side==='CALL'?'CCS':x.side}</span></td><td>${x.short}${ic?'p / '+x.cShort+'c':''}</td><td>${x.long}${ic?'p / '+x.cLong+'c':''}</td><td>$${cr.toFixed(2)}</td><td>${x.gexB>0?'+':''}${x.gexB}</td><td>${x.settle?x.settle.toFixed(2):'\u2014'}</td><td class="${x.pl>0?'pos':'neg'}">${fmt(x.pl)}</td></tr>`}).join('');
   } else document.getElementById('lpStats').textContent='no settled trades yet.';
   if(j.open&&!(j.log||[]).some(x=>x.date===j.open.date)){
-    {const o=j.open,ic=o.side==='IC'&&o.cShort!=null,cr=ic?o.credit+o.cCredit:o.credit;document.querySelector('#lpLog tbody').insertAdjacentHTML('afterbegin',`<tr><td>${o.n}</td><td>${o.date}</td><td><span class="side ${o.side}">${o.side}</span></td><td>${o.short}${ic?'p / '+o.cShort+'c':''}</td><td>${o.long}${ic?'p / '+o.cLong+'c':''}</td><td>$${cr.toFixed(2)}</td><td>${o.gexB>0?'+':''}${o.gexB}</td><td colspan="2" style="color:var(--amber)">OPEN \u2014 settles at close</td></tr>`);}
+    {const o=j.open,ic=o.side==='IC'&&o.cShort!=null,cr=ic?o.credit+o.cCredit:o.credit;document.querySelector('#lpLog tbody').insertAdjacentHTML('afterbegin',`<tr><td>${o.n}</td><td>${o.date}</td><td><span class="side ${o.side}">${o.side==='CALL'?'CCS':o.side}</span></td><td>${o.short}${ic?'p / '+o.cShort+'c':''}</td><td>${o.long}${ic?'p / '+o.cLong+'c':''}</td><td>$${cr.toFixed(2)}</td><td>${o.gexB>0?'+':''}${o.gexB}</td><td colspan="2" style="color:var(--amber)">OPEN \u2014 settles at close</td></tr>`);}
   }
   mergeLive(j);
 }catch(e){document.getElementById('lpStats').textContent='live feed unavailable: '+e.message; render();}

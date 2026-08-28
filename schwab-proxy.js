@@ -487,7 +487,17 @@ async function spreadsRouterJob(env, etNow, masterChain) {
   if (!masterChain || !masterChain.putExpDateMap || !masterChain.spot) return;
   const pick = spreadsPickStrike(masterChain.putExpDateMap, masterChain.spot, -1, 10, 2.50, 0.63);
   if (!pick) { await env.SIGNAL_KV.put(`spreads_done_${d}`, `no-trade-nocredit:${gexB}`, { expirationTtl: 3 * 86400 }); return; }
-  await spreadsOpenPaper(env, d, etNow, 'PUT', '13:00', pick, gexB, masterChain.spot);
+  // CONDOR PROMOTION (owner 2026-08-28): the positive-book trade is the
+  // lopsided iron condor — the validated put spread PLUS a far call spread
+  // ($1.25 ± 0.60 target). Basis: 420-trade condor log, 71% WR, +$97.9/lot,
+  // t 5.06, PF 1.69, maxDD $4,327, OOS-validated; call leg finished green on
+  // all 72 put-side loss days (zero both-sides-lose days in 3.2 yrs).
+  // If the call leg can't be priced, fall back to the bare put spread —
+  // exactly how the backtest treated missing call legs (1 of 334 days).
+  const pickC = masterChain.callExpDateMap
+    ? spreadsPickStrike(masterChain.callExpDateMap, masterChain.spot, +1, 10, 1.25, 0.60)
+    : null;
+  await spreadsOpenPaper(env, d, etNow, pickC ? 'IC' : 'PUT', '13:00', pick, gexB, masterChain.spot, pickC);
 }
 
 // Morning-card row: the calendar is knowable at 9:35; the gamma book decides
@@ -501,15 +511,19 @@ function spreadsCalendarBlock(etNow) {
   return null;
 }
 
-const SPREADS_BT_N = 433;   // frozen backtest count (through 2026-08-18, vixexp-after-opex + opex-1 filtered); live numbering continues from here
-async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot) {
+const SPREADS_BT_N = 420;   // frozen CONDOR-basis backtest count (through 2026-08-18); live numbering continues from here (rule = condor since 2026-08-28; live #421-422 were PS-era trades, kept as-lived)
+async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot, pickC = null) {
   // trade exists in KV BEFORE any Discord attempt (P27: state before send)
+  // side 'IC': pick = the PUT spread legs, pickC = the far CALL spread legs.
   const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
   const trade = { n: SPREADS_BT_N + log.length + 1, date: d, entry, side, short: pick.short, long: pick.long,
     credit: pick.credit, gexB, spot: Math.round(spot * 100) / 100, status: 'open' };
+  if (side === 'IC' && pickC) {
+    trade.cShort = pickC.short; trade.cLong = pickC.long; trade.cCredit = pickC.credit;
+  }
   await env.SIGNAL_KV.put(`spreads_open_${d}`, JSON.stringify(trade), { expirationTtl: 5 * 86400 });
   await env.SIGNAL_KV.put(`spreads_done_${d}`, `trade:${side}`, { expirationTtl: 3 * 86400 });
-  console.log(`[spreads] paper ${side} ${pick.short}/${pick.long} cr $${pick.credit} gex ${gexB}B`);
+  console.log(`[spreads] paper ${side} ${pick.short}/${pick.long}${trade.cShort ? ` + ${trade.cShort}/${trade.cLong}` : ''} cr $${(pick.credit + (trade.cCredit || 0)).toFixed(2)} gex ${gexB}B`);
 }
 
 async function spreadsRouterHeadsUp(env, etNow) {
@@ -541,7 +555,7 @@ async function spreadsRouterHeadsUp(env, etNow) {
     const e12 = await env.SIGNAL_KV.get(`spreads_eval12_${d}`);
     if (e12 && e12.startsWith('cs')) return;
     key = `spreads_hu13_${d}`;
-    text = `🧭 **Σ3 Spreads Router — heads-up**\nBook +${gexB}B — in the PUT-spread trigger range. Likely trade at 1:00.`;
+    text = `🧭 **Σ3 Spreads Router — heads-up**\nBook +${gexB}B — in the CONDOR trigger range. Likely trade at 1:00.`;
   }
   if (!text) return;
   const cur = await env.SIGNAL_KV.get(key);
@@ -579,19 +593,31 @@ async function spreadsRouterDM(env, etNow) {
   // hadn't landed when the next tick checked).
   if ((await env.SIGNAL_KV.get(dmKey)) === 'sent') return;
   const t = JSON.parse(openRaw);
-  const risk = Math.round((10 - t.credit) * 100);
-  const why = t.side === 'CALL'
-    ? `book ${t.gexB}B at noon — deep negative, betting no afternoon rally`
-    : `book +${t.gexB}B at 1 PM — pinned, betting no afternoon dump`;
+  // No trade numbering in the card (owner 2026-08-25: "can we not number these").
   // MAIN-STRATEGY fanout (owner 2026-08-19): signals channel + every subscriber,
   // default size 2 contracts. Trade state was written BEFORE this send (P27);
   // the claim gates the whole fanout, 'sent' only after the fanout ran.
-  // No trade numbering in the card (owner 2026-08-25: "can we not number these").
-  const msg = `🧭 **Σ3 Spreads Router — new trade**\n` +
-    `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide) · **2 contracts**\n` +
-    `credit ≈ $${t.credit.toFixed(2)}/spread · max risk ~$${risk}/spread\n` +
-    `${why}\n` +
-    `settles at the close · https://rava8989.github.io/brave/spreads.html`;
+  let msg;
+  if (t.side === 'IC') {
+    const totCr = t.credit + t.cCredit;
+    const risk = Math.round((10 - totCr) * 100);
+    msg = `🧭 **Σ3 Spreads Router — new trade**\n` +
+      `SELL SPX 0DTE IRON CONDOR · **2 contracts**\n` +
+      `PUT spread **${t.short}/${t.long}** @ $${t.credit.toFixed(2)} + CALL spread **${t.cShort}/${t.cLong}** @ $${t.cCredit.toFixed(2)} (10-wides)\n` +
+      `total credit ≈ $${totCr.toFixed(2)}/condor · max risk ~$${risk}/condor\n` +
+      `book +${t.gexB}B at 1 PM — pinned, betting the range holds\n` +
+      `settles at the close · https://rava8989.github.io/brave/spreads.html`;
+  } else {
+    const risk = Math.round((10 - t.credit) * 100);
+    const why = t.side === 'CALL'
+      ? `book ${t.gexB}B at noon — deep negative, betting no afternoon rally`
+      : `book +${t.gexB}B at 1 PM — pinned, betting no afternoon dump`;
+    msg = `🧭 **Σ3 Spreads Router — new trade**\n` +
+      `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide) · **2 contracts**\n` +
+      `credit ≈ $${t.credit.toFixed(2)}/spread · max risk ~$${risk}/spread\n` +
+      `${why}\n` +
+      `settles at the close · https://rava8989.github.io/brave/spreads.html`;
+  }
   // MARKER BEFORE SEND (P27: lose-once > dupe) — the after-send marker is
   // exactly what allowed today's twin card.
   await env.SIGNAL_KV.put(dmKey, 'sent', { expirationTtl: 86400 });
@@ -613,9 +639,17 @@ async function spreadsRouterSettle(env, etNow) {
   const row = hist.find(r => r.date === t.date);
   if (!row || row.spxClose == null) return;            // retry on later ticks (18:35 / 20:17 / 21:17)
   const c = row.spxClose;
-  const loss = t.side === 'CALL' ? Math.max(0, Math.min(c - t.short, 10))
-                                 : Math.max(0, Math.min(t.short - c, 10));
-  const pl = Math.round((t.credit - loss) * 100 * 10) / 10;
+  let pl;
+  if (t.side === 'IC') {
+    // condor: put-spread leg (short/long/credit) + far call-spread leg (cShort/cLong/cCredit)
+    const lossP = Math.max(0, Math.min(t.short - c, 10));
+    const lossC = Math.max(0, Math.min(c - t.cShort, 10));
+    pl = Math.round(((t.credit + t.cCredit) - lossP - lossC) * 100 * 10) / 10;
+  } else {
+    const loss = t.side === 'CALL' ? Math.max(0, Math.min(c - t.short, 10))
+                                   : Math.max(0, Math.min(t.short - c, 10));
+    pl = Math.round((t.credit - loss) * 100 * 10) / 10;
+  }
   const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
   if (!log.some(x => x.date === t.date)) {
     log.push({ ...t, status: 'settled', settle: c, pl });
@@ -6759,12 +6793,24 @@ async function refreshSpreadsLiveQuotes(env, token, etNow, preChain = null) {
     const longLeg  = pickContractFromChain(map, d, trade.long);
     if (!shortLeg || !longLeg || shortLeg.strike !== trade.short || longLeg.strike !== trade.long ||
         shortLeg.mid == null || longLeg.mid == null) return;
-    const mark = shortLeg.mid - longLeg.mid;         // cost to buy the spread back
+    let mark = shortLeg.mid - longLeg.mid;           // cost to buy the spread back
     if (!(mark > -0.5 && mark < 10.5)) return;        // quote-sanity: a 10-wide can't be outside [0,10]
+    let totalCredit = trade.credit;
+    if (trade.side === 'IC' && trade.cShort != null) {
+      // condor: add the far call-spread leg's mark
+      const cs = pickContractFromChain(chain.callExpDateMap, d, trade.cShort);
+      const cl_ = pickContractFromChain(chain.callExpDateMap, d, trade.cLong);
+      if (!cs || !cl_ || cs.strike !== trade.cShort || cl_.strike !== trade.cLong ||
+          cs.mid == null || cl_.mid == null) return;
+      const markC = cs.mid - cl_.mid;
+      if (!(markC > -0.5 && markC < 10.5)) return;
+      mark += markC;
+      totalCredit += trade.cCredit;
+    }
     trade.currentShortMid = parseFloat(shortLeg.mid.toFixed(2));
     trade.currentLongMid  = parseFloat(longLeg.mid.toFixed(2));
     trade.currentValue    = parseFloat(mark.toFixed(2));
-    trade.currentPnl      = Math.round((trade.credit - mark) * 100 * 10) / 10;  // per-lot $, same convention as log.pl
+    trade.currentPnl      = Math.round((totalCredit - mark) * 100 * 10) / 10;  // per-lot $, same convention as log.pl
     trade.currentSpot     = chain.spot ? parseFloat(chain.spot.toFixed(2)) : trade.currentSpot;
     trade.lastQuoteAt     = new Date().toISOString();
     await env.SIGNAL_KV.put(`spreads_open_${d}`, JSON.stringify(trade), { expirationTtl: 5 * 86400 });
@@ -12570,7 +12616,7 @@ function buildMorningCardData(signal, vixValues, tailLine, pnbf) {
   if (pnbf && 'spreadsBlock' in pnbf) {
     rows.push(pnbf.spreadsBlock
       ? { n: 'Spreads', det: pnbf.spreadsBlock, state: 'no' }
-      : { n: 'Spreads', det: 'noon ≤ −10B → call · 1PM > 0 → put', state: 'possible' });
+      : { n: 'Spreads', det: 'noon ≤ −10B → call · 1PM > 0 → condor', state: 'possible' });
   }
   const vix = (vixValues.todayOpen != null) ? String(vixValues.todayOpen) : '—';
   // Overnight VIX direction in plain words. oNight = priorClose − todayOpen:
@@ -12795,7 +12841,7 @@ const SAMPLE_MORNING_CARD = {
     // Tail Hedge row removed 2026-08-03 — strategy retired; the live builder
     // omits it via `if (tailLine)` since getTailHedgeStatusLine returns null.
     { n: 'PNBF', det: 'watching · noon decides (T1 on magnet)', state: 'possible' },
-    { n: 'Spreads', det: 'noon ≤ −10B → call · 1PM > 0 → put', state: 'possible' },
+    { n: 'Spreads', det: 'noon ≤ −10B → call · 1PM > 0 → condor', state: 'possible' },
   ],
   tiles: [['SPX GAP', '+0.91%', '#4ade80']],
   stats: [
@@ -16258,6 +16304,7 @@ export default {
           out.spot = Math.round(mc.spot * 100) / 100;
           out.callPick = spreadsPickStrike(mc.callExpDateMap, mc.spot, +1, 10, 4.00, 1.00);
           out.putPick = spreadsPickStrike(mc.putExpDateMap, mc.spot, -1, 10, 2.50, 0.63);
+          out.condorCallPick = spreadsPickStrike(mc.callExpDateMap, mc.spot, +1, 10, 1.25, 0.60);
           if (out.putPick) {
             const sim = { ...out.putPick, settleAt: out.spot };
             const loss = Math.max(0, Math.min(sim.short - out.spot, 10));

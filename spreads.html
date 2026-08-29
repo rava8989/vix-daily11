@@ -88,7 +88,7 @@ ul{padding-left:18px}
   </div>
 </div>
 
-<h2>Live trades</h2>
+<h2>Today</h2>
 <div class="panel" id="livePanel">
   <div id="gexGauge" style="margin:0 0 16px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted);margin-bottom:4px">
@@ -112,16 +112,8 @@ ul{padding-left:18px}
     </div>
     <div id="ggZone" style="font-size:12.5px;margin-top:4px;color:var(--muted)">&mdash;</div>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-bottom:10px">
-    <div><span style="font-size:22px;font-weight:600" id="lpCount">–</span><span style="color:var(--muted)"> trades</span></div>
-    <div id="lpToday" style="font-size:13px;color:var(--muted)">today: …</div>
-  </div>
-  <div id="lpStats" class="note" style="margin-bottom:10px">loading…</div>
-  <div class="logbox" style="max-height:40vh"><table id="lpLog">
-    <thead><tr><th>#</th><th>date</th><th>side</th><th>puts</th><th>calls</th><th>credit</th><th>gex B</th><th>settle</th><th>P/L</th></tr></thead>
-    <tbody><tr><td colspan="9" style="text-align:center;color:var(--muted)">no trades yet — first evaluation next session at noon ET</td></tr></tbody>
-  </table></div>
-  <div class="note" style="margin-top:8px">Backtest (condor basis) runs Jun 2022 &rarr; Aug 27 2026 — includes the 2022 bear; live capture = condor era from Aug 28; live capture takes over Aug 19. Rule = iron condor since Aug 28 2026; the record shows condor-rule trades (IC + CCS) only — two pre-promotion put-spread-era live trades are archived off-display. Signals fire live: noon book &le; &minus;10B &rarr; call spread &middot; 1 PM book &gt; 0 &rarr; put spread &middot; trap days skipped. Card goes out when it triggers; settles at the close automatically.</div>
+  <div id="lpToday" style="font-size:13.5px;margin-bottom:6px">today: …</div>
+  <div class="note" style="margin-top:8px">One continuous record (condor basis), Jun 2022 &rarr; today — includes the 2022 bear; each day&rsquo;s trade is appended automatically after the close; live capture takes over Aug 19. Rule = iron condor since Aug 28 2026; the record shows condor-rule trades (IC + CCS) only — two pre-promotion put-spread-era live trades are archived off-display. Signals fire live: noon book &le; &minus;10B &rarr; call spread &middot; 1 PM book &gt; 0 &rarr; put spread &middot; trap days skipped. Card goes out when it triggers; settles at the close automatically.</div>
 </div>
 
 <h2>Backtest — the full study</h2><div class="cards">
@@ -235,23 +227,14 @@ function mergeLive(j){
 (async()=>{try{
   const r=await fetch('https://schwab-proxy.ravamt4.workers.dev/spreads-paper');
   const j=await r.json();
-  document.getElementById('lpCount').textContent=(j.log||[]).filter(x=>!(x.side==='PUT'&&x.date<'2026-08-28')).length;
+  
   let t=j.today==='pending'?'no signal yet':j.today;
   if(t.startsWith('skip:'))t='skipped ('+t.slice(5)+' day)';
   if(t.startsWith('no-trade'))t='no trade (book in dead zone)';
   if(t.startsWith('trade:'))t=t.slice(6)+' spread triggered';
   document.getElementById('lpToday').textContent='today: '+t+(j.open?(j.open.side==='IC'&&j.open.cShort!=null?` \u2014 OPEN: CONDOR ${j.open.short}/${j.open.long}p + ${j.open.cShort}/${j.open.cLong}c @ $${(j.open.credit+j.open.cCredit).toFixed(2)}`:` \u2014 OPEN: ${j.open.side} ${j.open.short}/${j.open.long} @ $${j.open.credit.toFixed(2)}`):'');
-  const fmt=n=>n<0?'\u2212$'+Math.abs(n).toLocaleString():'+$'+n.toLocaleString();
-  if(j.log&&j.log.length){
-    const pls=j.log.map(x=>x.pl), w=pls.filter(p=>p>0).length, tot=pls.reduce((a,b)=>a+b,0);
-    document.getElementById('lpStats').innerHTML=`live so far: <b style="color:var(--text)">${j.log.length}</b> trades \u00b7 WR <b style="color:var(--text)">${(100*w/j.log.length).toFixed(0)}%</b> \u00b7 total <b class="${tot>=0?'pos':'neg'}">${fmt(Math.round(tot))}</b> \u00b7 avg ${fmt(Math.round(tot/j.log.length))}/trade \u00b7 backtest pace: +$84/trade`;
-    document.querySelector('#lpLog tbody').innerHTML=[...j.log].filter(x=>!(x.side==='PUT'&&x.date<'2026-08-28')).reverse().map(x=>{const isCCS=x.side==='CALL';const ic=x.side==='IC'&&x.cShort!=null;const cr=ic?x.credit+x.cCredit:x.credit;const puts=isCCS?'\u2014':`${x.short}/${x.long}`;const calls=isCCS?`${x.short}/${x.long}`:(ic?`${x.cShort}/${x.cLong}`:'\u2014');return `<tr><td>${x.n}</td><td>${x.date}</td><td><span class="side ${x.side==='PUT'?'IC':x.side}">${isCCS?'CCS':'IC'}</span></td><td>${puts}</td><td>${calls}</td><td>$${cr.toFixed(2)}</td><td>${x.gexB>0?'+':''}${x.gexB}</td><td>${x.settle?x.settle.toFixed(2):'\u2014'}</td><td class="${x.pl>0?'pos':'neg'}">${fmt(x.pl)}</td></tr>`}).join('');
-  } else document.getElementById('lpStats').textContent='no settled trades yet.';
-  if(j.open&&!(j.log||[]).some(x=>x.date===j.open.date)){
-    {const o=j.open,isCCS=o.side==='CALL',ic=o.side==='IC'&&o.cShort!=null,cr=ic?o.credit+o.cCredit:o.credit;const puts=isCCS?'\u2014':`${o.short}/${o.long}`;const calls=isCCS?`${o.short}/${o.long}`:(ic?`${o.cShort}/${o.cLong}`:'\u2014');document.querySelector('#lpLog tbody').insertAdjacentHTML('afterbegin',`<tr><td>${o.n}</td><td>${o.date}</td><td><span class="side ${o.side==='PUT'?'IC':o.side}">${isCCS?'CCS':'IC'}</span></td><td>${puts}</td><td>${calls}</td><td>$${cr.toFixed(2)}</td><td>${o.gexB>0?'+':''}${o.gexB}</td><td colspan="2" style="color:var(--amber)">OPEN \u2014 settles at close</td></tr>`);}
-  }
   mergeLive(j);
-}catch(e){document.getElementById('lpStats').textContent='live feed unavailable: '+e.message; render();}
+}catch(e){ render();}
 })();
 </script><script>
 async function gexGauge(){

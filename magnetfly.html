@@ -71,16 +71,6 @@
     <div class="kpis" id="todayKpis" style="display:none"></div>
   </div>
 
-  <h2>Live paper record</h2>
-  <div class="card">
-    <div class="kpis" id="liveKpis"></div>
-    <div class="scroll" style="margin-top:12px">
-      <table id="liveTable"><thead><tr>
-        <th>date</th><th>day</th><th>magnet</th><th>M8BF ctr</th><th>debit</th><th>exit</th><th>exit time</th><th>P/L</th><th>cum</th>
-      </tr></thead><tbody id="liveBody"><tr><td colspan="9" class="note">no live paper trades yet — tracking starts at the next qualifying noon</td></tr></tbody></table>
-    </div>
-  </div>
-
   <h2>The rules (all must hold at 12:00 ET)</h2>
   <div class="card rules">
     1. <b>Alignment:</b> the M8BF fly center sits exactly <span class="mono">5 pts</span> from the day's magnet — i.e. the service's T1 <i>is</i> the magnet. (T1 is always center ±5; verified on all 4,309 archived signals.)<br>
@@ -185,9 +175,9 @@ async function renderBacktest(){
   const liveN = rows.filter(r=>r.note==='LIVE').length;
   const _MONBT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const lastD = rows[rows.length-1].date;
-  document.getElementById('btH').innerHTML = `Backtest + live — ${n} trades, Sep 2024 → ${_MONBT[+lastD.slice(5,7)-1]} ${lastD.slice(0,4)} <span class="tag">real NBBO, slippage included, per 1 lot · ${liveN} live rows auto-appended</span>`;
+  document.getElementById('btH').innerHTML = `Trade log — ${n} trades, Sep 2024 → ${_MONBT[+lastD.slice(5,7)-1]} ${lastD.slice(0,4)} <span class="tag">real NBBO, slippage included, per 1 lot · appended daily after the close</span>`;
   document.getElementById('btNote').textContent = 'equity curve, $ per lot · backtest halves: H1 +$140/trade (t 2.9) · H2 +$205/trade (t 5.1) · yearly ' +
-    Object.keys(yr).sort().map(k=>`${k} ${fmt$(yr[k])}`).join(' / ') + ` · ${liveN} live trades included`;
+    Object.keys(yr).sort().map(k=>`${k} ${fmt$(yr[k])}`).join(' / ');
   function drawEq() {
   const cv = document.getElementById('eq'), ctx = cv.getContext('2d');
   const W = cv.width = (cv.offsetWidth || cv.parentElement.clientWidth || 1000) * 2, H = cv.height = 360;
@@ -240,28 +230,7 @@ async function refresh(){
   } catch(e) {
     document.getElementById('bannerText').textContent = 'worker unreachable';
   }
-  try {
-    const h = await fetch(WORKER + '/magnetfly-history', {cache:'no-store'}).then(r => r.json());
-    if (Array.isArray(h.trades) && h.trades.length) {
-      const tb = document.getElementById('liveBody'); tb.innerHTML = '';
-      let cum = 0, wins = 0;
-      h.trades.forEach(r => {
-        cum += r.pnl; if (r.pnl > 0) wins++;
-        const cls = r.pnl > 0 ? 'g' : 'r';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.date}</td><td>${r.day||''}</td><td>${r.magnet}</td><td>${r.center}</td>`+
-          `<td>$${r.debit}</td><td class="${cls}">${r.exit}</td><td>${r.exitTime||''}</td>`+
-          `<td class="${cls}">${r.pnl>0?'+':'−'}$${Math.abs(r.pnl)}</td><td>${cum<0?'−':''}$${Math.abs(cum).toLocaleString()}</td>`;
-        tb.appendChild(tr);
-      });
-      const n = h.trades.length;
-      document.getElementById('liveKpis').innerHTML = [
-        ['paper trades', n], ['win rate', (100*wins/n).toFixed(0)+'%'],
-        ['total', (cum>=0?'+':'−')+'$'+Math.abs(cum).toLocaleString()],
-        ['vs backtest avg', '+$171/trade'],
-      ].map(x => `<div class="kpi"><div class="l">${x[0]}</div><div class="v">${x[1]}</div></div>`).join('');
-    }
-  } catch(e) {}
+
 }
 refresh();
 setInterval(refresh, 60000);

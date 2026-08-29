@@ -511,7 +511,7 @@ function spreadsCalendarBlock(etNow) {
   return null;
 }
 
-const SPREADS_BT_N = 542;   // frozen CONDOR-basis backtest count (Jun 2022 - Aug 18 2026, bear included); live numbering continues from here (rule = condor since 2026-08-28; earliest live trades were PS-era, kept as-lived)
+const SPREADS_BT_N = 545;   // frozen CONDOR-basis backtest count (Jun 2022 - Aug 27 2026, bear included); live numbering continues from here (rule = condor since 2026-08-28; earliest live trades were PS-era, kept as-lived)
 async function spreadsOpenPaper(env, d, etNow, side, entry, pick, gexB, spot, pickC = null) {
   // trade exists in KV BEFORE any Discord attempt (P27: state before send)
   // side 'IC': pick = the PUT spread legs, pickC = the far CALL spread legs.

@@ -7234,6 +7234,11 @@ async function sweepOrphanSettles(env, etNow) {
 // Full spec + backtest: tasks/MAGNET_FLY_RESEARCH.md (private), magnetfly.html.
 // ════════════════════════════════════════════════════════════════════
 const MF_SIGNALS_CHANNEL = '1048242197029458040';   // same feed the M8BF archive scrapes
+// Alternative mirror of the same feed (owner 2026-08-31, main channel was down
+// most of that day). Both shared scrapers fall back to it whenever the main
+// channel yields a thin day (< MAIN_FEED_MIN_ROWS) and the mirror has more.
+const ALT_SIGNALS_CHANNEL = '1057641464378707989';
+const MAIN_FEED_MIN_ROWS = 40;                      // normal full day ≈ 77 signals
 const MF_TP = 3.0, MF_SL = 5.0, MF_WIDTH = 30, MF_DEBIT_CAP = 17.0;
 const MF_LOTS = 10;   // default position size (Sigma 3 tracking, 2026-07-15)
 
@@ -11167,7 +11172,28 @@ async function upsertHistoryGitHub(env, dateStr, fields, _retries = 3) {
 // BACKFILL MISSING m8bfWR
 // ════════════════════════════════════════════════════════════════════
 
+// Fallback wrapper: when asked for the MAIN feed and it comes back thin (feed
+// outage), re-scrape the mirror channel and use whichever day is fuller. Alt
+// failures never mask a healthy main result; a main error surfaces only if the
+// mirror can't cover it. Callers keep passing the main channel id unchanged.
 async function fetchAllDiscordSignalsForDate(token, channelId, dateISO) {
+  let main = [], mainErr = null;
+  try { main = await fetchAllDiscordSignalsForDateOne(token, channelId, dateISO); }
+  catch (e) { mainErr = e; }
+  if (channelId !== MF_SIGNALS_CHANNEL) { if (mainErr) throw mainErr; return main; }
+  if (!mainErr && main.length >= MAIN_FEED_MIN_ROWS) return main;
+  try {
+    const alt = await fetchAllDiscordSignalsForDateOne(token, ALT_SIGNALS_CHANNEL, dateISO);
+    if (alt.length > main.length) {
+      console.log(`[scrape] main feed thin (${main.length}) → alt mirror used (${alt.length}) for ${dateISO}`);
+      return alt;
+    }
+  } catch (e) { console.warn('[scrape] alt mirror failed:', e.message); }
+  if (mainErr) throw mainErr;
+  return main;
+}
+
+async function fetchAllDiscordSignalsForDateOne(token, channelId, dateISO) {
   // Fetch all butterfly signals posted on dateISO ET, paginated
   const [y, m, d] = dateISO.split('-').map(Number);
   // 12:00-22:00 UTC covers both EDT (9:30-4 ET = 13:30-20 UTC) and EST (9:30-4 ET = 14:30-21 UTC)
@@ -11240,7 +11266,21 @@ async function scrapeRawEarnMsgs(token, channelId, dateISO, withAttachments = fa
   return out;
 }
 
+// Same thin-main → alt-mirror fallback as fetchAllDiscordSignalsForDate.
 async function scrapeRawRowsForDate(token, channelId, dateISO) {
+  const main = await scrapeRawRowsForDateOne(token, channelId, dateISO);
+  if (channelId !== MF_SIGNALS_CHANNEL || main.length >= MAIN_FEED_MIN_ROWS) return main;
+  try {
+    const alt = await scrapeRawRowsForDateOne(token, ALT_SIGNALS_CHANNEL, dateISO);
+    if (alt.length > main.length) {
+      console.log(`[scrape] main feed thin (${main.length}) → alt mirror used (${alt.length}) for ${dateISO}`);
+      return alt;
+    }
+  } catch (e) { console.warn('[scrape] alt mirror failed:', e.message); }
+  return main;
+}
+
+async function scrapeRawRowsForDateOne(token, channelId, dateISO) {
   const [y, m, d] = dateISO.split('-').map(Number);
   const startMs = Date.UTC(y, m - 1, d, 12, 0, 0);
   const endMs = Date.UTC(y, m - 1, d, 22, 0, 0);
@@ -15427,6 +15467,36 @@ export default {
     // piggybacks on a heavy tick and gets killed mid-flight when the day is
     // large (2026-07-09 recovery died silently — trigger consumed, no result,
     // no rows). Auth: SYNC_SECRET or GEXM token.
+    // ── GET /scrape-peek?date=ISO ── Read-only diagnostic for the feed-outage
+    // scenario: row counts from the main channel AND the alt mirror for one
+    // date, plus how many mirror messages parse as signals. Writes nothing.
+    // Auth: SYNC_SECRET or GEXM token (same as /scrape-backfill).
+    if (url.pathname === '/scrape-peek') {
+      const secretSP = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!secretSP || (secretSP !== env.SYNC_SECRET && secretSP !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      const etSP = toET(new Date());
+      const dateSP = url.searchParams.get('date') ||
+        `${etSP.getFullYear()}-${String(etSP.getMonth()+1).padStart(2,'0')}-${String(etSP.getDate()).padStart(2,'0')}`;
+      try {
+        const mainSP = await scrapeRawRowsForDateOne(env.DISCORD_USER_TOKEN, MF_SIGNALS_CHANNEL, dateSP);
+        let altSP = [], altSigsSP = [];
+        try { altSP = await scrapeRawRowsForDateOne(env.DISCORD_USER_TOKEN, ALT_SIGNALS_CHANNEL, dateSP); } catch (e) { altSP = { error: e.message }; }
+        try { altSigsSP = await fetchAllDiscordSignalsForDateOne(env.DISCORD_USER_TOKEN, ALT_SIGNALS_CHANNEL, dateSP); } catch (_) {}
+        const times = r => Array.isArray(r) && r.length ? { first: r[0].split(',')[2], last: r[r.length-1].split(',')[2] } : null;
+        return jsonResp({
+          date: dateSP,
+          main: Array.isArray(mainSP) ? mainSP.length : mainSP,
+          mainTimes: times(mainSP),
+          alt: Array.isArray(altSP) ? altSP.length : altSP,
+          altTimes: times(altSP),
+          altParsedSignals: altSigsSP.length,
+          altSampleFields: Array.isArray(altSP) && altSP.length ? altSP[0].split(',').slice(1, 17) : null,
+        }, 200, {});
+      } catch (e) { return jsonResp({ error: e.message }, 500, {}); }
+    }
+
     if (url.pathname === '/scrape-backfill' && request.method === 'POST') {
       const secretSB = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
       if (!secretSB || (secretSB !== env.SYNC_SECRET && secretSB !== env.GEXM_TRIGGER_TOKEN)) {

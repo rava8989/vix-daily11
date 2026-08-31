@@ -10539,13 +10539,21 @@ async function handleGEXUpdate(env, token, preChain = null) {
       const flowKey = `gex_flow_${dayISO}`;
 
       // ── Trade-side classification from per-contract volume deltas ──
+      // Half-dead chain guard (2026-08-31): Schwab served chains with OI/greeks
+      // alive but totalVolume=0 on ~99% of responses. Such a snapshot must not
+      // overwrite the volsnap baseline (newSnap only holds v>0 contracts, so one
+      // zero response erases every baseline and the next REAL response degrades
+      // to baseline-only) and must not classify. The SPY capture already skips
+      // these via its `flowContracts.length` gate.
+      const volDead = flowContracts.length === 0;
       const snapKey = `gex_volsnap_${dayISO}`;          // prev cumulative volume per contract
-      const prevSnapRaw = await env.SIGNAL_KV.get(snapKey);
-      const prevSnap = prevSnapRaw ? JSON.parse(prevSnapRaw) : null;   // { k: cumVol } or null on first bar
-      const hadPrev = !!prevSnap;
+      let hadPrev = false;
       const newSnap = {};
       let cb = 0, cs = 0, cn = 0, pb = 0, ps = 0, pn = 0; // this-bar buy/sell/neutral, calls & puts (contracts)
       let cbP = 0, csP = 0, pbP = 0, psP = 0;             // this-bar sided PREMIUM $ (dV × price × 100)
+      const prevSnapRaw = volDead ? null : await env.SIGNAL_KV.get(snapKey);
+      const prevSnap = prevSnapRaw ? JSON.parse(prevSnapRaw) : null;   // { k: cumVol } or null on first bar
+      hadPrev = !!prevSnap;
       for (const ct of flowContracts) {
         const v = Math.max(ct.v || 0, 0);
         newSnap[ct.k] = v;
@@ -10570,7 +10578,7 @@ async function handleGEXUpdate(env, token, preChain = null) {
         if (ct.k.endsWith('|C')) { if (side === 'buy') { cb += dV; cbP += prem; } else if (side === 'sell') { cs += dV; csP += prem; } else cn += dV; }
         else                     { if (side === 'buy') { pb += dV; pbP += prem; } else if (side === 'sell') { ps += dV; psP += prem; } else pn += dV; }
       }
-      await env.SIGNAL_KV.put(snapKey, JSON.stringify(newSnap), { expirationTtl: 172800 }); // ~2 days
+      if (!volDead) await env.SIGNAL_KV.put(snapKey, JSON.stringify(newSnap), { expirationTtl: 172800 }); // ~2 days
 
       // Intraday series (live chart): keep legacy cv/pv/ch, add this-bar sided deltas.
       const flowRaw = await env.SIGNAL_KV.get(flowKey);
@@ -10581,7 +10589,13 @@ async function handleGEXUpdate(env, token, preChain = null) {
       // intensifies into the close (Fix 5, 2026-06-30). 0DTE-only + per-day now.
       const ch0dte = (gex0dte && typeof gex0dte.charm === 'number' && gex0dte.tYears > 0)
         ? Math.round(gex0dte.charm / gex0dte.tYears / 365) : null;
-      flow.push({ ts: Math.floor(Date.now() / 1000), cv: gexData.callVol, pv: gexData.putVol,
+      // On a volume-dead bar, carry cv/pv forward from the last row (a truthful
+      // "no new information" flat, not a 358k→0 sawtooth) so the charm + spot
+      // series keep plotting through a Schwab volume outage.
+      const lastFlowRow = flow.length ? flow[flow.length - 1] : null;
+      flow.push({ ts: Math.floor(Date.now() / 1000),
+                  cv: volDead ? (lastFlowRow?.cv || 0) : gexData.callVol,
+                  pv: volDead ? (lastFlowRow?.pv || 0) : gexData.putVol,
                   ch: ch0dte,
                   cb, cs, pb, ps, cn, pn,       // sided deltas: call/put buy/sell/neutral this bar (contracts)
                   cbP: Math.round(cbP), csP: Math.round(csP),   // sided PREMIUM $ this bar (for the net-premium panel)

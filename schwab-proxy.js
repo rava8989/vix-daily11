@@ -15487,6 +15487,53 @@ export default {
     // piggybacks on a heavy tick and gets killed mid-flight when the day is
     // large (2026-07-09 recovery died silently — trigger consumed, no result,
     // no rows). Auth: SYNC_SECRET or GEXM token.
+    // ── GET /straddle-restate-0831 ── ONE-SHOT (owner order 2026-08-31):
+    // restate that day's EOM straddle from strike 7690 (Tasty open 7692.21)
+    // to 7700 (official SPX open 7697.52; the strike the owner traded).
+    // Entry = ThetaData 09:31 NBBO (C 8.40/8.60, P 17.10/17.40 → debit 25.75);
+    // settle |7684.37−7700| = 15.63 → P&L −$1,012 (was −$1,982). Marker-first
+    // (P41); inert after first run and after the day rolls out of KV.
+    if (url.pathname === '/straddle-restate-0831') {
+      const secRS = request.headers.get('X-Sync-Secret') || url.searchParams.get('secret');
+      if (!secRS || (secRS !== env.SYNC_SECRET && secRS !== env.GEXM_TRIGGER_TOKEN)) {
+        return jsonResp({ error: 'Unauthorized' }, 401, {});
+      }
+      const MARKER = 'straddle_restated_2026-08-31';
+      if (await env.SIGNAL_KV.get(MARKER)) return jsonResp({ status: 'already-restated' }, 200, {});
+      await env.SIGNAL_KV.put(MARKER, JSON.stringify({ at: new Date().toISOString(), from: 7690, to: 7700 }));
+      const patch = t => Object.assign(t, {
+        strike: 7700,
+        callSymbol: 'SPXW  260831C07700000', putSymbol: 'SPXW  260831P07700000',
+        entryCallMid: 8.5, entryCallBid: 8.4, entryCallAsk: 8.6,
+        entryPutMid: 17.25, entryPutBid: 17.1, entryPutAsk: 17.4,
+        entryDebit: 25.75, entryAskFill: 26.0, entryBidExit: 25.5, fillDebit: 25.75,
+        closeValue: 15.63, pnl: -1012,
+        restated: true, restatedAt: new Date().toISOString(),
+        restateNote: 'strike 7690→7700 per official SPX open 7697.52 (owner order); entry = ThetaData 09:31 NBBO mids',
+      });
+      const out = { trade: 'not-found', log: 'not-found' };
+      const trRaw = await env.SIGNAL_KV.get('straddle_open_trade');
+      if (trRaw) {
+        const tr = JSON.parse(trRaw);
+        if (tr.openDate === '2026-08-31' && tr.strike === 7690 && tr.status === 'closed') {
+          await env.SIGNAL_KV.put('straddle_open_trade', JSON.stringify(patch(tr)));
+          out.trade = 'patched';
+        } else out.trade = `skipped (${tr.openDate} K${tr.strike} ${tr.status})`;
+      }
+      const lgRaw = await env.SIGNAL_KV.get('straddle_closed_log');
+      if (lgRaw) {
+        const lg = JSON.parse(lgRaw);
+        const i = lg.findIndex(t => t.openDate === '2026-08-31' && t.strike === 7690);
+        if (i >= 0) { patch(lg[i]); await env.SIGNAL_KV.put('straddle_closed_log', JSON.stringify(lg)); out.log = 'patched'; }
+      }
+      // History NOT written here: upsertHistoryGitHub deliberately refuses to
+      // overwrite a non-null P&L field. Settled-P&L restates go through the
+      // owner repair tool — POST /history-patch [{date, set:{stradPL:-1012}}] —
+      // which was used for this restate (2026-08-31, applied + mirrored).
+      out.history = 'use POST /history-patch (done 2026-08-31)';
+      return jsonResp(out, 200, {});
+    }
+
     // ── GET /scrape-peek?date=ISO ── Read-only diagnostic for the feed-outage
     // scenario: row counts from the main channel AND the alt mirror for one
     // date, plus how many mirror messages parse as signals. Writes nothing.

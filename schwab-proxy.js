@@ -2628,8 +2628,8 @@ const COT_CODES = { EUR: '099741', JPY: '097741', GBP: '096742', CAD: '090741',
                     CHF: '092741', AUD: '232741', NZD: '112741', MXN: '095741', DXY: '098662' };
 
 async function cotWeeklyRefresh(env) {
-  const cur = await (await fetch('https://raw.githubusercontent.com/rava8989/brave/main/data/cot_currencies.json',
-    { headers: { 'User-Agent': 'schwab-proxy-worker/1.0' } })).json();
+  const cur = await (await fetch('https://raw.githubusercontent.com/rava8989/brave/main/data/cot_currencies.json?cb=' + Date.now(),
+    { headers: { 'User-Agent': 'schwab-proxy-worker/1.0' } })).json();   // cache-busted (stale CDN copy shifts `last` back; dedup saves us, but read fresh)
   const added = {};
   for (const [key, code] of Object.entries(COT_CODES)) {
     const rows = cur.series[key] || [];
@@ -2948,7 +2948,10 @@ async function dataCompletenessCheck(env, etNow) {
     return { date: todayISO, skipped: 'before EOD — nothing to verify yet' };
   const ym = todayISO.slice(0, 7);
   const gh = { headers: { 'User-Agent': 'schwab-proxy-worker/1.0' } };
-  const J = async (u) => { const r = await fetch(u, gh); return r.ok ? r.json() : null; };
+  // Cache-busted: raw.githubusercontent serves a ~5-min CDN cache, so the
+  // post-heal re-check read the PRE-heal file and mislabeled a successful heal
+  // as "NEEDS ATTENTION" (COT, 2026-08-31). Applies to every check equally.
+  const J = async (u) => { const r = await fetch(u + (u.includes('?') ? '&' : '?') + 'cb=' + Date.now(), gh); return r.ok ? r.json() : null; };
   const healed = [], failed = [], ok = [];
 
   const checks = [
@@ -2981,11 +2984,15 @@ async function dataCompletenessCheck(env, etNow) {
   ];
   // Fri–Mon: CFTC sometimes publishes hours late on Friday; a Friday-only
   // check meant one lag = a full week stale (happened 2026-08-08).
-  // Threshold is 7, not 5: rows are keyed by the as-of TUESDAY, so the
-  // freshest possible data on Monday is already 6 days old (as-of Tue,
-  // released Fri) — ≤5 false-alarmed every Monday (first hit 2026-08-17).
-  // A genuinely missed release is 13+ days old by the next Friday check.
-  if ([5, 6, 0, 1].includes(etNow.getDay())) checks.push(['COT weekly', async () => {
+  // Monday-ONLY check (2026-08-31; was Fri-Mon). CFTC's Socrata dataset now
+  // posts the Friday release sometime over the weekend (Aug 21 + Aug 28 both
+  // missed the Friday 16:25 ingest and only landed via the Monday heal), so a
+  // Fri/Sat/Sun "stale" reading is a publisher lag, not a broken feed — it
+  // paged the owner 3-4× per weekend with nothing actionable. Ingest attempts
+  // run Fri AND Mon 16:25 (aux tick) plus this Monday heal; freshest possible
+  // data on Monday is 6 days old (as-of Tue), so ≤7 alarms only when the
+  // Monday-evening heal ALSO failed — a genuinely missing release.
+  if (etNow.getDay() === 1) checks.push(['COT weekly', async () => {
     const j = await J('https://raw.githubusercontent.com/rava8989/brave/main/data/cot_currencies.json');
     if (!j) return false;
     const last = j.series.EUR[j.series.EUR.length - 1][0];
@@ -7802,7 +7809,9 @@ async function handleScheduledInner(env) {
         const oc = await ocCalibJob(env, etNow, tokC);
         await env.SIGNAL_KV.put('oc_calib_last', JSON.stringify({ ...oc, d: todayISO, ts: Date.now() }));
       } catch (e) { console.warn('[oc-calib]', e.message); }
-      if (etNow.getDay() === 5) {
+      // Fri = release day; Mon = catch the now-common weekend Socrata post
+      // BEFORE the 18:35 watchdog looks (2026-08-31). Idempotent, added=0 no-op.
+      if ([1, 5].includes(etNow.getDay())) {
         try { await cotWeeklyRefresh(env); } catch (e) { console.warn('[cot]', e.message); }
       }
       // Persist today's intraday GEX grid permanently (no TTL) — sampler

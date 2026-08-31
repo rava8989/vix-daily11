@@ -11182,13 +11182,19 @@ async function fetchAllDiscordSignalsForDate(token, channelId, dateISO) {
   catch (e) { mainErr = e; }
   if (channelId !== MF_SIGNALS_CHANNEL) { if (mainErr) throw mainErr; return main; }
   if (!mainErr && main.length >= MAIN_FEED_MIN_ROWS) return main;
-  try {
-    const alt = await fetchAllDiscordSignalsForDateOne(token, ALT_SIGNALS_CHANNEL, dateISO);
-    if (alt.length > main.length) {
-      console.log(`[scrape] main feed thin (${main.length}) → alt mirror used (${alt.length}) for ${dateISO}`);
-      return alt;
-    }
-  } catch (e) { console.warn('[scrape] alt mirror failed:', e.message); }
+  // Two attempts: a transient Discord 429 inside a busy cron tick surfaces as
+  // an empty/failed alt read (bit the 2026-08-31 16:25 append) — retry once.
+  for (let att = 0; att < 2; att++) {
+    try {
+      const alt = await fetchAllDiscordSignalsForDateOne(token, ALT_SIGNALS_CHANNEL, dateISO);
+      if (alt.length > main.length) {
+        console.log(`[scrape] main feed thin (${main.length}) → alt mirror used (${alt.length}) for ${dateISO}`);
+        return alt;
+      }
+      if (alt.length) break;             // mirror real but thinner — keep main
+    } catch (e) { console.warn('[scrape] alt mirror failed:', e.message); }
+    if (att === 0) await new Promise(r => setTimeout(r, 1200));
+  }
   if (mainErr) throw mainErr;
   return main;
 }
@@ -11270,13 +11276,19 @@ async function scrapeRawEarnMsgs(token, channelId, dateISO, withAttachments = fa
 async function scrapeRawRowsForDate(token, channelId, dateISO) {
   const main = await scrapeRawRowsForDateOne(token, channelId, dateISO);
   if (channelId !== MF_SIGNALS_CHANNEL || main.length >= MAIN_FEED_MIN_ROWS) return main;
-  try {
-    const alt = await scrapeRawRowsForDateOne(token, ALT_SIGNALS_CHANNEL, dateISO);
-    if (alt.length > main.length) {
-      console.log(`[scrape] main feed thin (${main.length}) → alt mirror used (${alt.length}) for ${dateISO}`);
-      return alt;
-    }
-  } catch (e) { console.warn('[scrape] alt mirror failed:', e.message); }
+  // Two attempts — see fetchAllDiscordSignalsForDate for why (silent-empty alt
+  // on a transient 429; scrapeRawRowsForDateOne returns [] on !resp.ok).
+  for (let att = 0; att < 2; att++) {
+    try {
+      const alt = await scrapeRawRowsForDateOne(token, ALT_SIGNALS_CHANNEL, dateISO);
+      if (alt.length > main.length) {
+        console.log(`[scrape] main feed thin (${main.length}) → alt mirror used (${alt.length}) for ${dateISO}`);
+        return alt;
+      }
+      if (alt.length) break;             // mirror real but thinner — keep main
+    } catch (e) { console.warn('[scrape] alt mirror failed:', e.message); }
+    if (att === 0) await new Promise(r => setTimeout(r, 1200));
+  }
   return main;
 }
 

@@ -9111,52 +9111,51 @@ async function handleScheduledInner(env) {
       if (spxCloseCandle) spxYClose = spxCloseCandle.close;
     }
 
-    // Get SPX today open — Tasty PRIMARY (refresh_token never expires, so a
-    // dead Schwab token can't null this and break the signal), Schwab FALLBACK.
-    // FIX (2026-06-09): Tasty's `open` field must pass freshness check (today's
-    // date AND timestamp >= 9:30 ET). Previously a cron tick firing at 9:30:00
-    // accepted Tasty's pre-market cached `open` (yesterday's value with a
-    // today-dated timestamp), producing a stale SPX open in the morning signal.
-    // Also no longer falls back to `last`/`price` — those are CURRENT ticks
-    // and drift after open; `open` is the only reliable session-open marker.
+    // Get SPX today open — Schwab 9:30-candle PRIMARY (owner 2026-08-31).
+    // House definition of "open" = first print at/after 9:30 = the 9:30
+    // candle's open, exactly as SETTLED for VIX on 2026-06-18. Tasty's dxFeed
+    // `open` printed 7692.21 vs official 7697.52 on 2026-08-31 (fast open at
+    // the day's high) and anchored the EOM straddle to 7690 instead of 7700
+    // (≈ $970/contract extra loss). Tasty stays as the FALLBACK so a dead
+    // Schwab token still can't null the signal — the resilience that made it
+    // primary from 2026-06-09 until today — with the 2026-06-09 freshness
+    // gate kept (pre-market cached `open` = yesterday's value, must reject).
     try {
-      const ts = await tastyGetSpx(env);
-      const dt = ts.asOf ? new Date(String(ts.asOf)) : null;
-      let freshSpx = false;
-      if (dt && isFinite(dt.getTime())) {
-        const tET = toET(dt);
-        const sameDay = tET.toDateString() === etNow.toDateString();
-        const postOpen = (tET.getHours() * 60 + tET.getMinutes()) >= 570;
-        freshSpx = sameDay && postOpen;
+      const spxHistUrl2 = `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=%24SPX&periodType=day&period=2&frequencyType=minute&frequency=1&needExtendedHoursData=false`;
+      const spxHist2 = await fetchSchwabJSON(spxHistUrl2, token, env);
+      const todayStr = etNow.toDateString();
+      const open930 = (spxHist2.candles || [])
+        .filter(c => {
+          const d = toET(new Date(c.datetime));
+          return d.toDateString() === todayStr &&
+                 (d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() >= 30));
+        })
+        .sort((a, b) => a.datetime - b.datetime)[0];
+      if (open930 && open930.open != null) {
+        spxTodayOpen = parseFloat(open930.open.toFixed(2));
+        console.log(`[proxy] SPX open ${spxTodayOpen} via Schwab pricehistory 9:30 candle (primary)`);
       }
-      if (ts.open != null && isFinite(ts.open) && ts.open > 0 && freshSpx) {
-        spxTodayOpen = parseFloat(ts.open.toFixed(2));
-        console.log(`[proxy] SPX open ${spxTodayOpen} via tastytrade (primary, fresh @ ${ts.asOf})`);
-      } else if (ts.open != null) {
-        console.log(`[proxy] SPX Tasty open ${ts.open} REJECTED — stale (asOf=${ts.asOf}). Falling back to Schwab.`);
-      }
-    } catch (e) { console.warn('[proxy] Tasty SPX failed, trying Schwab:', e.message || e); }
+    } catch (e) { console.warn('[proxy] Schwab SPX pricehistory failed, trying Tasty:', e.message); }
     if (spxTodayOpen == null) {
-      // Schwab fallback — prefer pricehistory 9:30 candle (matches dashboard);
-      // quote.openPrice is unreliable for indices pre/at open.
       try {
-        const spxHistUrl = `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=%24SPX&periodType=day&period=2&frequencyType=minute&frequency=1&needExtendedHoursData=false`;
-        const spxHist = await fetchSchwabJSON(spxHistUrl, token, env);
-        const todayStr = etNow.toDateString();
-        const open930 = (spxHist.candles || [])
-          .filter(c => {
-            const d = toET(new Date(c.datetime));
-            return d.toDateString() === todayStr &&
-                   (d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() >= 30));
-          })
-          .sort((a, b) => a.datetime - b.datetime)[0];
-        if (open930 && open930.open != null) {
-          spxTodayOpen = parseFloat(open930.open.toFixed(2));
-          console.log(`[proxy] SPX open ${spxTodayOpen} via Schwab pricehistory 9:30 candle (fallback)`);
+        const ts = await tastyGetSpx(env);
+        const dt = ts.asOf ? new Date(String(ts.asOf)) : null;
+        let freshSpx = false;
+        if (dt && isFinite(dt.getTime())) {
+          const tET = toET(dt);
+          const sameDay = tET.toDateString() === etNow.toDateString();
+          const postOpen = (tET.getHours() * 60 + tET.getMinutes()) >= 570;
+          freshSpx = sameDay && postOpen;
         }
-      } catch (e) { console.warn('[proxy] Schwab SPX pricehistory failed:', e.message); }
+        if (ts.open != null && isFinite(ts.open) && ts.open > 0 && freshSpx) {
+          spxTodayOpen = parseFloat(ts.open.toFixed(2));
+          console.log(`[proxy] SPX open ${spxTodayOpen} via tastytrade (fallback, fresh @ ${ts.asOf})`);
+        } else if (ts.open != null) {
+          console.log(`[proxy] SPX Tasty open ${ts.open} REJECTED — stale (asOf=${ts.asOf}).`);
+        }
+      } catch (e) { console.warn('[proxy] Tasty SPX failed:', e.message || e); }
       // Last resort: quote endpoint (kept for emergency, but openPrice
-      // can be 0/null at exactly 9:30 — only use if pricehistory failed).
+      // can be 0/null at exactly 9:30 — only use if both above failed).
       if (spxTodayOpen == null) {
         try {
           const spxQuoteUrl = `https://api.schwabapi.com/marketdata/v1/quotes?symbols=%24SPX&fields=quote`;

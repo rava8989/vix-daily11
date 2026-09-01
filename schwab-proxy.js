@@ -4867,7 +4867,6 @@ function isBanned(center, lower, t1) {
 
 async function pollDiscordSignals(env) {
   const token = env.DISCORD_USER_TOKEN;
-  const channelId = '1048242197029458040';
   if (!token) return { polled: false, reason: 'no token' };
 
   const etNow = toET(new Date());
@@ -4880,9 +4879,31 @@ async function pollDiscordSignals(env) {
   let signals = [];
   let afterId = null;
 
+  // Alt-mirror mode (owner 2026-08-31, main feed dead until 15:01 that day —
+  // skipper/card/relay were signal-starved all session while the mirror had
+  // every post). If the main feed has produced NOTHING by 10:00 ET, flip this
+  // poller to the mirror channel for the REST of the day. One-way per day:
+  // main and mirror message ids differ, so mixing channels would double-count
+  // signals — the flip only fires while signals_today is EMPTY, which makes
+  // duplication impossible. A partial-then-dead main feed intentionally does
+  // NOT flip (would duplicate); the EOD re-scrape heals the record there.
+  const altModeKey = `feed_alt_mode_${todayISO}`;
+  let altMode = !!(await env.SIGNAL_KV.get(altModeKey));
+  // "nothing today" = book still holds yesterday's date (a dead feed never
+  // writes signals_today, so the date itself is the starvation tell) OR an
+  // empty today-book.
+  const nothingToday = existing.date !== todayISO || (existing.signals || []).length === 0;
+  if (!altMode && nothingToday && etNow.getHours() >= 10) {
+    altMode = true;
+    await env.SIGNAL_KV.put(altModeKey, '1', { expirationTtl: 86400 });
+    console.log('[poll] main feed empty through 10:00 ET → alt mirror mode for the rest of today');
+  }
+  const channelId = altMode ? ALT_SIGNALS_CHANNEL : MF_SIGNALS_CHANNEL;
+  const cursorKey = altMode ? 'discord_last_msg_id_alt' : 'discord_last_msg_id';
+
   if (existing.date === todayISO) {
     signals = existing.signals || [];
-    afterId = await env.SIGNAL_KV.get('discord_last_msg_id');
+    afterId = await env.SIGNAL_KV.get(cursorKey);
   }
 
   // First poll of the day — start from midnight UTC today
@@ -4913,8 +4934,8 @@ async function pollDiscordSignals(env) {
   // Sort oldest → newest
   messages.sort((a, b) => a.id.localeCompare(b.id));
 
-  // Save latest message ID
-  await env.SIGNAL_KV.put('discord_last_msg_id', messages[messages.length - 1].id);
+  // Save latest message ID (per-channel cursor — alt mode keeps its own)
+  await env.SIGNAL_KV.put(cursorKey, messages[messages.length - 1].id);
 
   const seenMsgIds = new Set(signals.map(s => s.msgId).filter(Boolean));
   let newCount = 0;

@@ -624,8 +624,18 @@ function tosDate(iso) { return `${+iso.slice(8, 10)} ${_TOS_MON[+iso.slice(5, 7)
 const _tk = v => String(+v);
 window._tos = {};
 function tosBtn(key) {
-  return `<button onclick="tosCopy('${key}', this)" style="font-size:10.5px;font-weight:700;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 9px;cursor:pointer;margin-left:8px;font-family:'JetBrains Mono',monospace">📋 Copy trade</button>`;
+  // One look, one place (owner 2026-09-02): every card's Copy button is
+  // relocated into its header's right edge by placeTosButtons() below.
+  return `<button class="tos-copy" onclick="tosCopy('${key}', this)" title="copy the thinkorswim order" style="font-size:10.5px;font-weight:700;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 9px;cursor:pointer;margin-left:8px;white-space:nowrap;font-family:'JetBrains Mono',monospace">⧉ Copy</button>`;
 }
+function placeTosButtons() {
+  document.querySelectorAll('button.tos-copy').forEach((b) => {
+    const card = b.closest('.diag-card'); if (!card) return;
+    const head = card.querySelector('.diag-header'); if (!head) return;
+    if (b.parentElement !== head || head.lastElementChild !== b) head.appendChild(b);
+  });
+}
+new MutationObserver(() => placeTosButtons()).observe(document.body, { childList: true, subtree: true });
 function tosCopy(key, btn) {
   const s = window._tos[key];
   if (!s) return;

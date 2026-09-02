@@ -610,6 +610,11 @@ async function spreadsRouterDM(env, etNow) {
   // default size 2 contracts. Trade state was written BEFORE this send (P27);
   // the claim gates the whole fanout, 'sent' only after the fanout ran.
   let msg;
+  // thinkorswim copy line (owner 2026-09-02: every trade message carries one).
+  // Credits rounded DOWN to the nickel grid — Schwab rejects off-grid prices.
+  const _tosM = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const tosD = `${+d.slice(8, 10)} ${_tosM[+d.slice(5, 7) - 1]} ${d.slice(2, 4)}`;
+  const nick5 = (x) => (Math.floor(x * 20 + 1e-9) / 20).toFixed(2);
   if (t.side === 'IC') {
     const totCr = t.credit + t.cCredit;
     const risk = Math.round((10 - totCr) * 100);
@@ -618,6 +623,7 @@ async function spreadsRouterDM(env, etNow) {
       `PUT spread **${t.short}/${t.long}** @ $${t.credit.toFixed(2)} + CALL spread **${t.cShort}/${t.cLong}** @ $${t.cCredit.toFixed(2)} (10-wides)\n` +
       `total credit ≈ $${totCr.toFixed(2)}/condor · max risk ~$${risk}/condor\n` +
       `book +${t.gexB}B at 1 PM — pinned, betting the range holds\n` +
+      `📋 \`SELL -2 IRON CONDOR SPX 100 (Weeklys) ${tosD} ${t.cShort}/${t.cLong}/${t.short}/${t.long} CALL/PUT @${nick5(totCr)} LMT\`\n` +
       `settles at the close · https://rava8989.github.io/brave/spreads.html` +
       (t.mornUp === false ? `\n-# 🟢 Down-morning cohort — historically the condor's strongest days (+$173/lot vs +$70 on up-mornings). Info only.`
        : t.mornUp === true ? `\n-# ⚪ Up-morning cohort — historically the softer cohort (+$70/lot vs +$173 on down-mornings). Info only.` : '');
@@ -630,6 +636,7 @@ async function spreadsRouterDM(env, etNow) {
       `SELL SPX 0DTE ${t.side} spread **${t.short}/${t.long}** (10-wide) · **2 contracts**\n` +
       `credit ≈ $${t.credit.toFixed(2)}/spread · max risk ~$${risk}/spread\n` +
       `${why}\n` +
+      `📋 \`SELL -2 VERTICAL SPX 100 (Weeklys) ${tosD} ${t.short}/${t.long} ${t.side} @${nick5(t.credit)} LMT\`\n` +
       `settles at the close · https://rava8989.github.io/brave/spreads.html`;
   }
   // MARKER BEFORE SEND (P27: lose-once > dupe) — the after-send marker is

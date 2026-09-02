@@ -692,6 +692,9 @@ function renderScalp() {
     html.push(`<span style="font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;">magnet ${t.magnet} · M8BF ${t.center}</span>`);
     html.push(`</div>`);
     html.push(`<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">${statusText}</div>`);
+    // thinkorswim copy line (owner 2026-09-02) — same shape as the noon GO post
+    window._tos.pnbf = `BUY +${SCALP_LOTS} BUTTERFLY SPX 100 (Weeklys) ${tosDate(t.openDate)} ${_tk(t.magnet - SCALP_WIDTH)}/${_tk(t.magnet)}/${_tk(t.magnet + SCALP_WIDTH)} CALL @${(Math.ceil(t.entry * 20 - 1e-9) / 20).toFixed(2)} LMT`;
+    html.push(tosBtn('pnbf'));
 
     // 10-lot P&L: closed = pnl×lots; open = unrealized (lastMid−entry)×100×lots when a live mid exists.
     let pnl10 = null, pnlSub = '';
@@ -758,6 +761,12 @@ function renderSpreads() {
     html.push(`<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">${isIC
       ? `SELL IRON CONDOR · puts ${t.short}/${t.long} @ $${t.credit.toFixed(2)} + calls ${t.cShort}/${t.cLong} @ $${t.cCredit.toFixed(2)}`
       : `SELL ${t.side} spread ${t.short}/${t.long} (10-wide) · credit $${t.credit.toFixed(2)}/spread`} · ${SPREADS_LOTS} contracts · hold to close</div>`);
+    // thinkorswim copy line (owner 2026-09-02) — credit rounded DOWN to the nickel grid
+    const nick5 = (x) => (Math.floor(x * 20 + 1e-9) / 20).toFixed(2);
+    window._tos.spreads = isIC
+      ? `SELL -${SPREADS_LOTS} IRON CONDOR SPX 100 (Weeklys) ${tosDate(t.date)} ${_tk(t.cShort)}/${_tk(t.cLong)}/${_tk(t.short)}/${_tk(t.long)} CALL/PUT @${nick5(totCr)} LMT`
+      : `SELL -${SPREADS_LOTS} VERTICAL SPX 100 (Weeklys) ${tosDate(t.date)} ${_tk(t.short)}/${_tk(t.long)} ${t.side} @${nick5(t.credit)} LMT`;
+    html.push(tosBtn('spreads'));
     const pl2 = closed && t.pl != null ? Math.round(t.pl * SPREADS_LOTS)
               : (!closed && t.currentPnl != null) ? Math.round(t.currentPnl * SPREADS_LOTS) : null;
     const plClass = pl2 == null ? '' : pl2 > 0 ? 'diag-pl-pos' : pl2 < 0 ? 'diag-pl-neg' : '';

@@ -7731,6 +7731,39 @@ async function handleScheduledInner(env) {
     }
   }
 
+  // Trade-kick (owner 2026-09-02): fingerprint the five open-trade records every
+  // market tick; on ANY change (new open, fill, strike/side update) poke the
+  // skipper's /api/poll right away so the executor reacts within seconds of a
+  // strategy opening instead of at its next cron minute. First fingerprint of
+  // the day is baseline-only. Awaited like the signal-kick above (dup-safe:
+  // the skipper is idempotent per strategy-day).
+  if (isMarket && env.LINK_SECRET) {
+    try {
+      const kickKeys = ['straddle_open_trade', 'bobf_open_trade', 'gxbf_open_trade', `spreads_open_${todayISO}`, 'mf_open_trade'];
+      const parts = [];
+      for (const k of kickKeys) {
+        const v = await env.SIGNAL_KV.get(k);
+        if (!v) { parts.push('-'); continue; }
+        try {
+          const j = JSON.parse(v);
+          parts.push(`${j.openDate || j.date || ''}|${j.status || ''}|${j.strike ?? j.centerStrike ?? j.bodyStrike ?? j.short ?? j.magnet ?? ''}|${j.fillDebit ?? j.entry ?? j.credit ?? ''}`);
+        } catch (_) { parts.push(String(v.length)); }
+      }
+      const fp = parts.join(';');
+      const prevFp = await env.SIGNAL_KV.get('skipper_kick_fp');
+      if (fp !== prevFp) {
+        await env.SIGNAL_KV.put('skipper_kick_fp', fp, { expirationTtl: 86400 });
+        if (prevFp !== null) {
+          const kickReq2 = new Request('https://skipper.internal/api/poll', { method: 'POST', headers: { 'X-Link-Secret': env.LINK_SECRET } });
+          const kr2 = env.SKIPPER_WORKER
+            ? await env.SKIPPER_WORKER.fetch(kickReq2)
+            : await fetch('https://skipper.ravamt4.workers.dev/api/poll', { method: 'POST', headers: { 'X-Link-Secret': env.LINK_SECRET } });
+          console.log('[trade-kick] skipper poked →', kr2.status);
+        }
+      }
+    } catch (e) { console.warn('[trade-kick]', e.message); }
+  }
+
   // ── 17:05–17:25 ET: M8BF GEX-gate verdict for the NEXT session (owner DM).
   // Rule (audited 2026-07-23): today's 10:30 0DTE total GEX ranked against the
   // trailing 120 series entries strictly before today; bottom 20% → SKIP.

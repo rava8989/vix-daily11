@@ -2132,7 +2132,15 @@ async function earnFinalJob(env, etNow, token) {
     if (storedRaw) { try { b = JSON.parse(storedRaw); } catch (_) { b = null; } }
     if (!b) {
       b = await earnBuildIsolated(env, token, iso, { withIntraday: true });
-      await earnNoteFailures(env, b, 'final');
+      const bad = await earnNoteFailures(env, b, 'final');
+      // 2026-09-03: the FINAL went out as "All nights skipped — fear spiking"
+      // because every fetch 403'd. A FINAL built on failed data is not a call:
+      // release the claim and let the next tick rebuild, until 15:40.
+      if (bad && m < 40) {
+        await env.SIGNAL_KV.delete(key);
+        console.warn('[earn-final] build had failures — holding for the next tick');
+        return;
+      }
       b.final = true;
       await env.SIGNAL_KV.put(`earn_final_board_${iso}`, JSON.stringify(b), { expirationTtl: 86400 });
       await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 7 * 86400 });
@@ -4088,6 +4096,13 @@ async function fetchSchwabJSON(url, token, env) {
     console.warn('[proxy] Schwab 401 — retrying with fresh token');
     const freshToken = await getAccessToken(env, true);
     resp = await fetch(url, { headers: { Authorization: `Bearer ${freshToken}` } });
+  }
+  // 403 (2026-09-03 15:30 FINAL: every pricehistory/chains call in one burst
+  // came back 403 while the same calls succeeded a minute later) — Schwab's
+  // edge blocks bursts; one 1.5s pause + retry clears it.
+  if (resp.status === 403) {
+    await new Promise(r => setTimeout(r, 1500));
+    resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   }
   // 429 = throttled. Previously this threw and the caller silently lost the
   // tick's data; now we honour Retry-After (capped) and retry once.
@@ -12582,8 +12597,9 @@ function buildEarningsCardSvg(b) {
     const H = 168;
     const vixR = b.vix && b.vix.ratio != null ? b.vix.ratio : '—';
     let s = header(C.skipCard).replace('__H__', H);
-    s += centerMsg(C.red, 'All nights skipped', `VIX ${vixR}× its 100-day mean — fear spiking`);
-    s += footBar(H - 48, C.footBad, C.footBadTxt, 'no earnings trades until VIX calms');
+    const dataFail = !!(b.vix && b.vix.err);
+    s += centerMsg(C.red, 'All nights skipped', dataFail ? 'VIX check unavailable — market data failed, skipped to be safe' : `VIX ${vixR}× its 100-day mean — fear spiking`);
+    s += footBar(H - 48, C.footBad, C.footBadTxt, dataFail ? 'data error — not a VIX signal' : 'no earnings trades until VIX calms');
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${s}</svg>`;
   }
   // STATE D — quiet night: nobody in-universe reports.

@@ -54,3 +54,8 @@ service = "discord-proxy"
 [[services]]
 binding = "SKIPPER_WORKER"
 service = "skipper"
+
+# self-binding: earnings board builds run in a fresh invocation (own subrequest budget)
+[[services]]
+binding = "SELF"
+service = "schwab-proxy"

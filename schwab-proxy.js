@@ -1675,7 +1675,7 @@ async function earnBuildBoard(env, token, boardISO, opts = {}) {
       const ps = await earnPriceStats(env, token, cd.ticker);
       if (ps) { row.runup_2w = ps.runup_2w; row.ath_dist = ps.ath_dist;
                 row.g2 = ps.runup_2w < EARN_RUNUP_MAX && ps.ath_dist <= EARN_ATH_MAX; }
-    } catch (e) { row.notes.push('price fetch failed'); }
+    } catch (e) { row.notes.push('price fetch failed: ' + String(e && e.message || e).slice(0, 70)); }
     try {
       let intraday = null, intradayM = null;
       if (opts.withIntraday) {
@@ -1702,7 +1702,7 @@ async function earnBuildBoard(env, token, boardISO, opts = {}) {
         row.flowSrc = 'monthly';
         if (fwm.nDays < 3) row.notes.push(`thin monthly window (${fwm.nDays}d)`);
       }
-    } catch (e) { row.notes.push('flow fetch failed'); }
+    } catch (e) { row.notes.push('flow fetch failed: ' + String(e && e.message || e).slice(0, 70)); }
     // Audit B1 (owner batch 2026-08-05): a name with an UNKNOWN report time
     // ('AMC?' / 'BMO?') can be a dead catalyst — it may have ALREADY reported
     // this morning. It stays on the board for visibility but can never trade.
@@ -1782,7 +1782,8 @@ async function earnMorningJob(env, etNow, token) {
   if (!(h === 9 && m >= 10 && m <= 25)) return;
   if (!(await claimSendSlot(env, key))) return;
   try {
-    const b = await earnBuildBoard(env, token, iso, { withIntraday: false });
+    const b = await earnBuildIsolated(env, token, iso, { withIntraday: false });
+    await earnNoteFailures(env, b, 'preview');
     await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 3 * 86400 });
     // NO morning Discord send (user 2026-07-13: a 9am read that can flip by
     // 3:30 is noise — "why I need a morning board telling me something that
@@ -2053,20 +2054,54 @@ async function earnAfterJob(env, etNow, token) {
   }
 }
 
+// Build the board in a FRESH invocation through the self service binding
+// (2026-09-03: inside the scheduled tick every row came back "price/flow
+// fetch failed" and the VIX gate was "unavailable", while the same build on
+// demand was clean — the tick spends most of its subrequest budget before the
+// earnings jobs run). Falls back to the in-process build.
+async function earnBuildIsolated(env, token, iso, opts = {}) {
+  const sec = env.SYNC_SECRET || env.GEXM_TRIGGER_TOKEN;
+  if (env.SELF && sec) {
+    try {
+      const r = await env.SELF.fetch(new Request(`https://internal/earnings-scan-trigger?step=board&date=${iso}&intraday=${opts.withIntraday ? 1 : 0}`,
+        { headers: { 'X-Sync-Secret': sec } }));
+      if (r.ok) { const b = await r.json(); if (b && Array.isArray(b.board)) { b._isolated = true; return b; } }
+      console.warn('[earn] isolated build → HTTP', r.status);
+    } catch (e) { console.warn('[earn] isolated build failed:', e.message); }
+  }
+  return earnBuildBoard(env, token, iso, opts);
+}
+const earnFailedRows = (b) => ((b && b.board) || []).filter(r => (r.notes || []).some(n => /fetch failed/.test(String(n))));
+const earnVixDead = (b) => !!(b && b.vix && b.vix.ok === false && b.vix.err);
+async function earnNoteFailures(env, b, stage) {
+  const bad = earnFailedRows(b);
+  if (bad.length || earnVixDead(b)) {
+    await logEvent(env, 'warn', 'earn-board', `${stage}: ${bad.length}/${((b && b.board) || []).length} rows failed fetch${earnVixDead(b) ? ' · VIX gate unavailable' : ''}`,
+      { rows: bad.slice(0, 6).map(r => ({ t: r.ticker, notes: r.notes })), isolated: !!(b && b._isolated) });
+  }
+  return bad.length + (earnVixDead(b) ? 1 : 0);
+}
+
 async function earnRescoreJob(env, etNow, token) {
   const iso = isoDateET(etNow);
   const m = etNow.getMinutes(), h = etNow.getHours();
-  if (!((m >= 0 && m <= 2) || (m >= 30 && m <= 32))) return;     // :00/:30 ticks
   if (h < 10 || h >= 15 && !(h === 15 && m <= 2)) return;        // 10:00–15:02
   const raw = await env.SIGNAL_KV.get(`earn_board_${iso}`);
   if (!raw) return;
   const prev = JSON.parse(raw);
   if (!prev.board.length) return;
-  const lock = `earn_rescore_${iso}_${h}_${m < 30 ? 0 : 30}`;
+  const onSlot = (m >= 0 && m <= 2) || (m >= 30 && m <= 32);      // :00/:30 rescore
+  // self-heal (2026-09-03): a board with failed rows or a dead VIX gate is
+  // rebuilt on ANY tick, throttled to once per 10 min, until it is clean
+  const broken = earnFailedRows(prev).length > 0 || earnVixDead(prev);
+  if (!onSlot && !broken) return;
+  const lock = onSlot ? `earn_rescore_${iso}_${h}_${m < 30 ? 0 : 30}` : `earn_heal_${iso}_${Math.floor((h * 60 + m) / 10)}`;
   if (await env.SIGNAL_KV.get(lock)) return;
   await env.SIGNAL_KV.put(lock, '1', { expirationTtl: 3600 });
   try {
-    const b = await earnBuildBoard(env, token, iso, { withIntraday: true });
+    const b = await earnBuildIsolated(env, token, iso, { withIntraday: true });
+    const bad = await earnNoteFailures(env, b, onSlot ? 'rescore' : 'heal');
+    if (bad && !broken) { console.warn('[earn] rebuild produced failures — keeping the previous clean board'); return; }
     await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 3 * 86400 });
   } catch (e) { console.warn('[earn] rescore failed:', e.message); }
 }
@@ -2096,7 +2131,8 @@ async function earnFinalJob(env, etNow, token) {
     const storedRaw = await env.SIGNAL_KV.get(`earn_final_board_${iso}`);
     if (storedRaw) { try { b = JSON.parse(storedRaw); } catch (_) { b = null; } }
     if (!b) {
-      b = await earnBuildBoard(env, token, iso, { withIntraday: true });
+      b = await earnBuildIsolated(env, token, iso, { withIntraday: true });
+      await earnNoteFailures(env, b, 'final');
       b.final = true;
       await env.SIGNAL_KV.put(`earn_final_board_${iso}`, JSON.stringify(b), { expirationTtl: 86400 });
       await env.SIGNAL_KV.put(`earn_board_${iso}`, JSON.stringify(b), { expirationTtl: 7 * 86400 });
@@ -14059,8 +14095,10 @@ export default {
       const step = url.searchParams.get('step') || 'board';
       const dateISO = url.searchParams.get('date') || isoDateET(toET());
       if (step === 'board') {
-        const b = await earnBuildBoard(env, token, dateISO,
-          { withIntraday: url.searchParams.get('intraday') === '1' });
+        // isolated=1: exercise the self-binding path the scheduled jobs use
+        const b = url.searchParams.get('isolated') === '1'
+          ? await earnBuildIsolated(env, token, dateISO, { withIntraday: url.searchParams.get('intraday') === '1' })
+          : await earnBuildBoard(env, token, dateISO, { withIntraday: url.searchParams.get('intraday') === '1' });
         // store=1 (owner 2026-07-29): persist the rebuilt board so the page
         // shows the current full-universe list, not a stale pre-fix snapshot.
         if (url.searchParams.get('store') === '1') {

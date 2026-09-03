@@ -1945,46 +1945,79 @@ async function earnAfterJob(env, etNow, token) {
   if (!scored.length) { await env.SIGNAL_KV.put(key, 'no-rows', { expirationTtl: 86400 }); return; }
   if (!(await claimSendSlot(env, key))) return;
   try {
+    // Per-ticker fetch with retries; one bad symbol never blanks the others.
+    // 2026-09-03: AVGO/TCOM/AI/CIEN showed "—" while SNOW (LONG, log fallback)
+    // and AGX printed — the 9:40 candle/quote lag + a batch fallback that fails
+    // as a unit. Now: retry the daily candles ×3, then a PER-TICKER quote
+    // fallback, then (LONGs) the exit log; if anything is still blank before
+    // 9:50 the card is HELD for the next tick; a diag record explains any dash.
+    const diag = {};
+    const fetchHist = async (t) => {
+      const end = Date.now(), start = end - 6 * 86400000;
+      for (let a = 0; a < 3; a++) {
+        try {
+          const j = await fetchSchwabJSON(
+            `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(t)}` +
+            `&periodType=month&period=1&frequencyType=daily&frequency=1&startDate=${start}&endDate=${end}`, token, env);
+          const cs = (j?.candles || []).map(c => ({ d: isoDateET(toET(new Date(c.datetime))), o: c.open, c: c.close }));
+          if (cs.length) return cs;
+          diag[t] = { ...(diag[t] || {}), histEmpty: a + 1 };
+        } catch (e) { diag[t] = { ...(diag[t] || {}), histErr: String(e.message).slice(0, 80) }; }
+        await new Promise(r => setTimeout(r, 400));
+      }
+      return [];
+    };
     for (const r of scored) {
-      try {
-        const end = Date.now(), start = end - 6 * 86400000;
-        const j = await fetchSchwabJSON(
-          `https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=${encodeURIComponent(r.ticker)}` +
-          `&periodType=month&period=1&frequencyType=daily&frequency=1&startDate=${start}&endDate=${end}`, token, env);
-        const cs = (j?.candles || []).map(c => ({ d: isoDateET(toET(new Date(c.datetime))), o: c.open, c: c.close }));
-        const eC = cs.find(c => c.d === prev)?.c;
-        const xO = cs.find(c => c.d === iso)?.o;
-        if (eC > 0) r._eC = eC;   // stash: today's candle may lag the 9:40 send
-        if (eC > 0 && xO > 0) r.afterPct = xO / eC - 1;
-      } catch (e) { console.warn('[earn-after]', r.ticker, e.message); }
+      const cs = await fetchHist(r.ticker);
+      const eC = cs.find(c => c.d === prev)?.c;
+      const xO = cs.find(c => c.d === iso)?.o;
+      if (eC > 0) r._eC = eC;   // stash: today's candle may lag the 9:40 send
+      if (eC > 0 && xO > 0) { r.afterPct = xO / eC - 1; r._src = 'candles'; }
+      diag[r.ticker] = { ...(diag[r.ticker] || {}), eC: eC ?? null, xO: xO ?? null, candles: cs.length };
     }
-    // Thin names/ADRs often have no TODAY daily candle yet at 9:40 → row showed
-    // "—" (2026-08-13: 6 of 14 names, incl the traded LONG). Fallback 1: live
-    // quote open (else last, ~10 min in) against the stashed candle prev-close
-    // (never quote closePrice — holiday-phantom rule). Fallback 2: LONGs take
-    // the exit job's authoritative earn_log move_24h — the traded result can
-    // never be a dash.
-    const noPx = scored.filter(r => r.afterPct == null);
-    if (noPx.length) {
-      try {
-        const qj = await fetchSchwabJSON(
-          `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(noPx.map(x => x.ticker).join(','))}&fields=quote`, token, env);
-        for (const r of noPx) {
+    const noPx = () => scored.filter(r => r.afterPct == null);
+    if (noPx().length) {
+      // quote.closePrice is only trusted when NO holiday sits between prev and
+      // today (holiday-phantom close rule) — the candle close is always preferred.
+      const holidayGap = (() => {
+        try {
+          const a = new Date(prev + 'T12:00:00Z'), b = new Date(iso + 'T12:00:00Z');
+          for (let d = new Date(a.getTime() + 86400000); d < b; d = new Date(d.getTime() + 86400000)) {
+            const w = d.getUTCDay(); if (w !== 0 && w !== 6 && isHol(toET(d))) return true;
+          }
+        } catch (_) {}
+        return false;
+      })();
+      for (const r of noPx()) {
+        try {
+          const qj = await fetchSchwabJSON(
+            `https://api.schwabapi.com/marketdata/v1/quotes?symbols=${encodeURIComponent(r.ticker)}&fields=quote`, token, env);
           const q = qj?.[r.ticker]?.quote;
           const xO = q?.openPrice > 0 ? q.openPrice : (q?.lastPrice > 0 ? q.lastPrice : null);
-          if (xO && r._eC > 0) r.afterPct = xO / r._eC - 1;
-        }
-      } catch (e) { console.warn('[earn-after] quote fallback:', e.message); }
+          const eC = r._eC > 0 ? r._eC : ((!holidayGap && q?.closePrice > 0) ? q.closePrice : null);
+          if (xO && eC) { r.afterPct = xO / eC - 1; r._src = q?.openPrice > 0 ? 'quote-open' : 'quote-last'; }
+          diag[r.ticker] = { ...(diag[r.ticker] || {}), qOpen: q?.openPrice ?? null, qLast: q?.lastPrice ?? null, qClose: q?.closePrice ?? null, holidayGap };
+        } catch (e) { diag[r.ticker] = { ...(diag[r.ticker] || {}), quoteErr: String(e.message).slice(0, 80) }; }
+      }
       try {
         const lg = JSON.parse((await env.SIGNAL_KV.get('earn_log')) || '[]');
-        for (const r of noPx) {
-          if (r.afterPct == null && String(r.verdict).toUpperCase() === 'LONG') {
+        for (const r of noPx()) {
+          if (String(r.verdict).toUpperCase() === 'LONG') {
             const hit = (Array.isArray(lg) ? lg : []).find(x => x.date === prev && x.ticker === r.ticker && x.move_24h != null);
-            if (hit) r.afterPct = hit.move_24h;
+            if (hit) { r.afterPct = hit.move_24h; r._src = 'earn_log'; }
           }
         }
       } catch (e) { console.warn('[earn-after] log fallback:', e.message); }
     }
+    const blank = noPx().map(r => r.ticker);
+    await env.SIGNAL_KV.put(`earn_after_diag_${iso}`, JSON.stringify({ at: new Date().toISOString(), minute: m, blank, src: Object.fromEntries(scored.map(r => [r.ticker, r._src || null])), diag }), { expirationTtl: 3 * 86400 });
+    if (blank.length && m < 50) {
+      // hold the card: release the claim so the next 9:4x tick retries with fresher data
+      await env.SIGNAL_KV.delete(key);
+      console.warn('[earn-after] holding card — no open % yet for', blank.join(','));
+      return;
+    }
+    if (blank.length) await logEvent(env, 'warn', 'earn-after', `morning-after: no open % for ${blank.join(',')} at 9:${m}`, { blank });
     b.after = true; b.final = false; b.date = prev;
     let png = null;
     try { png = await renderEarningsCardPng(b); } catch (e) { console.warn('[earn-after] render:', e.message); }
@@ -17155,8 +17188,10 @@ export default {
           const force = url.searchParams.get('force') === 'true';
           const token = await getAccessToken(env, force);
           const tokensRaw = await env.SIGNAL_KV.get('schwab_tokens');
-          const expiry = tokensRaw ? JSON.parse(tokensRaw).expiry : null;
-          return jsonResp({ access_token: token, expiry, forced: force }, 200, corsHeaders);
+          const tk = tokensRaw ? JSON.parse(tokensRaw) : {};
+          // refreshExpiry (7-day clock, reset only on a real re-grant) lets the
+          // skipper run its own countdown + DM (skipper hardening 2026-09-02).
+          return jsonResp({ access_token: token, expiry: tk.expiry ?? null, refreshExpiry: tk.refreshExpiry ?? null, forced: force }, 200, corsHeaders);
         } catch (e) {
           return jsonResp({ error: e.message }, 500, corsHeaders);
         }

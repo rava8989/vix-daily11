@@ -3047,6 +3047,25 @@ async function dataCompletenessCheck(env, etNow) {
       const j = await J('https://raw.githubusercontent.com/rava8989/brave/main/cyclicality_ndx.json');
       return !!(j && j.days.some(d => d.d === todayISO));
     }, () => appendCyclicalityDays(env, { symbol: '%24NDX', file: 'cyclicality_ndx.json' })],
+    ['spreads history', async () => {
+      // 2026-09-03: the router settled the IC but history_data.spreadsPL stayed
+      // empty (the settle wrote before the EOD row existed and never retried).
+      const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
+      const t = log.find(x => x.date === todayISO && x.status === 'settled');
+      if (!t) return true;
+      const hd = JSON.parse((await env.SIGNAL_KV.get('history_data')) || '[]');
+      const row = hd.find(r => r.date === todayISO);
+      return !!(row && row.spreadsPL != null);
+    }, async () => {
+      const log = JSON.parse((await env.SIGNAL_KV.get('spreads_paper_log')) || '[]');
+      const t = log.find(x => x.date === todayISO && x.status === 'settled');
+      const hd = JSON.parse((await env.SIGNAL_KV.get('history_data')) || '[]');
+      const row = hd.find(r => r.date === todayISO);
+      if (!t || !row || row.spreadsPL != null) return;
+      row.spreadsPL = Math.round(t.pl * 2 * 10) / 10;   // default size = 2 contracts, log is per-lot
+      await env.SIGNAL_KV.put('history_data', JSON.stringify(hd));
+      await mirrorHistoryToGitHub(env, hd, `auto: spreadsPL ${todayISO} (watchdog heal)`);
+    }],
     ['vix decomposition', async () => {
       const j = await J('https://raw.githubusercontent.com/rava8989/brave/main/data/vix_decomposition.json');
       return !!(j && j[todayISO]);

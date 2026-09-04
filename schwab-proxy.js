@@ -6633,6 +6633,21 @@ async function handleGxbfEntry(env, etNow, signal, preChain = null) {
       // overnight VIX DOWN. Trigger days qualify by definition (drop > 0.65 IS
       // the trigger); a pure OPEX+1 gated morning with VIX flat/up takes NO
       // trade — regular logic, and the regular straddle needs a drop too.
+      // ── FRIDAY guard (owner rule 2026-08-14, ABSOLUTE — "cancel ALL Fridays",
+      // no exemptions, all straddle subtypes). The gated conversion shipped 7/30
+      // with "no day-of-week ban"; the 8/14 rule post-dates it and applies to
+      // every straddle, so a gated Friday takes NO trade (GXBF stood down above).
+      // Found 2026-09-04 while checking the first LIVE XSP straddle morning.
+      if (etNow.getDay() === 5) {
+        try {
+          const dcRaw = await env.SIGNAL_KV.get('discord_config');
+          const dc = dcRaw ? JSON.parse(dcRaw) : null;
+          if (dc && dc.channelId) await sendDiscordDM(env, dc.channelId,
+            `⚪ **GXBF** — gamma-gated (${bn}B) on a Friday. No straddle conversion (Friday straddle rule, owner 2026-08-14). No trade today.`, dc.proxyUrl);
+        } catch (_) {}
+        await env.SIGNAL_KV.put(doneKey, `gamma-gate:${bn}B:fri`, { expirationTtl: 86400 });
+        return { ...out, status: 'gamma-gate', totalGex: g0.totalGex, gatedStraddle: 'no-conversion:friday' };
+      }
       let oNight = (signal && typeof signal.oNight === 'number' && isFinite(signal.oNight)) ? signal.oNight : null;
       if (oNight == null) {
         try {
